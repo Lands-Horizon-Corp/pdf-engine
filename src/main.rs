@@ -1,52 +1,71 @@
-use rayon::prelude::*;
 use std::fs;
-use std::process::Command;
-use std::time::Instant;
+use typst::layout::PagedDocument;
+use typst_as_lib::TypstEngine;
 
-fn main() -> anyhow::Result<()> {
-    let num_docs = 100;
-    println!(
-        "🚀 Orchestrating {} PDF generations via Fullbleed Binary...",
-        num_docs
-    );
+fn main() {
+    let font_dir = "./src/fonts";
+    let mut font_data = Vec::new();
 
-    // Create a data directory for our JSON inputs
-    fs::create_dir_all("batch_data")?;
-    fs::create_dir_all("output")?;
-
-    let start = Instant::now();
-
-    // Parallel execution across all CPU cores
-    (0..num_docs).into_par_iter().for_each(|id| {
-        let json_path = format!("batch_data/record_{}.json", id);
-        let pdf_path = format!("output/invoice_{}.pdf", id);
-
-        // 1. Create the data record for this PDF
-        let data = serde_json::json!({
-            "id": id,
-            "client": "Zerodha User",
-            "amount": 5000.0 + (id as f64)
-        });
-        fs::write(&json_path, data.to_string()).unwrap();
-
-        // 2. Call the Fullbleed binary directly (Pure Rust performance)
-        // Command: fullbleed render <template> <json_data> <output_pdf>
-        let status = Command::new("fullbleed")
-            .arg("render")
-            .arg("templates/invoice.html") // Your HTML template
-            .arg(&json_path)
-            .arg(&pdf_path)
-            .status()
-            .expect("Failed to execute fullbleed");
-
-        if !status.success() {
-            eprintln!("Error rendering PDF {}", id);
+    // 1. Diagnostics: Is the folder even there?
+    if let Ok(entries) = fs::read_dir(font_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Only try to read actual files (ignore directories/.DS_Store)
+            if path.is_file() {
+                match fs::read(&path) {
+                    Ok(data) => {
+                        println!(
+                            "✅ Found and read font file: {:?}",
+                            path.file_name().unwrap()
+                        );
+                        font_data.push(data);
+                    }
+                    Err(e) => println!("❌ Failed to read {:?}: {}", path, e),
+                }
+            }
         }
-    });
+    } else {
+        println!(
+            "❌ ERROR: Directory '{}' not found. Is it in the right place?",
+            font_dir
+        );
+        return;
+    }
 
-    let duration = start.elapsed();
-    println!("✅ Done! Generated {} PDFs in {:?}", num_docs, duration);
-    println!("📈 Performance: {:?} per PDF", duration / num_docs as u32);
+    if font_data.is_empty() {
+        println!("❌ ERROR: No font files were loaded. The PDF will be empty!");
+        return;
+    }
 
-    Ok(())
+    let content = r#"
+        #set page(paper: "a6", margin: 1cm)
+        // Use "" as the catch-all. If this still warns, no fonts were loaded.
+        #set text(font: ("", "serif"), size: 14pt)
+
+        = Font Test
+        If you see this, the bytes were parsed!
+    "#;
+
+    // 2. Build the engine
+    let engine = TypstEngine::builder()
+        .main_file(content)
+        .fonts(font_data)
+        .build();
+
+    // 3. Compile
+    let warned_result = engine.compile::<PagedDocument>();
+
+    for warning in &warned_result.warnings {
+        println!("⚠️ Typst Warning: {}", warning.message);
+    }
+
+    if let Ok(doc) = warned_result.output {
+        let pdf_bytes = typst_pdf::pdf(&doc, &Default::default()).expect("PDF render failed");
+
+        // FIX: Add '&' here to borrow the bytes instead of moving them
+        fs::write("output.pdf", &pdf_bytes).expect("Write failed");
+
+        // Now pdf_bytes is still available for this line!
+        println!("🚀 PDF written to output.pdf ({} bytes)", pdf_bytes.len());
+    }
 }

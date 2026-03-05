@@ -7,7 +7,7 @@ mod utils;
 #[derive(Deserialize)]
 struct PdfRequest {
     template: String,
-    data: serde_json::Value, // Accepts any JSON object
+    data: serde_json::Value,
     width: String,
     height: String,
 }
@@ -16,24 +16,34 @@ struct PdfRequest {
 async fn main() {
     let app = Router::new().route("/html-pdf", post(handle_pdf));
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("Server listening on http://{}", addr);
+    println!("🚀 PDF Server running on http://{}", addr);
+    println!("📦 Storage Bucket: lands-horizon");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn handle_pdf(Json(payload): Json<PdfRequest>) -> impl IntoResponse {
-    let filename = format!("output_{}.pdf", chrono::Utc::now().timestamp_millis());
-
-    match utils::html_to_pdf_stream(
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let object_key = format!("pdfs/{}.pdf", timestamp);
+    match utils::html_to_pdf_to_storage(
         &payload.template,
         &payload.data,
         &payload.width,
         &payload.height,
-        &filename,
+        &object_key,
     )
     .await
     {
-        Ok(_) => (StatusCode::OK, format!("Success! Saved to {}", filename)),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {}", e)),
+        Ok(_) => {
+            let msg = format!("Success! PDF uploaded to bucket as: {}", object_key);
+            (StatusCode::OK, msg)
+        }
+        Err(e) => {
+            eprintln!("PDF Error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Error generating/uploading PDF: {}", e),
+            )
+        }
     }
 }

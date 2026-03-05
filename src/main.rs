@@ -35,6 +35,7 @@ async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
     let mut data = serde_json::Value::Null;
     let mut width = "8.5in".to_string();
     let mut height = "11in".to_string();
+    let mut password: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         match field.name() {
@@ -49,6 +50,12 @@ async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
             }
             Some("width") => width = field.text().await.unwrap_or(width),
             Some("height") => height = field.text().await.unwrap_or(height),
+            Some("password") => {
+                let p = field.text().await.unwrap_or_default();
+                if !p.is_empty() {
+                    password = Some(p);
+                }
+            }
             _ => {}
         }
     }
@@ -58,7 +65,7 @@ async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
     }
 
     let key = format!("pdfs/{}.pdf", chrono::Utc::now().timestamp_millis());
-    match utils::html_to_pdf_to_storage(template, data, width, height, key).await {
+    match utils::html_to_pdf_to_storage(template, data, width, height, key, password).await {
         Ok(res) => (StatusCode::OK, Json(res)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -70,6 +77,7 @@ async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
     let mut width = "8.5in".to_string();
     let mut height = "11in".to_string();
     let mut filename = "document.pdf".to_string();
+    let mut password: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         match field.name() {
@@ -85,11 +93,17 @@ async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
             Some("width") => width = field.text().await.unwrap_or(width),
             Some("height") => height = field.text().await.unwrap_or(height),
             Some("filename") => filename = field.text().await.unwrap_or(filename),
+            Some("password") => {
+                let p = field.text().await.unwrap_or_default();
+                if !p.is_empty() {
+                    password = Some(p);
+                }
+            }
             _ => {}
         }
     }
 
-    match utils::html_to_pdf_bytes(template, data, width, height).await {
+    match utils::html_to_pdf_bytes(template, data, width, height, password).await {
         Ok(bytes) => {
             let mut headers = HeaderMap::new();
             headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());

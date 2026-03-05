@@ -1,5 +1,7 @@
 use crate::models::{MediaPayload, PdfError};
 use lopdf::Document;
+// StateFactory is required to use .create_state() on the version enum
+use lopdf::encryption::{EncryptionState, EncryptionVersion, Permissions};
 use minijinja::Environment;
 use opendal::{Operator, services::S3};
 use std::env;
@@ -109,14 +111,40 @@ async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u
     Ok(buffer)
 }
 
-fn process_and_upload(raw_bytes: Vec<u8>, object_name: &str) -> Result<i64, PdfError> {
+fn process_and_upload(
+    raw_bytes: Vec<u8>,
+    object_name: &str,
+    password: Option<String>,
+) -> Result<i64, PdfError> {
     let mut doc = Document::load_from(Cursor::new(raw_bytes))
         .map_err(|e| PdfError::PrinceStatus(format!("PDF Load Error: {}", e)))?;
+
     doc.delete_pages(&[1]);
     doc.prune_objects();
+
+    if let Some(ref p) = password {
+        let version = EncryptionVersion::V2 {
+            document: &doc,
+            owner_password: p,
+            user_password: p,
+            permissions: Permissions::all(),
+            key_length: 128,
+        };
+
+        // 2. Use try_into() to turn the version into a state
+        let state: EncryptionState = version.try_into().map_err(|e: lopdf::Error| {
+            PdfError::PrinceStatus(format!("Encryption State: {}", e))
+        })?;
+
+        // 3. Pass by reference as requested by the compiler
+        doc.encrypt(&state)
+            .map_err(|e: lopdf::Error| PdfError::PrinceStatus(format!("Encrypt Apply: {}", e)))?;
+    }
+
     let mut cleaned_buffer = Vec::new();
     doc.save_to(&mut cleaned_buffer)
         .map_err(|e| PdfError::PrinceStatus(e.to_string()))?;
+
     let final_size = cleaned_buffer.len() as i64;
     let mut writer = (&*BLOCKING_OP)
         .writer(object_name)
@@ -135,14 +163,16 @@ pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>
     width: String,
     height: String,
     object_name: String,
+    password: Option<String>,
 ) -> Result<MediaPayload, PdfError> {
     let obj_name_clone = object_name.clone();
     let work = async move {
         let html = render_template(template, data).await?;
         let raw_pdf = run_prince_to_bytes(html, width, height).await?;
-        let final_size =
-            tokio::task::spawn_blocking(move || process_and_upload(raw_pdf, &obj_name_clone))
-                .await??;
+        let final_size = tokio::task::spawn_blocking(move || {
+            process_and_upload(raw_pdf, &obj_name_clone, password)
+        })
+        .await??;
         let signed = OP
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;
@@ -167,7 +197,11 @@ pub async fn html_to_pdf_bytes(
     data: serde_json::Value,
     width: String,
     height: String,
+    password: Option<String>,
 ) -> Result<Vec<u8>, PdfError> {
+    // Required to use .try_into() for EncryptionState
+    use std::convert::TryInto;
+
     let html = render_template(template, data).await?;
     let raw_pdf = run_prince_to_bytes(html, width, height).await?;
 
@@ -176,6 +210,25 @@ pub async fn html_to_pdf_bytes(
             .map_err(|e| PdfError::PrinceStatus(format!("PDF Load: {}", e)))?;
         doc.delete_pages(&[1]);
         doc.prune_objects();
+
+        if let Some(ref p) = password {
+            let version = EncryptionVersion::V2 {
+                document: &doc,
+                owner_password: p,
+                user_password: p,
+                permissions: Permissions::all(),
+                key_length: 128,
+            };
+
+            // Convert version to state via TryInto trait
+            let state: EncryptionState = version
+                .try_into()
+                .map_err(|e: lopdf::Error| PdfError::PrinceStatus(e.to_string()))?;
+
+            doc.encrypt(&state)
+                .map_err(|e: lopdf::Error| PdfError::PrinceStatus(e.to_string()))?;
+        }
+
         let mut out = Vec::new();
         doc.save_to(&mut out)
             .map_err(|e| PdfError::PrinceStatus(e.to_string()))?;
@@ -191,6 +244,7 @@ pub async fn warm_up_engine() -> Result<(), String> {
         serde_json::json!({}),
         "1in".into(),
         "1in".into(),
+        None,
     )
     .await
     .map_err(|e| format!("Prince failed: {}", e))?;

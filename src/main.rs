@@ -13,6 +13,11 @@ mod utils;
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+    if let Err(e) = utils::warm_up_engine().await {
+        eprintln!("FATAL: Engine warm-up failed!");
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
     let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
 
     let app = Router::new()

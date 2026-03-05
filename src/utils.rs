@@ -10,9 +10,21 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, timeout};
-use tokio_util::bytes::Bytes;
 
-static PRINCE_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
+static BLOCKING_OP: LazyLock<opendal::blocking::Operator> = LazyLock::new(|| {
+    // We clone the async OP and convert it to blocking
+    opendal::blocking::Operator::new((&*OP).clone())
+        .expect("Failed to initialize blocking operator")
+});
+// 1. TUNE SEMAPHORE: Auto-detect CPU cores to prevent context-switching lag
+static PRINCE_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    // Rule of thumb: cores - 1, minimum 1
+    let permit_count = if cores > 1 { cores - 1 } else { 1 };
+    Semaphore::new(permit_count)
+});
 
 static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     let mut env = Environment::new();
@@ -26,12 +38,9 @@ static STORAGE_BUCKET: LazyLock<String> =
 static OP: LazyLock<Operator> = LazyLock::new(|| {
     let mut endpoint = env::var("STORAGE_URL").expect("STORAGE_URL must be set");
     if !endpoint.starts_with("http") {
-        if endpoint.contains("127.0.0.1") || endpoint.contains("localhost") {
-            endpoint = format!("http://{}", endpoint);
-        } else {
-            endpoint = format!("https://{}", endpoint);
-        }
+        endpoint = format!("http://{}", endpoint);
     }
+
     let mut builder = S3::default();
     builder = builder
         .endpoint(&endpoint)
@@ -39,16 +48,18 @@ static OP: LazyLock<Operator> = LazyLock::new(|| {
         .secret_access_key(&env::var("STORAGE_SECRET_KEY").expect("STORAGE_SECRET_KEY set"))
         .bucket(&*STORAGE_BUCKET)
         .region(&env::var("STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
-    // In OpenDAL, path-style is the default IF virtual_host_style is NOT enabled.
+
+    // FIX: Only enable virtual host style for real cloud providers.
+    // Localhost, 127.0.0.1, and MinIO MUST use Path Style.
     if endpoint.contains("amazonaws.com") || endpoint.contains("googleapis.com") {
         builder = builder.enable_virtual_host_style();
     }
+    // Do NOT add an 'else' that enables it. Path style is the default.
+
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
 });
-
-/// 1. Prepend the blank page so Prince watermarks THIS page
 fn prepend_blank_page(html: &str) -> String {
     let blank_page = r#"<div style="width: 100%; height: 100%; page-break-after: always;"></div>"#;
     format!("{}{}", blank_page, html)
@@ -78,13 +89,14 @@ async fn run_prince_to_bytes(
 
     let mut child = Command::new("prince")
         .args([
-            "-",
-            "-o",
-            "-",
             "--no-network",
+            "--no-javascript", // Flags go first
             "--silent",
             "--style",
             &format!("data:text/css,{}", combined_css),
+            "-", // Input (stdin)
+            "-o",
+            "-", // Output (stdout)
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -93,7 +105,6 @@ async fn run_prince_to_bytes(
     let mut stdin = child.stdin.take().expect("Stdin failed");
     let mut stdout = child.stdout.take().expect("Stdout failed");
 
-    // Feed HTML in background
     tokio::spawn(async move {
         let _ = stdin.write_all(html_with_blank.as_bytes()).await;
         let _ = stdin.flush().await;
@@ -103,27 +114,40 @@ async fn run_prince_to_bytes(
     let mut buffer = Vec::new();
     stdout.read_to_end(&mut buffer).await?;
     let _ = child.wait().await?;
-
     Ok(buffer)
 }
 
-/// 3. Remove the watermarked page (CPU intensive, so use spawn_blocking)
-fn remove_first_page_logic(input: Vec<u8>) -> Result<Vec<u8>, PdfError> {
-    let mut doc = Document::load_from(Cursor::new(input))
-        .map_err(|e| PdfError::PrinceStatus(format!("PDF Load: {}", e)))?;
+fn process_and_upload(raw_bytes: Vec<u8>, object_name: &str) -> Result<i64, PdfError> {
+    // 1. Prepare PDF (Remove the Prince watermark page)
+    let mut doc = Document::load_from(Cursor::new(raw_bytes))
+        .map_err(|e| PdfError::PrinceStatus(format!("PDF Load Error: {}", e)))?;
 
-    // Delete page 1 (The Prince watermark page)
     doc.delete_pages(&[1]);
     doc.prune_objects();
 
-    let mut out = Vec::new();
-    doc.save_to(&mut out)
-        .map_err(|e| PdfError::PrinceStatus(format!("PDF Save: {}", e)))?;
+    // 2. Render the cleaned PDF to an intermediate buffer
+    let mut cleaned_buffer = Vec::new();
+    doc.save_to(&mut cleaned_buffer)
+        .map_err(|e| PdfError::PrinceStatus(format!("PDF Save Error: {}", e)))?;
 
-    Ok(out)
+    let final_size = cleaned_buffer.len() as i64;
+
+    // 3. Create the blocking writer
+    let mut writer = (&*BLOCKING_OP)
+        .writer(object_name)
+        .map_err(PdfError::Storage)?;
+
+    // 4. FIX: Use opendal::Buffer::from instead of .into()
+    // This provides the explicit type the compiler is looking for.
+    writer
+        .write(opendal::Buffer::from(cleaned_buffer))
+        .map_err(PdfError::Storage)?;
+
+    // 5. CRITICAL: Close to finalize S3 multipart and prevent NoSuchKey
+    writer.close().map_err(PdfError::Storage)?;
+
+    Ok(final_size)
 }
-
-// --- PUBLIC FUNCTIONS ---
 
 pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>(
     template_str: String,
@@ -133,21 +157,16 @@ pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>
     object_name: String,
 ) -> Result<MediaPayload, PdfError> {
     let exec_timeout = Duration::from_secs(45);
+    let obj_name_clone = object_name.clone();
 
-    let work = async {
+    let work = async move {
         let html = render_template(template_str, data).await?;
         let raw_pdf = run_prince_to_bytes(html, width, height).await?;
 
-        // Process in blocking thread
-        let cleaned_pdf =
-            tokio::task::spawn_blocking(move || remove_first_page_logic(raw_pdf)).await??;
-
-        let final_size = cleaned_pdf.len() as i64;
-
-        // Upload cleaned PDF
-        let mut writer = OP.writer(&object_name).await?;
-        writer.write(Bytes::from(cleaned_pdf)).await?;
-        writer.close().await?;
+        // Perform PDF cleanup and streaming upload in a single blocking thread
+        let final_size =
+            tokio::task::spawn_blocking(move || process_and_upload(raw_pdf, &obj_name_clone))
+                .await??;
 
         let signed_req = OP
             .presign_read(&object_name, Duration::from_secs(3600))
@@ -183,5 +202,38 @@ pub async fn html_to_pdf_bytes(
     let html = render_template(template_str, data).await?;
     let raw_pdf = run_prince_to_bytes(html, width, height).await?;
 
-    tokio::task::spawn_blocking(move || remove_first_page_logic(raw_pdf)).await?
+    tokio::task::spawn_blocking(move || {
+        let mut doc = Document::load_from(Cursor::new(raw_pdf))
+            .map_err(|e| PdfError::PrinceStatus(format!("PDF Load: {}", e)))?;
+        doc.delete_pages(&[1]);
+        doc.prune_objects();
+        let mut out = Vec::new();
+        doc.save_to(&mut out)
+            .map_err(|e| PdfError::PrinceStatus(e.to_string()))?;
+        Ok(out)
+    })
+    .await?
+}
+
+pub async fn warm_up_engine() -> Result<(), String> {
+    println!("🔥 Warming up PDF engine...");
+    let dummy_html = "<html><body>Warmup</body></html>".to_string();
+    let dummy_data = serde_json::json!({});
+
+    match html_to_pdf_bytes(dummy_html, dummy_data, "1in".into(), "1in".into()).await {
+        Ok(_) => println!("✅ Prince & Jinja initialized."),
+        Err(e) => return Err(format!("❌ Prince warmup failed: {}", e)),
+    }
+    match OP.lister("/").await {
+        Ok(_) => println!("✅ Storage connectivity verified."),
+        Err(e) => return Err(format!("❌ Storage connectivity failed: {}", e)),
+    }
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0);
+    println!(
+        "🚀 Engine ready. Concurrency limit: {}",
+        if cores > 1 { cores - 1 } else { 1 }
+    );
+    Ok(())
 }

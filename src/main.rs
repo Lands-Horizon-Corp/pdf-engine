@@ -1,12 +1,15 @@
-use axum::{Json, Router, response::IntoResponse, routing::post};
-use serde::{Deserialize, Serialize};
+use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
+use serde::Deserialize;
 use std::net::SocketAddr;
 
 mod utils;
 
-#[derive(Deserialize, Serialize)]
-struct Invoice {
-    customer_name: String,
+#[derive(Deserialize)]
+struct PdfRequest {
+    template: String,
+    data: serde_json::Value, // Accepts any JSON object
+    width: String,
+    height: String,
 }
 
 #[tokio::main]
@@ -18,11 +21,19 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn handle_pdf(Json(payload): Json<Invoice>) -> impl IntoResponse {
-    let filename = format!("invoice_{}.pdf", chrono::Utc::now().timestamp_millis());
-    // Using your stream utility
-    match utils::html_to_pdf_stream("invoice", &payload, "210mm", "297mm", &filename).await {
-        Ok(_) => format!("Success! Saved to {}", filename),
-        Err(e) => format!("Error: {}", e),
+async fn handle_pdf(Json(payload): Json<PdfRequest>) -> impl IntoResponse {
+    let filename = format!("output_{}.pdf", chrono::Utc::now().timestamp_millis());
+
+    match utils::html_to_pdf_stream(
+        &payload.template,
+        &payload.data,
+        &payload.width,
+        &payload.height,
+        &filename,
+    )
+    .await
+    {
+        Ok(_) => (StatusCode::OK, format!("Success! Saved to {}", filename)),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {}", e)),
     }
 }

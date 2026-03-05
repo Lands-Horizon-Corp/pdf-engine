@@ -1,40 +1,28 @@
-mod utils; // This looks for utils.rs
+use axum::{Json, Router, response::IntoResponse, routing::post};
+use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 
-use serde::Serialize;
-use std::fs::File;
-use std::io::Write;
+mod utils;
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct Invoice {
     customer_name: String,
-    items: Vec<Item>,
-    total: f64,
 }
 
-#[derive(Serialize)]
-struct Item {
-    name: String,
-    price: f64,
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route("/html-pdf", post(handle_pdf));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    println!("Server listening on http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let template = "<html><body><h1>Invoice for {{customer_name}}</h1></body></html>";
-    let data = Invoice {
-        customer_name: "Alice Liddell".to_string(),
-        items: vec![],
-        total: 0.0,
-    };
-
-    println!("Starting conversion...");
-
-    // Call it using the module prefix
-    let pdf_bytes = utils::html_to_pdf(template, &data, "210mm", "297mm", |p| {
-        println!("Progress: {}%", p)
-    })?;
-
-    let mut file = File::create("invoice.pdf")?;
-    file.write_all(&pdf_bytes)?;
-
-    println!("Success! Created invoice.pdf");
-    Ok(())
+async fn handle_pdf(Json(payload): Json<Invoice>) -> impl IntoResponse {
+    let filename = format!("invoice_{}.pdf", chrono::Utc::now().timestamp_millis());
+    // Using your stream utility
+    match utils::html_to_pdf_stream("invoice", &payload, "210mm", "297mm", &filename).await {
+        Ok(_) => format!("Success! Saved to {}", filename),
+        Err(e) => format!("Error: {}", e),
+    }
 }

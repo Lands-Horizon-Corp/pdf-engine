@@ -8,6 +8,8 @@ use tokio::time::Duration;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
+    #[error("Unauthorized")]
+    Unauthorized, // <-- New Error!
     #[error("Missing required field: {0}")]
     MissingField(String),
     #[error("Template rendering failed: {0}")]
@@ -27,6 +29,10 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match &self {
+            AppError::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "Invalid or missing Bearer token".to_string(),
+            ), // <-- Handle it here!
             AppError::MissingField(_) | AppError::Template(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
@@ -39,6 +45,7 @@ impl IntoResponse for AppError {
                 )
             }
         };
+
         let body = Json(json!({ "error": error_message }));
         (status, body).into_response()
     }

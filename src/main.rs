@@ -1,6 +1,7 @@
-use axum::{Router, extract::DefaultBodyLimit, routing::post};
+use axum::{Router, extract::DefaultBodyLimit, middleware, routing::post}; // <-- add 'middleware' here
 use std::net::SocketAddr;
 
+mod auth; // <-- Register your new auth file!
 mod config;
 mod error;
 mod handlers;
@@ -17,7 +18,6 @@ async fn main() {
 
     let state = AppState::new();
 
-    // Warm up the PDF engine
     if let Err(e) = pdf::warm_up_engine(state.prince_concurrency.clone()).await {
         tracing::error!("Warmup failed: {}", e);
         std::process::exit(1);
@@ -26,8 +26,13 @@ async fn main() {
     let app = Router::new()
         .route("/api/to-s3", post(handlers::handle_to_s3))
         .route("/api/to-bytes", post(handlers::handle_to_bytes))
+        // Apply the auth middleware to protect the routes ABOVE this line
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::auth_middleware,
+        ))
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
-        .with_state(state); // Inject state into our app
+        .with_state(state);
 
     let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
     tracing::info!("Listening on http://{}", addr);

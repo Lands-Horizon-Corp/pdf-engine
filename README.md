@@ -103,6 +103,72 @@ curl -X POST http://localhost:6767/api/to-s3 \
 }
 ```
 
+## 🛠️ Installation & Quickstart
+
+You don't need to install Rust or PrinceXML manually. The engine is available as a pre-built Docker image containing all necessary fonts and dependencies.
+
+### 1. Using Docker CLI
+
+Run this command to start the engine immediately. This is perfect for quick testing or simple setups.
+
+```bash
+docker run -d \
+  --name pdf-engine \
+  -p 6767:6767 \
+  -e API_BEARER_TOKEN="your_secret_token_here" \
+  zalven88/pdf-engine:latest
+
+```
+
+### 2. Using Docker Compose (Recommended)
+
+For production or integration with other services (like MinIO or Postgres), add this to your `docker-compose.yml`:
+
+```yaml
+services:
+  pdf-engine:
+    image: zalven88/pdf-engine:latest
+    container_name: pdf-engine
+    restart: always
+    ports:
+      - "6767:6767"
+    environment:
+      - API_PORT=6767
+      - API_BEARER_TOKEN=${PDF_ENGINE_TOKEN}
+      # Optional: Storage config for /api/to-s3
+      - STORAGE_DRIVER=minio
+      - STORAGE_ACCESS_KEY=${S3_KEY}
+      - STORAGE_SECRET_KEY=${S3_SECRET}
+      - STORAGE_BUCKET=my-bucket
+      - STORAGE_URL=http://minio:9000
+      - STORAGE_REGION=us-east-1
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+```
+
+---
+
+## ⚙️ Configuration (.env)
+
+When running via Docker, you can configure the engine using the following Environment Variables:
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `API_PORT` | The port the server listens on inside the container. | `6767` |
+| `API_BEARER_TOKEN` | Security token required in the Authorization header. | **Required** |
+| `STORAGE_DRIVER` | S3 driver type (e.g., `minio`, `s3`). | `minio` |
+| `STORAGE_URL` | The endpoint for your S3/MinIO service. | - |
+| `STORAGE_BUCKET` | The bucket name where PDFs will be uploaded. | - |
+
+---
+
+Would you like me to add a **"Troubleshooting"** section to the README as well, covering things like Docker networking or PrinceXML watermarks?
+
 ## ⚖️ License & Acknowledgements
 
 The Rust application code is open-source under the **MIT License**.

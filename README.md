@@ -101,10 +101,7 @@ curl -X POST http://localhost:6767/api/to-s3 \
   "url": "https://your-bucket.s3.amazonaws.com/pdfs/1709483829000.pdf...",
   "status": "success"
 }
-
 ```
-
----
 
 ## ⚖️ License & Acknowledgements
 

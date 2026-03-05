@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use tokio::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -14,18 +13,11 @@ pub struct MediaPayload {
     pub progress: i32,
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum PdfError {
-    #[error("Template rendering failed: {0}")]
-    Template(#[from] minijinja::Error),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Storage error: {0}")]
-    Storage(#[from] opendal::Error),
-    #[error("Prince failed: {0}")]
-    PrinceStatus(String),
-    #[error("Operation timed out after {0:?}")]
-    Timeout(Duration),
-    #[error("Internal Task Error: {0}")]
-    Join(#[from] tokio::task::JoinError),
+pub struct PdfRequest {
+    pub template: String,
+    pub data: serde_json::Value,
+    pub width: String,
+    pub height: String,
+    pub filename: String,
+    pub password: Option<String>,
 }

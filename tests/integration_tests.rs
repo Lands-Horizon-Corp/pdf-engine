@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use reqwest::{Client, multipart};
-
     async fn setup_test_server() -> String {
         "http://localhost:6767".to_string()
     }
@@ -45,18 +44,13 @@ mod tests {
     async fn test_handle_to_s3() {
         let client: Client = Client::new();
         let url = format!("{}/api/to-s3", setup_test_server().await);
-
         let form = multipart::Form::new()
             .text("template", "<h1>S3 Test</h1>")
             .text("data", r#"{"name": "Gemini"}"#);
-
         let response = client.post(&url).multipart(form).send().await.unwrap();
-
         assert_eq!(response.status(), 200);
-
         let json: serde_json::Value = response.json().await.expect("Failed to parse JSON");
         assert_eq!(json["status"], "success");
-
         assert!(json["url"].as_str().is_some(), "URL should be present");
         assert!(
             json["storage_key"].as_str().unwrap().starts_with("pdfs/"),

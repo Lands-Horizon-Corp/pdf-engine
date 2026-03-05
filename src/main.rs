@@ -33,7 +33,9 @@ async fn main() {
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
         .with_state(state);
 
-    let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
+    let port = std::env::var("API_PORT").unwrap_or_else(|_| "6767".to_string());
+    let addr_str = format!("0.0.0.0:{}", port);
+    let addr: SocketAddr = addr_str.parse().expect("Invalid address");
     tracing::info!("Listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

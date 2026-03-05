@@ -34,7 +34,6 @@ static OP: Lazy<Operator> = Lazy::new(|| {
         .expect("Storage init failed")
         .finish()
 });
-
 pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     template_str: String,
     data: T,
@@ -53,7 +52,7 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     let _permit = PRINCE_CONCURRENCY.acquire().await?;
     let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
 
-    // 3. Setup Prince Process
+    // 3. Setup Prince Process with Zombie Protection
     let mut child = Command::new("prince")
         .args([
             "-",
@@ -66,7 +65,8 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null()) // Usually better to ignore or log separately
+        .stderr(Stdio::null())
+        .kill_on_drop(true) // FIX: Kills the process if this future is cancelled/dropped
         .spawn()?;
 
     let mut stdin = child.stdin.take().ok_or("Failed to open stdin")?;
@@ -74,26 +74,29 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
 
     // 4. Pipe HTML to Prince in background
     tokio::spawn(async move {
-        let _ = stdin.write_all(html_content.as_bytes()).await;
+        if let Err(e) = stdin.write_all(html_content.as_bytes()).await {
+            eprintln!("Failed to write to Prince stdin: {}", e);
+            return;
+        }
         let _ = stdin.flush().await;
-        drop(stdin); // Important: tells Prince we're done sending data
+        drop(stdin);
     });
 
     // 5. Stream from Prince STDOUT directly to S3
     let writer = OP.writer(&object_name).await?;
     let mut remote_writer = writer.into_futures_async_write();
 
-    // Use a large 128KB buffer to minimize context switching overhead
     let mut reader = tokio::io::BufReader::with_capacity(128 * 1024, stdout).compat();
 
-    // The core streaming transfer
+    // Perform the transfer
     let file_size = match futures_util::io::copy(&mut reader, &mut remote_writer).await {
         Ok(size) => {
             remote_writer.close().await?;
             size
         }
         Err(e) => {
-            let _ = child.kill().await; // Kill process if upload fails
+            // Manual kill just in case, though kill_on_drop handles the drop case
+            let _ = child.kill().await;
             return Err(e.into());
         }
     };
@@ -101,7 +104,7 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     // 6. Ensure Prince finished successfully
     let status = child.wait().await?;
     if !status.success() {
-        return Err("Prince PDF generation failed".into());
+        return Err("Prince PDF generation exited with error status".into());
     }
 
     // 7. Metadata & URL Generation

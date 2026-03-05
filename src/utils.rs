@@ -1,13 +1,14 @@
-use handlebars::Handlebars;
+use dashmap::DashMap;
+use handlebars::{Context, Handlebars, RenderContext, Renderable, StringOutput, Template};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::process::Stdio;
-use std::sync::RwLock;
-use tokio::io::AsyncWriteExt;
-use tokio::io::copy;
+use tokio::io::{AsyncWriteExt, copy};
 use tokio::process::Command;
 
-static HB: Lazy<RwLock<Handlebars>> = Lazy::new(|| RwLock::new(Handlebars::new()));
+static HB: Lazy<Handlebars> = Lazy::new(Handlebars::new);
+static TEMPLATE_CACHE: Lazy<DashMap<[u8; 16], Template>> = Lazy::new(DashMap::new);
+
 pub async fn html_to_pdf_stream<T: Serialize>(
     template_str: &str,
     data: &T,
@@ -15,15 +16,27 @@ pub async fn html_to_pdf_stream<T: Serialize>(
     height: &str,
     output_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // 2. Fast Path Rendering
-    // Pre-calculate the HTML to avoid holding any locks during the heavy IO phase
+    let hash = *md5::compute(template_str);
+
+    // 1. High-Performance Rendering
     let html_content = {
-        let hb = HB.read().unwrap();
-        hb.render_template(template_str, data)? // Skip the hash-check/register dance if possible
+        let template_ref = TEMPLATE_CACHE
+            .entry(hash)
+            .or_insert_with(|| Template::compile(template_str).expect("Template syntax error"));
+
+        let ctx = Context::wraps(data)?;
+        let mut rc = RenderContext::new(None);
+
+        let mut output = StringOutput::new();
+        template_ref.render(&*HB, &ctx, &mut rc, &mut output)?;
+
+        // FIX: Add '?' to resolve the Result into a String
+        output.into_string()?
     };
 
     let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
 
+    // 2. Prince Command setup
     let mut child = Command::new("prince")
         .args([
             "-",
@@ -34,24 +47,30 @@ pub async fn html_to_pdf_stream<T: Serialize>(
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null()) // Don't capture stderr unless you need it; reduces overhead
+        .stderr(Stdio::null())
         .spawn()?;
 
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
+    let mut stdin = child.stdin.take().expect("Failed to open stdin");
+    let mut stdout = child.stdout.take().expect("Failed to open stdout");
     let mut file = tokio::fs::File::create(output_path).await?;
 
-    // 3. Optimized Pipe: use tokio::io::copy for zero-effort efficiency
-    let write_task = tokio::spawn(async move { stdin.write_all(html_content.as_bytes()).await });
+    // 3. Concurrent IO: Stream HTML into Prince stdin
+    let write_task = tokio::spawn(async move {
+        let res = stdin.write_all(html_content.as_bytes()).await;
+        drop(stdin); // Signal EOF so Prince knows to finish
+        res
+    });
 
-    // Use copy to stream stdout directly to the file
+    // 4. Stream Prince stdout directly to the output file
     copy(&mut stdout, &mut file).await?;
 
-    let _ = write_task.await?;
+    // Wait for the background write task and the process to finish
+    let _ = write_task.await??;
     let status = child.wait().await?;
 
     if !status.success() {
-        return Err("Prince failed".into());
+        return Err("Prince PDF generation failed".into());
     }
+
     Ok(())
 }

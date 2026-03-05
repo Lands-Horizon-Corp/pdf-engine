@@ -68,11 +68,11 @@ async fn spawn_prince(
 
     let combined_css = format!(
         r#"
-        @page {{
-            size: {} {};
-            margin: 0;
-        }}
-        "#,
+    @page {{
+        size: {} {};
+        margin: 0;
+    }}
+    "#,
         width, height
     );
 
@@ -103,44 +103,6 @@ async fn spawn_prince(
     Ok((stdout, child))
 }
 
-async fn stream_to_storage(
-    mut stdout: tokio::process::ChildStdout,
-    object_name: &str,
-    threshold: usize,
-) -> Result<u64, PdfError> {
-    let mut buffer = Vec::with_capacity(64 * 1024);
-    let mut chunk = [0u8; 32 * 1024];
-    let mut total_size = 0u64;
-    let mut writer = None;
-    loop {
-        let n = stdout.read(&mut chunk).await?;
-        if n == 0 {
-            break;
-        }
-        if writer.is_none() && (buffer.len() + n) <= threshold {
-            buffer.extend_from_slice(&chunk[..n]);
-        } else {
-            if writer.is_none() {
-                let mut w = OP.writer(object_name).await?;
-                w.write(buffer.clone()).await?;
-                buffer.clear();
-                buffer.shrink_to_fit();
-                writer = Some(w);
-            }
-            if let Some(ref mut w) = writer {
-                w.write(chunk[..n].to_vec()).await?;
-            }
-        }
-        total_size += n as u64;
-    }
-    if let Some(mut w) = writer {
-        w.close().await?;
-    } else {
-        OP.write(object_name, buffer).await?;
-    }
-    Ok(total_size)
-}
-
 pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     template_str: String,
     data: T,
@@ -149,21 +111,39 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     object_name: String,
 ) -> Result<MediaPayload, PdfError> {
     let exec_timeout = Duration::from_secs(45);
-    let limit_20mb = 20 * 1024 * 1024;
 
     let work = async {
         let html = render_template(template_str, data).await?;
-        let (stdout, child) = spawn_prince(html, width, height).await?; // Removed mut
+        // Prepend the blank page so Prince burns the watermark onto page 1
+        let html_with_blank = prepend_blank_page_html(&html);
 
-        let final_size = stream_to_storage(stdout, &object_name, limit_20mb).await?;
+        let (mut stdout, child) = spawn_prince(html_with_blank, width, height).await?;
+
+        // 1. Collect all bytes from Prince
+        let mut raw_bytes = Vec::new();
+        stdout.read_to_end(&mut raw_bytes).await?;
 
         let output = child.wait_with_output().await?;
         if !output.status.success() {
-            let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
-            let _ = OP.delete(&object_name).await;
-            return Err(PdfError::PrinceStatus(err_msg));
+            return Err(PdfError::PrinceStatus(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
         }
 
+        // 2. Remove the first page (watermark) using your helper
+        // We use spawn_blocking because PDF manipulation can be CPU intensive
+        let cleaned_bytes = tokio::task::spawn_blocking(move || {
+            crate::helpers::remove_first_page(raw_bytes)
+                .map_err(|e| PdfError::PrinceStatus(e.to_string()))
+        })
+        .await??;
+
+        let final_size = cleaned_bytes.len() as u64;
+
+        // 3. Upload the cleaned bytes to S3
+        OP.write(&object_name, cleaned_bytes).await?;
+
+        // 4. Generate Presigned URL
         let signed_req = OP
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;

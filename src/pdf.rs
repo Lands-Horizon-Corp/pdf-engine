@@ -11,7 +11,6 @@ use tokio::{
     sync::Semaphore,
 };
 
-/// Forces a blank first page using pure CSS to catch the Prince watermark
 fn prepend_blank_page(html: &str) -> String {
     format!(
         r#"<div style="page-break-after: always; visibility: hidden;"></div>{}"#,
@@ -62,7 +61,6 @@ pub async fn run_prince_and_process(
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
-    // Move the heavy HTML write to a background task
     tokio::spawn(async move {
         let _ = stdin.write_all(html_with_gap.as_bytes()).await;
         let _ = stdin.flush().await;
@@ -79,8 +77,6 @@ pub async fn run_prince_and_process(
     tokio::task::spawn_blocking(move || {
         let mut doc = Document::load_from(Cursor::new(raw_buffer))
             .map_err(|e| AppError::PrinceStatus(e.to_string()))?;
-
-        // Remove the blank page holding the watermark
         doc.delete_pages(&[1]);
         doc.prune_objects();
 

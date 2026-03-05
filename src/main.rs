@@ -1,7 +1,7 @@
-use axum::{Router, extract::DefaultBodyLimit, middleware, routing::post}; // <-- add 'middleware' here
+use axum::{Router, extract::DefaultBodyLimit, middleware, routing::post};
 use std::net::SocketAddr;
 
-mod auth; // <-- Register your new auth file!
+mod auth;
 mod config;
 mod error;
 mod handlers;
@@ -26,7 +26,6 @@ async fn main() {
     let app = Router::new()
         .route("/api/to-s3", post(handlers::handle_to_s3))
         .route("/api/to-bytes", post(handlers::handle_to_bytes))
-        // Apply the auth middleware to protect the routes ABOVE this line
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,

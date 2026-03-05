@@ -32,7 +32,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
                 "Invalid or missing Bearer token".to_string(),
-            ), // <-- Handle it here!
+            ),
             AppError::MissingField(_) | AppError::Template(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }

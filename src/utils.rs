@@ -4,13 +4,13 @@ use handlebars::Handlebars;
 use once_cell::sync::Lazy;
 use opendal::{Operator, services::S3};
 use serde::Serialize;
+use std::env;
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-// 2. Concurrency Control: Prevents spawning too many Prince processes at once
 static PRINCE_CONCURRENCY: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(8));
 
 static HB: Lazy<Handlebars<'static>> = Lazy::new(|| {
@@ -21,11 +21,12 @@ static HB: Lazy<Handlebars<'static>> = Lazy::new(|| {
 
 static OP: Lazy<Operator> = Lazy::new(|| {
     let builder = S3::default()
-        .endpoint("http://127.0.0.1:9000")
-        .access_key_id("5pMiSk03Lt7yft5gXwe8L4EMXKXduE")
-        .secret_access_key("nimcCJvW7N2L8yChupPiJcEBqxQ8Wc")
-        .bucket("lands-horizon")
-        .region("us-east-1");
+        .endpoint(&env::var("S3_ENDPOINT").expect("S3_ENDPOINT must be set"))
+        .access_key_id(&env::var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set"))
+        .secret_access_key(&env::var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set"))
+        .bucket(&env::var("S3_BUCKET").expect("S3_BUCKET must be set"))
+        .region(&env::var("S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
+
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
@@ -38,15 +39,10 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     height: String,
     object_name: String,
 ) -> Result<MediaPayload, Box<dyn std::error::Error + Send + Sync>> {
-    // Step 1: Render Template (Offload CPU-heavy work to blocking thread)
     let html_content =
         tokio::task::spawn_blocking(move || HB.render_template(&template_str, &data)).await??;
-
-    // Step 2: Acquire permit for Prince (Stability)
     let _permit = PRINCE_CONCURRENCY.acquire().await?;
-
     let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
-
     let mut child = Command::new("prince")
         .args([
             "-",
@@ -101,7 +97,8 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
         file_type: "application/pdf".to_string(),
         storage_key: object_name,
         url: signed_req.uri().to_string(),
-        bucket_name: "lands-horizon".to_string(),
+        // Pull bucket name from env instead of hardcoding
+        bucket_name: env::var("S3_BUCKET").unwrap_or_else(|_| "unknown".to_string()),
         status: "success".to_string(),
         progress: 100,
     })

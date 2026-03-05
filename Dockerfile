@@ -1,4 +1,19 @@
 # ==========================================
+# Stage 1: Build the Rust application
+# ==========================================
+FROM rust:bookworm AS builder
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy your source code and manifests into the container
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Compile the application in release mode for maximum performance
+RUN cargo build --release
+
+# ==========================================
 # Stage 2: Create the lightweight runtime image
 # ==========================================
 FROM debian:bookworm-slim
@@ -20,6 +35,5 @@ RUN apt-get update && apt-get install -y \
 # Copy the compiled Rust binary from the builder stage
 COPY --from=builder /app/target/release/pdf-engine /usr/local/bin/pdf-engine
 
-EXPOSE 6767
-
+# Start the application
 CMD ["pdf-engine"]

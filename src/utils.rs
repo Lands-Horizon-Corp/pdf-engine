@@ -1,16 +1,18 @@
 use crate::models::{MediaPayload, PdfError};
 use lopdf::Document;
-use minijinja::{Environment, context};
+use lru::LruCache;
+use minijinja::Environment;
 use opendal::{Operator, services::S3};
 use std::env;
 use std::io::Cursor;
+use std::num::NonZeroUsize;
 use std::process::Stdio;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, timeout};
-
 static BLOCKING_OP: LazyLock<opendal::blocking::Operator> = LazyLock::new(|| {
     // We clone the async OP and convert it to blocking
     opendal::blocking::Operator::new((&*OP).clone())
@@ -31,6 +33,9 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     env.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
     env
 });
+
+static TEMPLATE_CACHE: LazyLock<Mutex<LruCache<String, minijinja::Template<'static, 'static>>>> =
+    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap())));
 
 static STORAGE_BUCKET: LazyLock<String> =
     LazyLock::new(|| env::var("STORAGE_BUCKET").expect("STORAGE_BUCKET must be set"));
@@ -64,19 +69,33 @@ fn prepend_blank_page(html: &str) -> String {
     let blank_page = r#"<div style="width: 100%; height: 100%; page-break-after: always;"></div>"#;
     format!("{}{}", blank_page, html)
 }
-
 pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
     template_str: String,
     data: T,
 ) -> Result<String, PdfError> {
     tokio::task::spawn_blocking(move || {
-        let value = minijinja::Value::from_serialize(&data);
-        ENV.render_str(&template_str, context! { ..value })
+        let mut cache = TEMPLATE_CACHE.lock().unwrap();
+
+        let template = if let Some(t) = cache.get(&template_str) {
+            t
+        } else {
+            // It's a miss. Leak the current template_str.
+            let key = template_str.clone();
+            let static_src: &'static str = Box::leak(template_str.into_boxed_str());
+            let t = ENV
+                .template_from_str(static_src)
+                .map_err(PdfError::Template)?;
+
+            cache.put(key.clone(), t);
+            cache.get(&key).unwrap() // Now it's definitely there
+        };
+
+        template
+            .render(minijinja::Value::from_serialize(&data))
             .map_err(PdfError::Template)
     })
     .await?
 }
-
 async fn run_prince_to_bytes(
     html_content: String,
     width: String,

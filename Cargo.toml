@@ -28,6 +28,7 @@ uuid = "1.21.0"
 moka = { version = "0.12", features = ["future"] }
 lopdf = "0.39.0"
 reqwest = { version = "0.12", features = ["json", "multipart"] }
+lru = "0.16.3"
 
 [profile.release]
 opt-level = 3

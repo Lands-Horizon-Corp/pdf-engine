@@ -4,6 +4,7 @@ mod models;
 mod utils;
 use crate::models::PdfRequest;
 use std::env;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -12,7 +13,7 @@ async fn main() {
         .parse()
         .expect("Invalid API_HOST format");
     let port: u16 = env::var("API_PORT")
-        .unwrap_or_else(|_| "3000".to_string())
+        .unwrap_or_else(|_| "6767".to_string())
         .parse()
         .expect("Invalid API_PORT format");
     let addr = SocketAddr::from((host, port));

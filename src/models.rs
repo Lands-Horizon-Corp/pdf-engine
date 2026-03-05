@@ -1,6 +1,6 @@
 use tokio::time::Duration;
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")] // This makes "Status" become "status" in JSON
+#[serde(rename_all = "snake_case")]
 pub struct MediaPayload {
     pub file_name: String,
     pub file_size: i64,

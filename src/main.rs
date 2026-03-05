@@ -1,4 +1,3 @@
-// Suggestion: Use a helper or logic below
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart},
@@ -83,19 +82,30 @@ async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
             _ => {}
         }
     }
-
     match utils::html_to_pdf_bytes(template, data, width, height).await {
         Ok(bytes) => {
-            let cleaned = helpers::remove_first_page(bytes).unwrap_or_default();
-            let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
-            headers.insert(
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", filename)
-                    .parse()
-                    .unwrap(),
-            );
-            (StatusCode::OK, headers, cleaned).into_response()
+            let process_result = tokio::task::spawn_blocking(move || {
+                let mut doc =
+                    helpers::remove_first_page_to_doc(bytes).map_err(|e| e.to_string())?;
+                let mut out_buffer = Vec::with_capacity(128 * 1024);
+                doc.save_to(&mut out_buffer).map_err(|e| e.to_string())?;
+                Ok::<Vec<u8>, String>(out_buffer)
+            })
+            .await;
+            match process_result {
+                Ok(Ok(cleaned_bytes)) => {
+                    let mut headers = HeaderMap::new();
+                    headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
+                    headers.insert(
+                        header::CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{}\"", filename)
+                            .parse()
+                            .unwrap(),
+                    );
+                    (StatusCode::OK, headers, cleaned_bytes).into_response()
+                }
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "PDF processing failed").into_response(),
+            }
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

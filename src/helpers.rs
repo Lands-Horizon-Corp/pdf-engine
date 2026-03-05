@@ -13,13 +13,11 @@ pub fn prepend_blank_page_html(html: &str) -> String {
     format!("{}{}", blank_page, html)
 }
 
-pub fn remove_first_page(
+pub fn remove_first_page_to_doc(
     input_bytes: Vec<u8>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Document, Box<dyn std::error::Error + Send + Sync>> {
     let mut doc = Document::load_from(Cursor::new(input_bytes))?;
     doc.delete_pages(&[1]);
     doc.prune_objects();
-    let mut out_buffer = Vec::with_capacity(doc.objects.len() * 128);
-    doc.save_to(&mut out_buffer)?;
-    Ok(out_buffer)
+    Ok(doc)
 }

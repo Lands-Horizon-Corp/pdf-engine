@@ -164,7 +164,7 @@ pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>
     };
     timeout(Duration::from_secs(45), work)
         .await
-        .map_err(|_| PdfError::Timeout(Duration::from_secs(45)))?
+        .map_err(|_| PdfError::Timeout(Duration::from_secs(7200)))?
 }
 
 pub async fn html_to_pdf_bytes(

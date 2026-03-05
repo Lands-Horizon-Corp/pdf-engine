@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MediaPayload {
     pub file_name: String,

@@ -2,15 +2,10 @@
 mod tests {
     use reqwest::{Client, multipart};
     use std::env;
-
-    // Helper to setup URL and grab the token from your .env
     async fn setup_test_env() -> (String, String) {
-        // Load the .env file so the test can read the token
         dotenvy::dotenv().ok();
-
         let base_url = "http://localhost:6767".to_string();
         let token = env::var("API_BEARER_TOKEN").expect("API_BEARER_TOKEN must be set for tests");
-
         (base_url, token)
     }
 
@@ -28,7 +23,7 @@ mod tests {
 
         let response = client
             .post(&url)
-            .bearer_auth(&token) // <-- Inject the Bearer token here
+            .bearer_auth(&token)
             .multipart(form)
             .send()
             .await
@@ -69,7 +64,7 @@ mod tests {
 
         let response = client
             .post(&url)
-            .bearer_auth(&token) // <-- Inject the Bearer token here
+            .bearer_auth(&token)
             .multipart(form)
             .send()
             .await
@@ -97,15 +92,13 @@ mod tests {
 
         let response = client
             .post(&url)
-            .bearer_auth(&token) // <-- Inject the Bearer token here
+            .bearer_auth(&token)
             .multipart(form)
             .send()
             .await
             .expect("Failed to send request");
 
         assert_eq!(response.status(), 400);
-
-        // Update assertion to match our new JSON error structure
         let json: serde_json::Value = response.json().await.unwrap();
         assert_eq!(json["error"], "Missing required field: template");
     }

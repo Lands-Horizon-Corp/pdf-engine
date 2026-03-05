@@ -9,7 +9,7 @@ use tokio::time::Duration;
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
     #[error("Unauthorized")]
-    Unauthorized, // <-- New Error!
+    Unauthorized,
     #[error("Missing required field: {0}")]
     MissingField(String),
     #[error("Template rendering failed: {0}")]

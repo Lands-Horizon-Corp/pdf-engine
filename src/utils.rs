@@ -44,7 +44,6 @@ static OP: LazyLock<Operator> = LazyLock::new(|| {
     if endpoint.contains("amazonaws.com") || endpoint.contains("googleapis.com") {
         builder = builder.enable_virtual_host_style();
     }
-
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
@@ -56,7 +55,6 @@ fn prepend_blank_page(html: &str) -> String {
         html
     )
 }
-// 1. Remove TEMPLATE_CACHE from your static resources section
 
 pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
     template_str: String,
@@ -80,8 +78,6 @@ pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
 async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u8>, PdfError> {
     let _permit = PRINCE_CONCURRENCY.acquire().await.unwrap();
     let html_with_blank = prepend_blank_page(&html);
-    let css = format!("@page {{ size: {} {}; margin: 0; }}", w, h);
-
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
@@ -89,7 +85,10 @@ async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u
             "--no-javascript",
             "--silent",
             "--style",
-            &format!("data:text/css,{}", css),
+            &format!(
+                "data:text/css,{}",
+                format!("@page {{ size: {} {}; margin: 0; }}", w, h)
+            ),
             "-",
             "-o",
             "-",
@@ -100,12 +99,10 @@ async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u
 
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
-
     tokio::spawn(async move {
         let _ = stdin.write_all(html_with_blank.as_bytes()).await;
         drop(stdin);
     });
-
     let mut buffer = Vec::new();
     stdout.read_to_end(&mut buffer).await?;
     let _ = child.wait().await?;
@@ -121,7 +118,6 @@ fn process_and_upload(raw_bytes: Vec<u8>, object_name: &str) -> Result<i64, PdfE
     doc.save_to(&mut cleaned_buffer)
         .map_err(|e| PdfError::PrinceStatus(e.to_string()))?;
     let final_size = cleaned_buffer.len() as i64;
-
     let mut writer = (&*BLOCKING_OP)
         .writer(object_name)
         .map_err(PdfError::Storage)?;
@@ -147,11 +143,9 @@ pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>
         let final_size =
             tokio::task::spawn_blocking(move || process_and_upload(raw_pdf, &obj_name_clone))
                 .await??;
-
         let signed = OP
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;
-
         Ok(MediaPayload {
             file_name: object_name.split('/').last().unwrap().to_string(),
             file_size: final_size,

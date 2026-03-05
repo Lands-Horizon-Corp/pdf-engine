@@ -34,16 +34,14 @@ async fn handle_pdf(Json(payload): Json<PdfRequest>) -> impl IntoResponse {
     )
     .await
     {
-        Ok(_) => {
-            let msg = format!("Success! PDF uploaded to bucket as: {}", object_key);
-            (StatusCode::OK, msg)
-        }
+        Ok(media_payload) => (StatusCode::OK, Json(media_payload)).into_response(),
         Err(e) => {
             eprintln!("PDF Error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Error generating/uploading PDF: {}", e),
             )
+                .into_response()
         }
     }
 }

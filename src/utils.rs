@@ -11,17 +11,15 @@ use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-// Restrict Prince to 8 concurrent processes to protect CPU/Memory
 static PRINCE_CONCURRENCY: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(8));
 
-// MiniJinja Environment: Faster than Handlebars
 static ENV: Lazy<Environment<'static>> = Lazy::new(|| {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
     // env.add_template("report", include_str!("../templates/report.html")).unwrap();
     env
 });
-// OpenDAL Operator for S3 Streaming
+
 static OP: Lazy<Operator> = Lazy::new(|| {
     let builder = S3::default()
         .endpoint(&env::var("S3_ENDPOINT").expect("S3_ENDPOINT must be set"))
@@ -34,6 +32,8 @@ static OP: Lazy<Operator> = Lazy::new(|| {
         .expect("Storage init failed")
         .finish()
 });
+use tokio::time::{Duration, timeout};
+
 pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     template_str: String,
     data: T,
@@ -41,89 +41,71 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     height: String,
     object_name: String,
 ) -> Result<MediaPayload, Box<dyn std::error::Error + Send + Sync>> {
-    // 1. High-speed Template Rendering
-    let html_content = tokio::task::spawn_blocking(move || {
-        let value = minijinja::Value::from_serialize(&data);
-        ENV.render_str(&template_str, context! { ..value })
+    let execution_timeout = Duration::from_secs(30);
+    let result = timeout(execution_timeout, async {
+        // 1. Template Rendering
+        let html_content = tokio::task::spawn_blocking(move || {
+            let value = minijinja::Value::from_serialize(&data);
+            ENV.render_str(&template_str, context! { ..value })
+        })
+        .await??;
+        let _permit = PRINCE_CONCURRENCY.acquire().await?;
+        let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
+        let mut child = Command::new("prince")
+            .args([
+                "-",
+                "-o",
+                "-",
+                "--no-network",
+                "--silent",
+                "--style",
+                &format!("data:text/css,{}", size_css),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()?;
+
+        let mut stdin = child.stdin.take().ok_or("Failed to open stdin")?;
+        let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
+        tokio::spawn(async move {
+            if let Err(e) = stdin.write_all(html_content.as_bytes()).await {
+                eprintln!("Failed to write to Prince stdin: {}", e);
+                return;
+            }
+            let _ = stdin.flush().await;
+        });
+        let writer = OP.writer(&object_name).await?;
+        let mut remote_writer = writer.into_futures_async_write();
+        let mut reader = tokio::io::BufReader::with_capacity(128 * 1024, stdout).compat();
+        let file_size = futures_util::io::copy(&mut reader, &mut remote_writer).await?;
+        remote_writer.close().await?;
+        let status = child.wait().await?;
+        if !status.success() {
+            return Err("Prince PDF generation failed".into());
+        }
+        let signed_req = OP
+            .presign_read(&object_name, Duration::from_secs(3600))
+            .await?;
+        Ok(MediaPayload {
+            file_name: object_name
+                .split('/')
+                .last()
+                .unwrap_or(&object_name)
+                .to_string(),
+            file_size: file_size as i64,
+            file_type: "application/pdf".to_string(),
+            storage_key: object_name,
+            url: signed_req.uri().to_string(),
+            bucket_name: env::var("S3_BUCKET").unwrap_or_else(|_| "unknown".to_string()),
+            status: "success".to_string(),
+            progress: 100,
+        })
     })
-    .await??;
-
-    // 2. Resource management
-    let _permit = PRINCE_CONCURRENCY.acquire().await?;
-    let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
-
-    // 3. Setup Prince Process with Zombie Protection
-    let mut child = Command::new("prince")
-        .args([
-            "-",
-            "-o",
-            "-",
-            "--no-network",
-            "--silent",
-            "--style",
-            &format!("data:text/css,{}", size_css),
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true) // FIX: Kills the process if this future is cancelled/dropped
-        .spawn()?;
-
-    let mut stdin = child.stdin.take().ok_or("Failed to open stdin")?;
-    let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
-
-    // 4. Pipe HTML to Prince in background
-    tokio::spawn(async move {
-        if let Err(e) = stdin.write_all(html_content.as_bytes()).await {
-            eprintln!("Failed to write to Prince stdin: {}", e);
-            return;
-        }
-        let _ = stdin.flush().await;
-        drop(stdin);
-    });
-
-    // 5. Stream from Prince STDOUT directly to S3
-    let writer = OP.writer(&object_name).await?;
-    let mut remote_writer = writer.into_futures_async_write();
-
-    let mut reader = tokio::io::BufReader::with_capacity(128 * 1024, stdout).compat();
-
-    // Perform the transfer
-    let file_size = match futures_util::io::copy(&mut reader, &mut remote_writer).await {
-        Ok(size) => {
-            remote_writer.close().await?;
-            size
-        }
-        Err(e) => {
-            // Manual kill just in case, though kill_on_drop handles the drop case
-            let _ = child.kill().await;
-            return Err(e.into());
-        }
-    };
-
-    // 6. Ensure Prince finished successfully
-    let status = child.wait().await?;
-    if !status.success() {
-        return Err("Prince PDF generation exited with error status".into());
+    .await;
+    match result {
+        Ok(inner_result) => inner_result,
+        Err(_) => Err("Operation timed out after 30 seconds".into()),
     }
-
-    // 7. Metadata & URL Generation
-    let signed_req = OP
-        .presign_read(&object_name, std::time::Duration::from_secs(3600))
-        .await?;
-
-    Ok(MediaPayload {
-        file_name: object_name
-            .split('/')
-            .last()
-            .unwrap_or(&object_name)
-            .to_string(),
-        file_size: file_size as i64,
-        file_type: "application/pdf".to_string(),
-        storage_key: object_name,
-        url: signed_req.uri().to_string(),
-        bucket_name: env::var("S3_BUCKET").unwrap_or_else(|_| "unknown".to_string()),
-        status: "success".to_string(),
-        progress: 100,
-    })
 }

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = "0.8.8"
+axum = { version = "0.8.8", features = ["multipart"] }
 chrono = "0.4.44"
 dashmap = "6.1.0"
 futures-util = "0.3.32"
@@ -22,6 +22,7 @@ thiserror = "2.0.18"
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 uuid = "1.21.0"
 moka = { version = "0.12", features = ["future"] }
+lopdf = "0.39.0"
 
 [profile.release]
 opt-level = 3

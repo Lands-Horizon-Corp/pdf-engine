@@ -1,12 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize)]
-pub struct PdfRequest {
-    pub template: String,
-    pub data: serde_json::Value,
-    pub width: String,
-    pub height: String,
-}
+use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]

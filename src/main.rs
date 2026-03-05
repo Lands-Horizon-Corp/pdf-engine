@@ -1,46 +1,102 @@
-use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
-use std::net::{IpAddr, SocketAddr};
+// Suggestion: Use a helper or logic below
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, Multipart},
+    http::{HeaderMap, StatusCode, header},
+    response::IntoResponse,
+    routing::post,
+};
+use std::net::SocketAddr;
+
+mod helpers;
 mod models;
 mod utils;
-use crate::models::PdfRequest;
-use std::env;
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-    let host: IpAddr = env::var("API_HOST")
-        .unwrap_or_else(|_| "127.0.0.1".to_string())
-        .parse()
-        .expect("Invalid API_HOST format");
-    let port: u16 = env::var("API_PORT")
-        .unwrap_or_else(|_| "6767".to_string())
-        .parse()
-        .expect("Invalid API_PORT format");
-    let addr = SocketAddr::from((host, port));
-    let app = Router::new().route("/html-pdf", post(handle_pdf));
-    println!("🚀 PDF Server running on http://{}", addr);
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("Failed to bind port");
-    axum::serve(listener, app).await.expect("Server failed");
+    let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
+
+    let app = Router::new()
+        .route("/api/to-s3", post(handle_to_s3))
+        .route("/api/to-bytes", post(handle_to_bytes))
+        .layer(DefaultBodyLimit::max(25 * 1024 * 1024));
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
-async fn handle_pdf(Json(payload): Json<PdfRequest>) -> impl IntoResponse {
-    let timestamp = chrono::Utc::now().timestamp_millis();
-    let object_key = format!("pdfs/{}.pdf", timestamp);
-    match utils::html_to_pdf_to_storage(
-        payload.template,
-        payload.data,
-        payload.width,
-        payload.height,
-        object_key,
-    )
-    .await
-    {
-        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
-        Err(e) => {
-            eprintln!("❌ Error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
+    let mut template = String::new();
+    let mut data = serde_json::Value::Null;
+    let mut width = "8.5in".to_string();
+    let mut height = "11in".to_string();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.name() {
+            Some("template") => template = field.text().await.unwrap_or_default(),
+            Some("data") => {
+                data = field
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|t| serde_json::from_str(&t).ok())
+                    .unwrap_or(data)
+            }
+            Some("width") => width = field.text().await.unwrap_or(width),
+            Some("height") => height = field.text().await.unwrap_or(height),
+            _ => {}
         }
+    }
+
+    if template.is_empty() {
+        return (StatusCode::BAD_REQUEST, "Missing template").into_response();
+    }
+
+    let key = format!("pdfs/{}.pdf", chrono::Utc::now().timestamp_millis());
+    match utils::html_to_pdf_to_storage(template, data, width, height, key).await {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
+    let mut template = String::new();
+    let mut data = None;
+    let mut width = "8.5in".to_string();
+    let mut height = "11in".to_string();
+    let mut filename = "document.pdf".to_string();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.name() {
+            Some("template") => template = field.text().await.unwrap_or_default(),
+            Some("data") => {
+                data = field
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|t| serde_json::from_str(&t).ok())
+            }
+            Some("width") => width = field.text().await.unwrap_or(width),
+            Some("height") => height = field.text().await.unwrap_or(height),
+            Some("filename") => filename = field.text().await.unwrap_or(filename),
+            _ => {}
+        }
+    }
+
+    match utils::html_to_pdf_bytes(template, data, width, height).await {
+        Ok(bytes) => {
+            let cleaned = helpers::remove_first_page(bytes).unwrap_or_default();
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
+            headers.insert(
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename)
+                    .parse()
+                    .unwrap(),
+            );
+            (StatusCode::OK, headers, cleaned).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

@@ -16,9 +16,7 @@ async fn main() {
     if let Err(_) = utils::warm_up_engine().await {
         std::process::exit(1);
     }
-
     let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
-
     let app = Router::new()
         .route("/api/to-s3", post(handle_to_s3))
         .route("/api/to-bytes", post(handle_to_bytes))
@@ -27,8 +25,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
-
-// --- HANDLERS ---
 
 async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
     let mut template = String::new();
@@ -63,7 +59,6 @@ async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
     if template.is_empty() {
         return (StatusCode::BAD_REQUEST, "Missing template").into_response();
     }
-
     let key = format!("pdfs/{}.pdf", chrono::Utc::now().timestamp_millis());
     match utils::html_to_pdf_to_storage(template, data, width, height, key, password).await {
         Ok(res) => (StatusCode::OK, Json(res)).into_response(),

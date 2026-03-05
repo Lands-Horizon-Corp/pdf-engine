@@ -7,17 +7,13 @@ use axum::{
 };
 use std::net::SocketAddr;
 
-mod models; // Ensure your MediaPayload and PdfError are defined here
+mod models;
 mod utils;
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-
-    // 1. ENGINE WARM-UP
-    // Ensures Prince, Jinja, and S3 are ready before accepting traffic.
-    if let Err(e) = utils::warm_up_engine().await {
-        eprintln!("FATAL: Engine warm-up failed! {}", e);
+    if let Err(_) = utils::warm_up_engine().await {
         std::process::exit(1);
     }
 
@@ -29,7 +25,6 @@ async fn main() {
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024));
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("🚀 PDF Engine listening on {}", addr);
     axum::serve(listener, app).await.unwrap();
 }
 

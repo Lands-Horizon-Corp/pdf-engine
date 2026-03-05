@@ -83,6 +83,7 @@ async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u
     let css = format!("@page {{ size: {} {}; margin: 0; }}", w, h);
 
     let mut child = Command::new("prince")
+        .kill_on_drop(true)
         .args([
             "--no-network",
             "--no-javascript",

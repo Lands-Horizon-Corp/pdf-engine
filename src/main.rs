@@ -7,17 +7,20 @@ use axum::{
 };
 use std::net::SocketAddr;
 
-mod models;
+mod models; // Ensure your MediaPayload and PdfError are defined here
 mod utils;
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+
+    // 1. ENGINE WARM-UP
+    // Ensures Prince, Jinja, and S3 are ready before accepting traffic.
     if let Err(e) = utils::warm_up_engine().await {
-        eprintln!("FATAL: Engine warm-up failed!");
-        eprintln!("{}", e);
+        eprintln!("FATAL: Engine warm-up failed! {}", e);
         std::process::exit(1);
     }
+
     let addr: SocketAddr = "0.0.0.0:6767".parse().expect("Invalid address");
 
     let app = Router::new()
@@ -26,9 +29,11 @@ async fn main() {
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024));
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("Listening on {}", addr);
+    println!("🚀 PDF Engine listening on {}", addr);
     axum::serve(listener, app).await.unwrap();
 }
+
+// --- HANDLERS ---
 
 async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
     let mut template = String::new();
@@ -63,6 +68,7 @@ async fn handle_to_s3(mut multipart: Multipart) -> impl IntoResponse {
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
+
 async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
     let mut template = String::new();
     let mut data = serde_json::Value::Null;
@@ -89,7 +95,7 @@ async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
     }
 
     match utils::html_to_pdf_bytes(template, data, width, height).await {
-        Ok(cleaned_bytes) => {
+        Ok(bytes) => {
             let mut headers = HeaderMap::new();
             headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
             headers.insert(
@@ -98,7 +104,7 @@ async fn handle_to_bytes(mut multipart: Multipart) -> impl IntoResponse {
                     .parse()
                     .unwrap(),
             );
-            (StatusCode::OK, headers, cleaned_bytes).into_response()
+            (StatusCode::OK, headers, bytes).into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

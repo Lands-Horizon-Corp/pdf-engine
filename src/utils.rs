@@ -7,23 +7,23 @@ use std::env;
 use std::io::Cursor;
 use std::num::NonZeroUsize;
 use std::process::Stdio;
-use std::sync::LazyLock;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, timeout};
+
+// --- STATIC RESOURCES ---
+
 static BLOCKING_OP: LazyLock<opendal::blocking::Operator> = LazyLock::new(|| {
-    // We clone the async OP and convert it to blocking
     opendal::blocking::Operator::new((&*OP).clone())
         .expect("Failed to initialize blocking operator")
 });
-// 1. TUNE SEMAPHORE: Auto-detect CPU cores to prevent context-switching lag
+
 static PRINCE_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    // Rule of thumb: cores - 1, minimum 1
     let permit_count = if cores > 1 { cores - 1 } else { 1 };
     Semaphore::new(permit_count)
 });
@@ -49,26 +49,29 @@ static OP: LazyLock<Operator> = LazyLock::new(|| {
     let mut builder = S3::default();
     builder = builder
         .endpoint(&endpoint)
-        .access_key_id(&env::var("STORAGE_ACCESS_KEY").expect("STORAGE_ACCESS_KEY set"))
-        .secret_access_key(&env::var("STORAGE_SECRET_KEY").expect("STORAGE_SECRET_KEY set"))
+        .access_key_id(&env::var("STORAGE_ACCESS_KEY").expect("KEY set"))
+        .secret_access_key(&env::var("STORAGE_SECRET_KEY").expect("SECRET set"))
         .bucket(&*STORAGE_BUCKET)
         .region(&env::var("STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
 
-    // FIX: Only enable virtual host style for real cloud providers.
-    // Localhost, 127.0.0.1, and MinIO MUST use Path Style.
     if endpoint.contains("amazonaws.com") || endpoint.contains("googleapis.com") {
         builder = builder.enable_virtual_host_style();
     }
-    // Do NOT add an 'else' that enables it. Path style is the default.
 
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
 });
+
+// --- CORE LOGIC ---
+
 fn prepend_blank_page(html: &str) -> String {
-    let blank_page = r#"<div style="width: 100%; height: 100%; page-break-after: always;"></div>"#;
-    format!("{}{}", blank_page, html)
+    format!(
+        r#"<div style="width: 100%; height: 100%; page-break-after: always;"></div>{}"#,
+        html
+    )
 }
+
 pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
     template_str: String,
     data: T,
@@ -79,15 +82,14 @@ pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
         let template = if let Some(t) = cache.get(&template_str) {
             t
         } else {
-            // It's a miss. Leak the current template_str.
+            // MISS: Leak the string to create a 'static reference for the cache
             let key = template_str.clone();
             let static_src: &'static str = Box::leak(template_str.into_boxed_str());
             let t = ENV
                 .template_from_str(static_src)
                 .map_err(PdfError::Template)?;
-
             cache.put(key.clone(), t);
-            cache.get(&key).unwrap() // Now it's definitely there
+            cache.get(&key).unwrap()
         };
 
         template
@@ -96,37 +98,32 @@ pub async fn render_template<T: serde::Serialize + Send + Sync + 'static>(
     })
     .await?
 }
-async fn run_prince_to_bytes(
-    html_content: String,
-    width: String,
-    height: String,
-) -> Result<Vec<u8>, PdfError> {
-    let _permit = PRINCE_CONCURRENCY.acquire().await.unwrap();
 
-    let html_with_blank = prepend_blank_page(&html_content);
-    let combined_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
+async fn run_prince_to_bytes(html: String, w: String, h: String) -> Result<Vec<u8>, PdfError> {
+    let _permit = PRINCE_CONCURRENCY.acquire().await.unwrap();
+    let html_with_blank = prepend_blank_page(&html);
+    let css = format!("@page {{ size: {} {}; margin: 0; }}", w, h);
 
     let mut child = Command::new("prince")
         .args([
             "--no-network",
-            "--no-javascript", // Flags go first
+            "--no-javascript",
             "--silent",
             "--style",
-            &format!("data:text/css,{}", combined_css),
-            "-", // Input (stdin)
+            &format!("data:text/css,{}", css),
+            "-",
             "-o",
-            "-", // Output (stdout)
+            "-",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
 
-    let mut stdin = child.stdin.take().expect("Stdin failed");
-    let mut stdout = child.stdout.take().expect("Stdout failed");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
 
     tokio::spawn(async move {
         let _ = stdin.write_all(html_with_blank.as_bytes()).await;
-        let _ = stdin.flush().await;
         drop(stdin);
     });
 
@@ -137,88 +134,68 @@ async fn run_prince_to_bytes(
 }
 
 fn process_and_upload(raw_bytes: Vec<u8>, object_name: &str) -> Result<i64, PdfError> {
-    // 1. Prepare PDF (Remove the Prince watermark page)
     let mut doc = Document::load_from(Cursor::new(raw_bytes))
         .map_err(|e| PdfError::PrinceStatus(format!("PDF Load Error: {}", e)))?;
-
     doc.delete_pages(&[1]);
     doc.prune_objects();
-
-    // 2. Render the cleaned PDF to an intermediate buffer
     let mut cleaned_buffer = Vec::new();
     doc.save_to(&mut cleaned_buffer)
-        .map_err(|e| PdfError::PrinceStatus(format!("PDF Save Error: {}", e)))?;
-
+        .map_err(|e| PdfError::PrinceStatus(e.to_string()))?;
     let final_size = cleaned_buffer.len() as i64;
 
-    // 3. Create the blocking writer
     let mut writer = (&*BLOCKING_OP)
         .writer(object_name)
         .map_err(PdfError::Storage)?;
-
-    // 4. FIX: Use opendal::Buffer::from instead of .into()
-    // This provides the explicit type the compiler is looking for.
     writer
         .write(opendal::Buffer::from(cleaned_buffer))
         .map_err(PdfError::Storage)?;
-
-    // 5. CRITICAL: Close to finalize S3 multipart and prevent NoSuchKey
     writer.close().map_err(PdfError::Storage)?;
 
     Ok(final_size)
 }
 
 pub async fn html_to_pdf_to_storage<T: serde::Serialize + Send + Sync + 'static>(
-    template_str: String,
+    template: String,
     data: T,
     width: String,
     height: String,
     object_name: String,
 ) -> Result<MediaPayload, PdfError> {
-    let exec_timeout = Duration::from_secs(45);
     let obj_name_clone = object_name.clone();
-
     let work = async move {
-        let html = render_template(template_str, data).await?;
+        let html = render_template(template, data).await?;
         let raw_pdf = run_prince_to_bytes(html, width, height).await?;
-
-        // Perform PDF cleanup and streaming upload in a single blocking thread
         let final_size =
             tokio::task::spawn_blocking(move || process_and_upload(raw_pdf, &obj_name_clone))
                 .await??;
 
-        let signed_req = OP
+        let signed = OP
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;
 
         Ok(MediaPayload {
-            file_name: object_name
-                .split('/')
-                .last()
-                .unwrap_or(&object_name)
-                .to_string(),
+            file_name: object_name.split('/').last().unwrap().to_string(),
             file_size: final_size,
             file_type: "application/pdf".into(),
             storage_key: object_name,
-            url: signed_req.uri().to_string(),
+            url: signed.uri().to_string(),
             bucket_name: STORAGE_BUCKET.clone(),
             status: "success".into(),
             progress: 100,
         })
     };
-
-    timeout(exec_timeout, work)
+    timeout(Duration::from_secs(45), work)
         .await
-        .map_err(|_| PdfError::Timeout(exec_timeout))?
+        .map_err(|_| PdfError::Timeout(Duration::from_secs(45)))?
 }
 
 pub async fn html_to_pdf_bytes(
-    template_str: String,
+    template: String,
     data: serde_json::Value,
     width: String,
     height: String,
 ) -> Result<Vec<u8>, PdfError> {
-    let html = render_template(template_str, data).await?;
+    let html = render_template(template, data).await?;
     let raw_pdf = run_prince_to_bytes(html, width, height).await?;
 
     tokio::task::spawn_blocking(move || {
@@ -237,22 +214,14 @@ pub async fn html_to_pdf_bytes(
 pub async fn warm_up_engine() -> Result<(), String> {
     println!("🔥 Warming up PDF engine...");
     let dummy_html = "<html><body>Warmup</body></html>".to_string();
-    let dummy_data = serde_json::json!({});
-
-    match html_to_pdf_bytes(dummy_html, dummy_data, "1in".into(), "1in".into()).await {
-        Ok(_) => println!("✅ Prince & Jinja initialized."),
-        Err(e) => return Err(format!("❌ Prince warmup failed: {}", e)),
-    }
-    match OP.lister("/").await {
-        Ok(_) => println!("✅ Storage connectivity verified."),
-        Err(e) => return Err(format!("❌ Storage connectivity failed: {}", e)),
-    }
-    let cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(0);
-    println!(
-        "🚀 Engine ready. Concurrency limit: {}",
-        if cores > 1 { cores - 1 } else { 1 }
-    );
+    let _ = html_to_pdf_bytes(
+        dummy_html,
+        serde_json::json!({}),
+        "1in".into(),
+        "1in".into(),
+    )
+    .await
+    .map_err(|e| format!("Prince failed: {}", e))?;
+    println!("✅ Engine ready.");
     Ok(())
 }

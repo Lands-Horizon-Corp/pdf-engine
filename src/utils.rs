@@ -1,5 +1,5 @@
 use crate::helpers::prepend_blank_page_html;
-use crate::models::MediaPayload;
+use crate::models::{MediaPayload, PdfError};
 use minijinja::{Environment, context};
 use opendal::{Operator, services::S3};
 use serde::Serialize;
@@ -10,7 +10,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, timeout};
-// --- GLOBAL STATE ---
 
 static PRINCE_CONCURRENCY: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
 
@@ -24,35 +23,27 @@ static STORAGE_BUCKET: LazyLock<String> =
     LazyLock::new(|| env::var("STORAGE_BUCKET").expect("STORAGE_BUCKET must be set"));
 
 static OP: LazyLock<Operator> = LazyLock::new(|| {
-    let endpoint = env::var("STORAGE_URL").expect("STORAGE_URL must be set");
-    let builder = S3::default()
+    let mut endpoint = env::var("STORAGE_URL").expect("STORAGE_URL must be set");
+    if (endpoint.starts_with("127.0.0.1") || endpoint.starts_with("localhost"))
+        && !endpoint.starts_with("http")
+    {
+        endpoint = format!("http://{}", endpoint);
+    }
+    let mut builder = S3::default();
+    builder = builder
         .endpoint(&endpoint)
         .access_key_id(&env::var("STORAGE_ACCESS_KEY").expect("STORAGE_ACCESS_KEY must be set"))
         .secret_access_key(&env::var("STORAGE_SECRET_KEY").expect("STORAGE_SECRET_KEY must be set"))
         .bucket(&*STORAGE_BUCKET)
         .region(&env::var("STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
+
+    if endpoint.contains("amazonaws.com") || endpoint.contains("googleapis.com") {
+        builder = builder.enable_virtual_host_style();
+    }
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
 });
-
-// --- ERROR HANDLING ---
-
-#[derive(thiserror::Error, Debug)]
-pub enum PdfError {
-    #[error("Template rendering failed: {0}")]
-    Template(#[from] minijinja::Error),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Storage error: {0}")]
-    Storage(#[from] opendal::Error),
-    #[error("Prince failed: {0}")]
-    PrinceStatus(String),
-    #[error("Operation timed out after {0:?}")]
-    Timeout(Duration),
-    #[error("Internal Task Error: {0}")]
-    Join(#[from] tokio::task::JoinError),
-}
 
 // --- CORE LOGIC ---
 
@@ -121,13 +112,11 @@ async fn stream_to_storage(
     let mut chunk = [0u8; 32 * 1024];
     let mut total_size = 0u64;
     let mut writer = None;
-
     loop {
         let n = stdout.read(&mut chunk).await?;
         if n == 0 {
             break;
         }
-
         if writer.is_none() && (buffer.len() + n) <= threshold {
             buffer.extend_from_slice(&chunk[..n]);
         } else {
@@ -144,7 +133,6 @@ async fn stream_to_storage(
         }
         total_size += n as u64;
     }
-
     if let Some(mut w) = writer {
         w.close().await?;
     } else {

@@ -27,20 +27,17 @@ static OP: LazyLock<Operator> = LazyLock::new(|| {
     } else {
         format!("http://{}", endpoint)
     };
-
     let builder = S3::default()
         .endpoint(&endpoint)
         .access_key_id(&env::var("STORAGE_ACCESS_KEY").expect("STORAGE_ACCESS_KEY must be set"))
         .secret_access_key(&env::var("STORAGE_SECRET_KEY").expect("STORAGE_SECRET_KEY must be set"))
         .bucket(&env::var("STORAGE_BUCKET").expect("STORAGE_BUCKET must be set"))
         .region(&env::var("STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
-
     Operator::new(builder)
         .expect("Storage init failed")
         .finish()
 });
 
-// 2. Structured Error Handling
 #[derive(thiserror::Error, Debug)]
 pub enum PdfError {
     #[error("Template rendering failed: {0}")]
@@ -67,22 +64,17 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
     object_name: String,
 ) -> Result<MediaPayload, PdfError> {
     let exec_timeout = Duration::from_secs(30);
-
     let result = timeout(exec_timeout, async {
-        // A. Render Template (CPU bound)
         let html_content = tokio::task::spawn_blocking(move || {
             let value = minijinja::Value::from_serialize(&data);
             ENV.render_str(&template_str, context! { ..value })
         })
         .await??;
-
         let _permit = PRINCE_CONCURRENCY
             .acquire()
             .await
             .map_err(|e| PdfError::Other(e.to_string()))?;
         let size_css = format!("@page {{ size: {} {}; margin: 0; }}", width, height);
-
-        // B. Setup Prince Process
         let mut child = Command::new("prince")
             .args([
                 "-",
@@ -98,7 +90,6 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
             .stderr(Stdio::null())
             .kill_on_drop(true)
             .spawn()?;
-
         let mut stdin = child
             .stdin
             .take()
@@ -107,14 +98,8 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
             .stdout
             .take()
             .ok_or_else(|| PdfError::Other("Stdout missing".into()))?;
-
-        // C. Storage Writer Setup
         let writer = OP.writer(&object_name).await?;
         let mut remote_writer = writer.into_futures_async_write();
-
-        // D. Concurrent Stdin Write & Stdout Stream
-        // Using try_join ensures that if either the write to Prince or the upload to S3 fails,
-        // the function returns the error immediately.
         let (file_size, _) = tokio::try_join!(
             async {
                 let mut reader = BufReader::with_capacity(128 * 1024, stdout).compat();
@@ -125,22 +110,17 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
             async {
                 stdin.write_all(html_content.as_bytes()).await?;
                 stdin.flush().await?;
-                // Closing stdin tells Prince we are done sending data
                 drop(stdin);
                 Ok(())
             }
         )?;
-
-        // E. Finalize
         let status = child.wait().await?;
         if !status.success() {
             return Err(PdfError::PrinceStatus(status));
         }
-
         let signed_req = OP
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;
-
         Ok(MediaPayload {
             file_name: object_name
                 .split('/')
@@ -157,6 +137,5 @@ pub async fn html_to_pdf_to_storage<T: Serialize + Send + Sync + 'static>(
         })
     })
     .await;
-
     result.map_err(|_| PdfError::Timeout(exec_timeout))?
 }

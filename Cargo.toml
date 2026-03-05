@@ -23,6 +23,7 @@ xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 uuid = "1.21.0"
 moka = { version = "0.12", features = ["future"] }
 lopdf = "0.39.0"
+reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 [profile.release]
 opt-level = 3

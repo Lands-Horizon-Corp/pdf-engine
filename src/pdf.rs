@@ -29,14 +29,9 @@ pub async fn render_template(
 ) -> Result<String, AppError> {
     tokio::task::spawn_blocking(move || {
         let mut env = Environment::new();
-        // Use Html escaping for the data inside the template
         env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
-
         let template = env.template_from_str(&template_str)?;
         let rendered = template.render(minijinja::Value::from_serialize(&data))?;
-
-        // Convert ONLY non-ASCII characters to numeric entities.
-        // This keeps <html> tags intact while turning ₱ into &#8369;
         let xml_safe_rendered: String = rendered
             .chars()
             .map(|c| {
@@ -61,14 +56,12 @@ pub async fn run_prince_and_process(
     semaphore: Arc<Semaphore>,
 ) -> Result<Vec<u8>, AppError> {
     let _permit = semaphore.acquire().await.unwrap();
-
-    // Crucial: Use the new wrapper to prevent "Extra content" errors
     let xhtml_ready_content = wrap_and_prepend_blank_page(&html);
 
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
-            "-i", "xhtml", // Stricter XML parsing for entities
+            "-i", "xhtml",
             "--no-network",
             "--no-javascript",
             "--silent",
@@ -138,18 +131,9 @@ pub async fn run_prince_and_process(
 pub async fn warm_up_engine(semaphore: Arc<Semaphore>) -> Result<(), AppError> {
     tracing::info!("Warming up Prince engine and generating test PDF...");
 
-    // Test string: Peso, Euro, Yen, Chinese, Emojis, and Symbols
     let test_content = "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>".into();
-
-    // 1. Run the process and get the PDF bytes
-    let pdf_bytes = run_prince_and_process(
-        test_content,
-        "5in".into(), // Bigger size for the test file
-        "5in".into(),
-        None,
-        semaphore,
-    )
-    .await?;
+    let pdf_bytes =
+        run_prince_and_process(test_content, "5in".into(), "5in".into(), None, semaphore).await?;
 
     let mut file = File::create("sample.pdf")
         .await

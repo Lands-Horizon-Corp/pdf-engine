@@ -11,9 +11,13 @@ use tokio::{
     sync::Semaphore,
 };
 
-fn prepend_blank_page(html: &str) -> String {
+/// Wraps everything in a single root <div> to satisfy XHTML requirements
+fn wrap_and_prepend_blank_page(html: &str) -> String {
     format!(
-        r#"<div style="page-break-after: always; visibility: hidden;"></div>{}"#,
+        r#"<div class="pdf-root">
+            <div style="page-break-after: always; visibility: hidden;"></div>
+            {}
+        </div>"#,
         html
     )
 }
@@ -24,22 +28,26 @@ pub async fn render_template(
 ) -> Result<String, AppError> {
     tokio::task::spawn_blocking(move || {
         let mut env = Environment::new();
-        env.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
+        // Use Html escaping for the data inside the template
+        env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
+
         let template = env.template_from_str(&template_str)?;
         let rendered = template.render(minijinja::Value::from_serialize(&data))?;
-        let mut xml_safe = String::with_capacity(rendered.len());
-        for c in rendered.chars() {
-            match c {
-                '&' => xml_safe.push_str("&amp;"),
-                '<' => xml_safe.push_str("&lt;"),
-                '>' => xml_safe.push_str("&gt;"),
-                '"' => xml_safe.push_str("&quot;"),
-                '\'' => xml_safe.push_str("&apos;"),
-                c if c.is_ascii() && !c.is_control() => xml_safe.push(c),
-                _ => xml_safe.push_str(&format!("&#{};", c as u32)),
-            }
-        }
-        Ok(xml_safe)
+
+        // Convert ONLY non-ASCII characters to numeric entities.
+        // This keeps <html> tags intact while turning ₱ into &#8369;
+        let xml_safe_rendered: String = rendered
+            .chars()
+            .map(|c| {
+                if c.is_ascii() {
+                    c.to_string()
+                } else {
+                    format!("&#{};", c as u32)
+                }
+            })
+            .collect();
+
+        Ok(xml_safe_rendered)
     })
     .await?
 }
@@ -52,20 +60,21 @@ pub async fn run_prince_and_process(
     semaphore: Arc<Semaphore>,
 ) -> Result<Vec<u8>, AppError> {
     let _permit = semaphore.acquire().await.unwrap();
-    let html_with_gap = prepend_blank_page(&html);
+
+    // Crucial: Use the new wrapper to prevent "Extra content" errors
+    let xhtml_ready_content = wrap_and_prepend_blank_page(&html);
 
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
-            "-i",
-            "xhtml",
+            "-i", "xhtml", // Stricter XML parsing for entities
             "--no-network",
             "--no-javascript",
             "--silent",
             "--style",
             &format!(
                 "data:text/css,@page {{ size: {} {}; margin: 0; }} \
-    body {{ font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }}",
+                body {{ font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }}",
                 w, h
             ),
             "-",
@@ -80,7 +89,7 @@ pub async fn run_prince_and_process(
     let mut stdout = child.stdout.take().unwrap();
 
     tokio::spawn(async move {
-        let _ = stdin.write_all(html_with_gap.as_bytes()).await;
+        let _ = stdin.write_all(xhtml_ready_content.as_bytes()).await;
         let _ = stdin.flush().await;
     });
 
@@ -95,7 +104,11 @@ pub async fn run_prince_and_process(
     tokio::task::spawn_blocking(move || {
         let mut doc = Document::load_from(Cursor::new(raw_buffer))
             .map_err(|e| AppError::PrinceStatus(e.to_string()))?;
-        doc.delete_pages(&[1]);
+
+        // Delete the blank page prepended earlier
+        if doc.get_pages().len() > 1 {
+            doc.delete_pages(&[1]);
+        }
         doc.prune_objects();
 
         if let Some(ref p) = password {
@@ -123,8 +136,9 @@ pub async fn run_prince_and_process(
 
 pub async fn warm_up_engine(semaphore: Arc<Semaphore>) -> Result<(), AppError> {
     tracing::info!("Warming up Prince engine...");
+    // Warm up with a simple span to keep the XML tree clean
     run_prince_and_process(
-        "<html></html>".into(),
+        "<span>warmup</span>".into(),
         "1in".into(),
         "1in".into(),
         None,

@@ -5,6 +5,7 @@ use lopdf::{
 };
 use minijinja::Environment;
 use std::{io::Cursor, process::Stdio, sync::Arc};
+use tokio::fs::File;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
@@ -135,15 +136,29 @@ pub async fn run_prince_and_process(
 }
 
 pub async fn warm_up_engine(semaphore: Arc<Semaphore>) -> Result<(), AppError> {
-    tracing::info!("Warming up Prince engine...");
-    // Warm up with a simple span to keep the XML tree clean
-    run_prince_and_process(
-        "<span>warmup</span>".into(),
-        "1in".into(),
-        "1in".into(),
+    tracing::info!("Warming up Prince engine and generating test PDF...");
+
+    // Test string: Peso, Euro, Yen, Chinese, Emojis, and Symbols
+    let test_content = "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>".into();
+
+    // 1. Run the process and get the PDF bytes
+    let pdf_bytes = run_prince_and_process(
+        test_content,
+        "5in".into(), // Bigger size for the test file
+        "5in".into(),
         None,
         semaphore,
     )
     .await?;
+
+    let mut file = File::create("sample.pdf")
+        .await
+        .map_err(|e| AppError::PrinceStatus(format!("Failed to create sample.pdf: {}", e)))?;
+
+    file.write_all(&pdf_bytes)
+        .await
+        .map_err(|e| AppError::PrinceStatus(format!("Failed to write to sample.pdf: {}", e)))?;
+
+    tracing::info!("Prince engine warmed up. 'sample.pdf' has been saved to the root directory.");
     Ok(())
 }

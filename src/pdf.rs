@@ -49,8 +49,6 @@ pub async fn run_prince_and_process(
             "--no-javascript",
             "--silent",
             "--style",
-            "--input=html",
-            "--encoding=utf-8",
             &format!("data:text/css,@page {{ size: {} {}; margin: 0; }}", w, h),
             "-",
             "-o",

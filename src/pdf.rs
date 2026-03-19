@@ -27,7 +27,19 @@ pub async fn render_template(
         env.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
         let template = env.template_from_str(&template_str)?;
         let rendered = template.render(minijinja::Value::from_serialize(&data))?;
-        Ok(rendered)
+        let mut xml_safe = String::with_capacity(rendered.len());
+        for c in rendered.chars() {
+            match c {
+                '&' => xml_safe.push_str("&amp;"),
+                '<' => xml_safe.push_str("&lt;"),
+                '>' => xml_safe.push_str("&gt;"),
+                '"' => xml_safe.push_str("&quot;"),
+                '\'' => xml_safe.push_str("&apos;"),
+                c if c.is_ascii() && !c.is_control() => xml_safe.push(c),
+                _ => xml_safe.push_str(&format!("&#{};", c as u32)),
+            }
+        }
+        Ok(xml_safe)
     })
     .await?
 }
@@ -45,11 +57,17 @@ pub async fn run_prince_and_process(
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
+            "-i",
+            "xhtml",
             "--no-network",
             "--no-javascript",
             "--silent",
             "--style",
-            &format!("data:text/css,@page {{ size: {} {}; margin: 0; }}", w, h),
+            &format!(
+                "data:text/css,@page {{ size: {} {}; margin: 0; }} \
+    body {{ font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }}",
+                w, h
+            ),
             "-",
             "-o",
             "-",

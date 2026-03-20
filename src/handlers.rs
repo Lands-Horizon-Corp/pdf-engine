@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{config::AppState, error::AppError, models::PdfRequest, pdf, storage};
 use axum::{
     Json,
@@ -5,6 +7,7 @@ use axum::{
     http::{HeaderMap, header},
     response::IntoResponse,
 };
+use tokio::time::timeout;
 
 async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, AppError> {
     let mut template = None;
@@ -72,20 +75,26 @@ pub async fn handle_to_bytes(
 ) -> Result<impl IntoResponse, AppError> {
     let req = parse_pdf_multipart(multipart).await?;
     let safe_filename = req.filename.replace('"', "");
-    let html = pdf::render_template(req.template, req.data).await?;
-    let bytes = pdf::run_prince_and_process(
-        html,
-        req.width,
-        req.height,
-        req.password,
-        state.prince_concurrency.clone(),
-    )
-    .await?;
+    let work = async {
+        let html = pdf::render_template(req.template, req.data).await?;
+        pdf::run_prince_and_process(
+            html,
+            req.width,
+            req.height,
+            req.password,
+            state.prince_concurrency.clone(),
+        )
+        .await
+    };
+    let bytes = timeout(Duration::from_secs(45), work)
+        .await
+        .map_err(|_| AppError::Timeout(Duration::from_secs(45)))??;
+
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());
     headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", safe_filename)
+        format!("inline; filename=\"{}\"", safe_filename)
             .parse()
             .unwrap(),
     );

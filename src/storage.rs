@@ -16,9 +16,15 @@ pub async fn html_to_pdf_to_storage(
             state.prince_concurrency.clone(),
         )
         .await?;
+
         let file_size = pdf_bytes.len() as i64;
 
-        state.storage.write(&object_name, pdf_bytes).await?;
+        state
+            .storage
+            .write_with(&object_name, pdf_bytes)
+            .content_disposition("inline")
+            .content_type("application/pdf")
+            .await?;
 
         let signed = state
             .storage

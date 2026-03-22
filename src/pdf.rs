@@ -12,15 +12,15 @@ use tokio::{
     sync::Semaphore,
 };
 
-/// Wraps everything in a single root <div> to satisfy XHTML requirements
 fn wrap_and_prepend_blank_page(html: &str) -> String {
-    format!(
-        r#"<div class="pdf-root">
-            <div style="page-break-after: always; visibility: hidden;"></div>
-            {}
-        </div>"#,
-        html
-    )
+    let blank_page =
+        r#"<div style="page-break-after: always; visibility: hidden; height: 0;"></div>"#;
+
+    if html.contains("<body") {
+        html.replace("<body>", &format!("<body>{}", blank_page))
+    } else {
+        format!("{}<div class=\"pdf-root\">{}</div>", blank_page, html)
+    }
 }
 
 pub async fn render_template(
@@ -61,7 +61,6 @@ pub async fn run_prince_and_process(
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
-            "-i",
             "--no-network",
             "--no-javascript",
             "--silent",

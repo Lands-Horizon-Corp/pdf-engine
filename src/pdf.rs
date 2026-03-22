@@ -61,7 +61,7 @@ pub async fn run_prince_and_process(
     let mut child = Command::new("prince")
         .kill_on_drop(true)
         .args([
-            "-i", "xhtml",
+            "-i",
             "--no-network",
             "--no-javascript",
             "--silent",

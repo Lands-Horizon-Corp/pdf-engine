@@ -12,6 +12,7 @@ pub async fn html_to_pdf_to_storage(
             html,
             req.width,
             req.height,
+            req.orientation,
             req.password,
             state.prince_concurrency.clone(),
         )

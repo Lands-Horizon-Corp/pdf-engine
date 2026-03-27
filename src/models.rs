@@ -18,6 +18,7 @@ pub struct PdfRequest {
     pub data: serde_json::Value,
     pub width: String,
     pub height: String,
+    pub orientation: String,
     pub filename: String,
     pub password: Option<String>,
 }

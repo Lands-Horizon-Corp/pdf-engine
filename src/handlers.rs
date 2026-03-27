@@ -14,6 +14,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut data = serde_json::Value::Null;
     let mut width = "8.5in".to_string();
     let mut height = "11in".to_string();
+    let mut orientation = "portrait".to_string();
     let mut filename = "document.pdf".to_string();
     let mut password = None;
 
@@ -34,6 +35,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
                 }
             }
             "width" => width = field.text().await.unwrap_or(width),
+            "orientation" => orientation = field.text().await.unwrap_or(orientation),
             "height" => height = field.text().await.unwrap_or(height),
             "filename" => filename = field.text().await.unwrap_or(filename),
             "password" => {
@@ -51,6 +53,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
         data,
         width,
         height,
+        orientation,
         filename,
         password,
     })
@@ -81,6 +84,7 @@ pub async fn handle_to_bytes(
             html,
             req.width,
             req.height,
+            req.orientation,
             req.password,
             state.prince_concurrency.clone(),
         )

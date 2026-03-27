@@ -52,6 +52,7 @@ pub async fn run_prince_and_process(
     html: String,
     w: String,
     h: String,
+    o: String,
     password: Option<String>,
     semaphore: Arc<Semaphore>,
 ) -> Result<Vec<u8>, AppError> {
@@ -66,9 +67,9 @@ pub async fn run_prince_and_process(
             "--silent",
             "--style",
             &format!(
-                "data:text/css,@page {{ size: {} {}; margin: 0; }} \
+                "data:text/css,@page {{ size: {} {} {}; margin: 0; }} \
                 body {{ font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }}",
-                w, h
+                w, h, o
             ),
             "-",
             "-o",
@@ -131,8 +132,15 @@ pub async fn warm_up_engine(semaphore: Arc<Semaphore>) -> Result<(), AppError> {
     tracing::info!("Warming up Prince engine and generating test PDF...");
 
     let test_content = "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>".into();
-    let pdf_bytes =
-        run_prince_and_process(test_content, "5in".into(), "5in".into(), None, semaphore).await?;
+    let pdf_bytes = run_prince_and_process(
+        test_content,
+        "8.5in".into(),
+        "11in".into(),
+        "portrait".into(),
+        None,
+        semaphore,
+    )
+    .await?;
 
     let mut file = File::create("sample.pdf")
         .await

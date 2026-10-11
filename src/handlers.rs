@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::{config::AppState, error::AppError, models::PdfRequest, pdf, storage};
 use axum::{
     Json,
@@ -86,13 +84,14 @@ pub async fn handle_to_bytes(
             req.height,
             req.orientation,
             req.password,
+            &state.prince_bin,
             state.prince_concurrency.clone(),
         )
         .await
     };
-    let bytes = timeout(Duration::from_secs(45), work)
+    let bytes = timeout(state.render_timeout, work)
         .await
-        .map_err(|_| AppError::Timeout(Duration::from_secs(45)))??;
+        .map_err(|_| AppError::Timeout(state.render_timeout))??;
 
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, "application/pdf".parse().unwrap());

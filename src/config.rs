@@ -1,13 +1,15 @@
 use opendal::{Operator, services::S3};
-use std::{env, sync::Arc};
+use std::{env, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Operator,
-    pub storage_bucket: String,
+    pub storage_bucket: Arc<str>,
     pub prince_concurrency: Arc<Semaphore>,
-    pub api_token: String,
+    pub expected_auth: Arc<str>,
+    pub prince_bin: Arc<str>,
+    pub render_timeout: Duration,
 }
 
 impl AppState {
@@ -31,14 +33,20 @@ impl AppState {
         if endpoint.contains("amazonaws.com") || endpoint.contains("googleapis.com") {
             builder = builder.enable_virtual_host_style();
         }
-        let storage = Operator::new(builder)
-            .expect("Storage init failed")
-            .finish();
+        let storage = Operator::new(builder).expect("Storage init failed");
+        let prince_bin = env::var("PRINCE_BIN").unwrap_or_else(|_| "prince".to_string());
+        let render_timeout = env::var("RENDER_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(45));
         Self {
             storage,
-            storage_bucket,
+            storage_bucket: storage_bucket.into(),
             prince_concurrency,
-            api_token,
+            expected_auth: format!("Bearer {}", api_token).into(),
+            prince_bin: prince_bin.into(),
+            render_timeout,
         }
     }
 }

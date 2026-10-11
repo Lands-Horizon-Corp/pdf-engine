@@ -14,6 +14,7 @@ pub async fn html_to_pdf_to_storage(
             req.height,
             req.orientation,
             req.password,
+            &state.prince_bin,
             state.prince_concurrency.clone(),
         )
         .await?;
@@ -42,13 +43,13 @@ pub async fn html_to_pdf_to_storage(
             file_type: "application/pdf".into(),
             storage_key: object_name.clone(),
             url: signed.uri().to_string(),
-            bucket_name: state.storage_bucket.clone(),
+            bucket_name: state.storage_bucket.to_string(),
             status: "success".into(),
             progress: 100,
         })
     };
 
-    timeout(Duration::from_secs(45), work)
+    timeout(state.render_timeout, work)
         .await
-        .map_err(|_| AppError::Timeout(Duration::from_secs(45)))?
+        .map_err(|_| AppError::Timeout(state.render_timeout))?
 }

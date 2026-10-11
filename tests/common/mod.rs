@@ -1,0 +1,581 @@
+//! Shared harness for the hermetic test suites.
+//!
+//! Every suite boots the real `pdf_engine::app` router on an ephemeral port, wired to:
+//! - a **fake S3** (an in-process HTTP server that records PUTs and can be told to misbehave), and
+//! - either a **fake Prince** (a shell script we control) or the **real Prince** binary if installed.
+//!
+//! The server runs on its own runtime in a detached thread, so a panicking handler or a
+//! runaway `spawn_blocking` task can't take the test's runtime down with it.
+//!
+//! Tests that need the real Prince call `require_prince!()`. They are skipped (with a
+//! message) when `prince` isn't on PATH, unless `REQUIRE_PRINCE=1` is set, which turns the
+//! skip into a failure. Set that in CI.
+
+#![allow(dead_code)]
+
+use axum::{
+    Router,
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, Method, StatusCode, Uri},
+    response::IntoResponse,
+};
+use lopdf::{Document, LoadOptions, Object, Stream, dictionary};
+use opendal::{Operator, services::S3};
+use pdf_engine::config::AppState;
+use reqwest::{Client, multipart};
+use std::{
+    net::SocketAddr,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
+use tempfile::TempDir;
+use tokio::sync::Semaphore;
+
+pub const TOKEN: &str = "test-token";
+pub const BUCKET: &str = "test-bucket";
+
+/// MediaBox of the fixture's 2nd page. The 1st page is the "blank page" the engine strips,
+/// so seeing this box on the only remaining page proves the strip happened.
+pub const CONTENT_PAGE_BOX: [i64; 4] = [0, 0, 200, 300];
+
+// ---------------------------------------------------------------------------------------------
+// Real Prince detection
+// ---------------------------------------------------------------------------------------------
+
+pub fn real_prince_available() -> bool {
+    Command::new("prince")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Early-return from a test when Prince isn't installed (or fail if `REQUIRE_PRINCE=1`).
+#[macro_export]
+macro_rules! require_prince {
+    () => {
+        if !common::real_prince_available() {
+            if std::env::var("REQUIRE_PRINCE").as_deref() == Ok("1") {
+                panic!("REQUIRE_PRINCE=1 but `prince` is not on PATH");
+            }
+            eprintln!("SKIPPED: `prince` not on PATH (set REQUIRE_PRINCE=1 to make this fatal)");
+            return;
+        }
+    };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fake Prince
+// ---------------------------------------------------------------------------------------------
+
+/// A shell script standing in for Prince. `$D` inside the body is the script's private dir,
+/// which also holds `fixture.pdf` (a valid 2-page PDF).
+pub struct FakePrince {
+    pub dir: TempDir,
+    pub bin: PathBuf,
+}
+
+impl FakePrince {
+    pub fn new(body: &str) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("fixture.pdf"), fixture_pdf()).unwrap();
+        let bin = dir.path().join("prince");
+        let script = format!("#!/bin/sh\nD='{}'\n{}\n", dir.path().display(), body);
+        std::fs::write(&bin, script).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        Self { dir, bin }
+    }
+
+    /// Well-behaved: records args + stdin per invocation, emits the fixture PDF.
+    pub fn ok() -> Self {
+        Self::new(
+            r#"printf '%s\n' "$@" > "$D/args.$$"
+cat > "$D/stdin.$$"
+cat "$D/fixture.pdf""#,
+        )
+    }
+
+    pub fn path(&self) -> &str {
+        self.bin.to_str().unwrap()
+    }
+
+    fn files_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut out: Vec<_> = std::fs::read_dir(self.dir.path())
+            .unwrap()
+            .filter_map(|e| {
+                let e = e.ok()?;
+                let name = e.file_name().into_string().ok()?;
+                name.starts_with(prefix)
+                    .then(|| std::fs::read_to_string(e.path()).unwrap_or_default())
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// How many times the script was started (counts `stdin.*` files written by `ok()`).
+    pub fn invocations(&self) -> usize {
+        self.files_with_prefix("stdin.").len()
+    }
+
+    /// Captured stdin of every invocation.
+    pub fn stdins(&self) -> Vec<String> {
+        self.files_with_prefix("stdin.")
+    }
+
+    /// Captured argv (one arg per line) of every invocation.
+    pub fn args(&self) -> Vec<String> {
+        self.files_with_prefix("args.")
+    }
+
+    /// PIDs written by scripts that do `echo $$ > "$D/pid.$$"`.
+    pub fn pids(&self) -> Vec<u32> {
+        self.files_with_prefix("pid.")
+            .iter()
+            .filter_map(|s| s.trim().parse().ok())
+            .collect()
+    }
+}
+
+/// A process counts as alive if it exists and isn't a zombie.
+pub fn process_alive(pid: u32) -> bool {
+    let out = Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+    let stat = String::from_utf8_lossy(&out.stdout);
+    let stat = stat.trim();
+    !stat.is_empty() && !stat.starts_with('Z')
+}
+
+/// Poll `cond` until it's true or `within` elapses.
+pub async fn eventually(within: Duration, mut cond: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + within;
+    loop {
+        if cond() {
+            return true;
+        }
+        if Instant::now() > deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Valid 2-page PDF with a trailer `/ID` (encryption needs one, and Prince always writes it).
+/// Page 1 is US Letter (the stand-in for the engine's blank page), page 2 is `CONTENT_PAGE_BOX`.
+pub fn fixture_pdf() -> Vec<u8> {
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let boxes = [[0, 0, 612, 792], CONTENT_PAGE_BOX];
+    let kids: Vec<Object> = boxes
+        .iter()
+        .map(|b| {
+            let content = doc.add_object(Stream::new(dictionary! {}, b"BT ET".to_vec()));
+            let media: Vec<Object> = b.iter().map(|&v| v.into()).collect();
+            doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => content,
+                "MediaBox" => media,
+            })
+            .into()
+        })
+        .collect();
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog);
+    let id = Object::string_literal(b"0123456789abcdef".to_vec());
+    doc.trailer.set("ID", vec![id.clone(), id]);
+    let mut out = Vec::new();
+    doc.save_to(&mut out).unwrap();
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fake S3
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub enum S3Mode {
+    Ok,
+    /// Reply to every request with this status (and an S3-style XML error body).
+    Status(u16),
+    /// Never reply.
+    Hang,
+    /// Fail every `n`th PUT with 503 (1-based), succeed otherwise.
+    FailEvery(usize),
+}
+
+#[derive(Clone, Debug)]
+pub struct PutRecord {
+    pub path: String,
+    pub content_type: Option<String>,
+    pub content_disposition: Option<String>,
+    pub body: Bytes,
+}
+
+#[derive(Clone)]
+pub struct FakeS3 {
+    pub addr: SocketAddr,
+    pub mode: Arc<Mutex<S3Mode>>,
+    pub puts: Arc<Mutex<Vec<PutRecord>>>,
+    pub requests: Arc<AtomicUsize>,
+}
+
+impl FakeS3 {
+    pub fn start(mode: S3Mode) -> Self {
+        let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        std_listener.set_nonblocking(true).unwrap();
+        let addr = std_listener.local_addr().unwrap();
+        let s3 = Self {
+            addr,
+            mode: Arc::new(Mutex::new(mode)),
+            puts: Default::default(),
+            requests: Default::default(),
+        };
+        let router = Router::new().fallback(fake_s3_handler).with_state(s3.clone());
+        spawn_detached(async move {
+            let listener = tokio::net::TcpListener::from_std(std_listener).unwrap();
+            axum::serve(listener, router).await.unwrap();
+        });
+        s3
+    }
+
+    pub fn endpoint(&self) -> String {
+        format!("http://{}", self.addr)
+    }
+
+    pub fn set_mode(&self, mode: S3Mode) {
+        *self.mode.lock().unwrap() = mode;
+    }
+
+    pub fn puts(&self) -> Vec<PutRecord> {
+        self.puts.lock().unwrap().clone()
+    }
+
+    pub fn request_count(&self) -> usize {
+        self.requests.load(Ordering::SeqCst)
+    }
+}
+
+async fn fake_s3_handler(
+    State(s3): State<FakeS3>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
+    let n = s3.requests.fetch_add(1, Ordering::SeqCst) + 1;
+    let mode = s3.mode.lock().unwrap().clone();
+    let fail = |code: u16| {
+        let xml = format!(
+            "<?xml version=\"1.0\"?><Error><Code>Injected{code}</Code><Message>chaos</Message></Error>"
+        );
+        (StatusCode::from_u16(code).unwrap(), xml).into_response()
+    };
+    match mode {
+        S3Mode::Hang => {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            unreachable!()
+        }
+        S3Mode::Status(code) => return fail(code),
+        S3Mode::FailEvery(k) if n % k == 0 => return fail(503),
+        _ => {}
+    }
+    if method == Method::PUT {
+        let h = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(String::from);
+        s3.puts.lock().unwrap().push(PutRecord {
+            path: uri.path().to_string(),
+            content_type: h("content-type"),
+            content_disposition: h("content-disposition"),
+            body,
+        });
+    }
+    (StatusCode::OK, [("ETag", "\"fake-etag\"")], "").into_response()
+}
+
+/// A TCP endpoint that accepts connections and immediately slams them shut.
+pub fn start_connection_dropper() -> SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            drop(stream);
+        }
+    });
+    addr
+}
+
+/// An address nothing is listening on.
+pub fn closed_port() -> SocketAddr {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    l.local_addr().unwrap()
+}
+
+fn s3_operator(endpoint: &str) -> Operator {
+    let builder = S3::default()
+        .endpoint(endpoint)
+        .bucket(BUCKET)
+        .region("us-east-1")
+        .access_key_id("test-access")
+        .secret_access_key("test-secret")
+        .disable_config_load()
+        .disable_ec2_metadata();
+    Operator::new(builder).unwrap()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The app under test
+// ---------------------------------------------------------------------------------------------
+
+/// Run a future on its own runtime in a detached thread that is never joined.
+fn spawn_detached<F: Future<Output = ()> + Send + 'static>(fut: F) {
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fut)
+    });
+}
+
+pub struct TestApp {
+    pub base: String,
+    pub state: AppState,
+    pub s3: FakeS3,
+    pub client: Client,
+    pub permits: usize,
+}
+
+pub struct TestAppBuilder {
+    prince_bin: String,
+    permits: usize,
+    timeout: Duration,
+    s3_mode: S3Mode,
+    s3_endpoint: Option<String>,
+}
+
+impl TestApp {
+    /// App wired to the given Prince binary (`FakePrince::path()` or `"prince"`).
+    pub fn builder(prince_bin: &str) -> TestAppBuilder {
+        TestAppBuilder {
+            prince_bin: prince_bin.to_string(),
+            permits: 4,
+            timeout: Duration::from_secs(20),
+            s3_mode: S3Mode::Ok,
+            s3_endpoint: None,
+        }
+    }
+
+    pub fn url(&self, path: &str) -> String {
+        format!("{}{}", self.base, path)
+    }
+
+    pub async fn to_bytes(&self, form: multipart::Form) -> reqwest::Response {
+        self.client
+            .post(self.url("/api/to-bytes"))
+            .bearer_auth(TOKEN)
+            .multipart(form)
+            .send()
+            .await
+            .expect("request to /api/to-bytes failed at the transport level")
+    }
+
+    pub async fn to_s3(&self, form: multipart::Form) -> reqwest::Response {
+        self.client
+            .post(self.url("/api/to-s3"))
+            .bearer_auth(TOKEN)
+            .multipart(form)
+            .send()
+            .await
+            .expect("request to /api/to-s3 failed at the transport level")
+    }
+
+    pub fn available_permits(&self) -> usize {
+        self.state.prince_concurrency.available_permits()
+    }
+
+    /// Every Prince permit eventually comes back (nothing leaked / dangling).
+    pub async fn assert_permits_restored(&self) {
+        let ok = eventually(Duration::from_secs(5), || {
+            self.available_permits() == self.permits
+        })
+        .await;
+        assert!(
+            ok,
+            "semaphore permits leaked: {} of {} available",
+            self.available_permits(),
+            self.permits
+        );
+    }
+}
+
+impl TestAppBuilder {
+    pub fn permits(mut self, n: usize) -> Self {
+        self.permits = n;
+        self
+    }
+
+    pub fn timeout(mut self, t: Duration) -> Self {
+        self.timeout = t;
+        self
+    }
+
+    pub fn s3_mode(mut self, m: S3Mode) -> Self {
+        self.s3_mode = m;
+        self
+    }
+
+    /// Point storage somewhere other than the fake S3 (e.g. a closed port).
+    pub fn s3_endpoint(mut self, e: String) -> Self {
+        self.s3_endpoint = Some(e);
+        self
+    }
+
+    pub async fn spawn(self) -> TestApp {
+        let s3 = FakeS3::start(self.s3_mode);
+        let endpoint = self.s3_endpoint.unwrap_or_else(|| s3.endpoint());
+        let state = AppState {
+            storage: s3_operator(&endpoint),
+            storage_bucket: BUCKET.into(),
+            prince_concurrency: Arc::new(Semaphore::new(self.permits)),
+            expected_auth: format!("Bearer {TOKEN}").into(),
+            prince_bin: self.prince_bin.into(),
+            render_timeout: self.timeout,
+        };
+
+        let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        std_listener.set_nonblocking(true).unwrap();
+        let addr = std_listener.local_addr().unwrap();
+        let app = pdf_engine::app(state.clone());
+        spawn_detached(async move {
+            let listener = tokio::net::TcpListener::from_std(std_listener).unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        TestApp {
+            base: format!("http://{addr}"),
+            state,
+            s3,
+            client: Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .unwrap(),
+            permits: self.permits,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Request / PDF helpers
+// ---------------------------------------------------------------------------------------------
+
+pub fn form(template: &str) -> multipart::Form {
+    multipart::Form::new().text("template", template.to_string())
+}
+
+pub fn is_pdf(b: &[u8]) -> bool {
+    b.starts_with(b"%PDF")
+}
+
+pub fn load_pdf(b: &[u8]) -> Document {
+    Document::load_mem(b).expect("response is not a loadable PDF")
+}
+
+pub fn load_pdf_with_password(b: &[u8], pw: &str) -> lopdf::Result<Document> {
+    Document::load_mem_with_options(b, LoadOptions::with_password(pw))
+}
+
+pub fn page_count(b: &[u8]) -> usize {
+    load_pdf(b).get_pages().len()
+}
+
+/// MediaBox of every page (walking up to /Pages when inherited), as rounded points.
+pub fn media_boxes(doc: &Document) -> Vec<[i64; 4]> {
+    doc.get_pages()
+        .values()
+        .map(|&id| {
+            let mut node = doc.get_dictionary(id).unwrap();
+            loop {
+                if let Ok(arr) = node.get(b"MediaBox").and_then(Object::as_array) {
+                    let v: Vec<i64> = arr
+                        .iter()
+                        .map(|o| o.as_float().map(|f| f.round() as i64).unwrap())
+                        .collect();
+                    return [v[0], v[1], v[2], v[3]];
+                }
+                let parent = node.get(b"Parent").and_then(Object::as_reference).unwrap();
+                node = doc.get_dictionary(parent).unwrap();
+            }
+        })
+        .collect()
+}
+
+/// `/Title` from the document info dictionary, if any.
+pub fn info_title(doc: &Document) -> Option<String> {
+    let info = doc.trailer.get(b"Info").ok()?.as_reference().ok()?;
+    let raw = doc.get_dictionary(info).ok()?.get(b"Title").ok()?.as_str().ok()?;
+    if raw.starts_with(&[0xFE, 0xFF]) {
+        let units: Vec<u16> = raw[2..]
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        String::from_utf16(&units).ok()
+    } else {
+        Some(String::from_utf8_lossy(raw).into_owned())
+    }
+}
+
+/// Does any page reference an image XObject?
+pub fn has_image(doc: &Document) -> bool {
+    doc.objects.values().any(|o| match o {
+        Object::Stream(s) => s
+            .dict
+            .get(b"Subtype")
+            .and_then(Object::as_name)
+            .map(|n| n == b"Image")
+            .unwrap_or(false),
+        _ => false,
+    })
+}
+
+/// The server still serves a normal request correctly. Uses a fresh connection so a socket the
+/// server is closing (e.g. after rejecting an oversized upload) can't be reused.
+pub async fn assert_healthy(app: &TestApp) {
+    let resp = Client::new()
+        .post(app.url("/api/to-bytes"))
+        .bearer_auth(TOKEN)
+        .multipart(form("<p>health</p>"))
+        .send()
+        .await
+        .expect("server unreachable");
+    assert_eq!(resp.status(), 200, "server unhealthy");
+    assert!(is_pdf(&resp.bytes().await.unwrap()));
+}
+
+/// A 1x1 transparent PNG.
+pub const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+    0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+    0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
+pub fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+    let p = dir.join(name);
+    std::fs::write(&p, bytes).unwrap();
+    p
+}

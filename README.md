@@ -106,6 +106,37 @@ curl -X POST http://localhost:6767/api/to-s3 \
 
 ```
 
+### Optional Settings
+
+| Env var | Default | Description |
+| --- | --- | --- |
+| `PRINCE_BIN` | `prince` | Prince executable to run. |
+| `RENDER_TIMEOUT_SECS` | `45` | Per-request budget for render + upload; exceeding it returns `408`. |
+
+---
+
+## 🧪 Testing
+
+The suites under `tests/` boot the real router in-process against a fake S3 and either a scripted fake Prince or the real `prince` binary:
+
+| Suite | Covers |
+| --- | --- |
+| `happy_path` | Correct PDFs, headers, page sizes, encryption, S3 payload |
+| `sad_path` | Auth failures, missing/broken templates, bad requests |
+| `poison_pill` | Header injection, template bombs, oversized bodies, SSRF / local-file access |
+| `chaos` | Prince crashing, hanging, emitting garbage, missing binary |
+| `integration_chaos` | S3 erroring, hanging, unreachable, flaky under load |
+| `race_conditions` | Unique keys, concurrency cap, isolation, cancellation storms |
+| `zero_absence` | Empty/missing fields, orphaned Prince processes, leaked permits |
+| `smoke` | Quick liveness; `live_*` tests hit a deployed instance (`--ignored`) |
+
+```bash
+cargo test --test happy_path --test sad_path --test poison_pill --test chaos \
+  --test integration_chaos --test race_conditions --test zero_absence --test smoke
+```
+
+Tests that need the real Prince are skipped when it isn't on `PATH`; set `REQUIRE_PRINCE=1` (e.g. in CI) to make that a failure instead.
+
 ---
 
 ## 🔍 Troubleshooting

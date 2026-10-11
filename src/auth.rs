@@ -15,11 +15,8 @@ pub async fn auth_middleware(
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
-    let expected_header = format!("Bearer {}", state.api_token);
-    if let Some(auth_header) = auth_header {
-        if auth_header == expected_header {
-            return Ok(next.run(req).await);
-        }
+    match auth_header {
+        Some(h) if h == &*state.expected_auth => Ok(next.run(req).await),
+        _ => Err(AppError::Unauthorized),
     }
-    Err(AppError::Unauthorized)
 }

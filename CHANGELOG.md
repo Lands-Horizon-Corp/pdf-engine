@@ -4,6 +4,26 @@ All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is a git tag `vX.Y.Z` and the Docker
 image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
+## [1.1.0] - 2026-10-12
+
+### Added
+
+- `GET /health` (no auth) and a Docker `HEALTHCHECK` (`pdf-engine healthcheck`).
+- Images: `<img src="data:image/...">` renders; remote images load from `ASSET_ALLOWED_HOSTS`
+  (no redirects, no private addresses, size/time limits). Bad images are skipped.
+- Fonts reload without restart: `POST /api/fonts/reload`, or `FONT_WATCH=true`.
+- Optional observability: Prometheus `/metrics` (`METRICS_ENABLED`, `METRICS_TOKEN`) and
+  OpenTelemetry traces (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+
+### Fixed
+
+- `hsl()` / `hsla()` colors render correctly.
+- Border colors per side (`border-bottom: 1px solid #ddd` was drawn black).
+
+### Changed
+
+- README shortened; details moved to `docs/`.
+
 ## [1.0.0] - 2026-10-12
 
 First versioned release.
@@ -37,4 +57,5 @@ First versioned release.
 - ~970 invoices/s sustained on 10 cores (~1.7 min per 100,000), ~2.5 ms per invoice render;
   the PDF is handed to the response or S3 without copies.
 
+[1.1.0]: https://github.com/Lands-Horizon-Corp/pdf-engine/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Lands-Horizon-Corp/pdf-engine/releases/tag/v1.0.0

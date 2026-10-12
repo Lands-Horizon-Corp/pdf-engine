@@ -4,7 +4,9 @@ use crate::{
     models::{MediaPayload, PdfRequest},
     pdf,
 };
+use std::future::IntoFuture;
 use tokio::time::{Duration, timeout};
+use tracing::Instrument;
 
 pub async fn html_to_pdf_to_storage(
     req: PdfRequest,
@@ -16,12 +18,19 @@ pub async fn html_to_pdf_to_storage(
         let file_size = pdf_bytes.len() as i64;
 
         // `Bytes` converts into opendal's `Buffer` without copying.
-        state
+        let started = std::time::Instant::now();
+        let upload = state
             .storage
             .write_with(&object_name, pdf_bytes)
             .content_disposition("inline")
             .content_type("application/pdf")
-            .await?;
+            .into_future()
+            .instrument(tracing::info_span!("s3_upload"))
+            .await;
+        metrics::histogram!("pdf_s3_upload_seconds").record(started.elapsed().as_secs_f64());
+        let outcome = if upload.is_ok() { "ok" } else { "error" };
+        metrics::counter!("pdf_s3_uploads_total", "outcome" => outcome).increment(1);
+        upload?;
 
         let signed = state
             .storage

@@ -104,6 +104,63 @@ pub async fn handle_to_bytes(
     Ok((headers, Body::from(pdf_bytes)))
 }
 
+/// `GET /health`: liveness for load balancers and Docker. No authentication.
+pub async fn handle_health() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
+/// `POST /api/fonts/reload`: rediscover fonts without restarting.
+pub async fn handle_fonts_reload(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, AppError> {
+    let started = std::time::Instant::now();
+    let renderer = state.renderer.clone();
+    tokio::task::spawn_blocking(move || renderer.reload_fonts()).await?;
+    let took_ms = started.elapsed().as_millis() as u64;
+    tracing::info!(took_ms, "fonts reloaded");
+    metrics::counter!("pdf_font_reloads_total").increment(1);
+    Ok(Json(
+        serde_json::json!({ "status": "reloaded", "took_ms": took_ms }),
+    ))
+}
+
+/// `GET /metrics`: Prometheus text format. Registered only when metrics are enabled.
+pub async fn handle_metrics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    if let Some(expected) = &state.metrics_token {
+        let given = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok());
+        if given != Some(&**expected) {
+            return Err(AppError::Unauthorized);
+        }
+    }
+    let in_use = state.render_permit_count
+        - state
+            .render_permits
+            .available_permits()
+            .min(state.render_permit_count);
+    metrics::gauge!("pdf_render_permits_in_use").set(in_use as f64);
+    metrics::gauge!("pdf_render_permits_total").set(state.render_permit_count as f64);
+    let body = state
+        .metrics
+        .as_ref()
+        .map(|h| h.render())
+        .unwrap_or_default();
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4"),
+        )],
+        body,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::content_disposition;

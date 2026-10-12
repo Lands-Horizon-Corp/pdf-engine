@@ -298,6 +298,31 @@ pub fn parse_html_with_local_resources(
     (doc, gcpm)
 }
 
+// pdf-engine patch (see PATCHES.md): process-wide system font context, swappable at runtime.
+static SHARED_SYSTEM_FONTS: std::sync::RwLock<Option<FontContext>> = std::sync::RwLock::new(None);
+
+fn shared_system_font_context() -> FontContext {
+    if let Some(ctx) = SHARED_SYSTEM_FONTS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+    {
+        return ctx.clone();
+    }
+    SHARED_SYSTEM_FONTS
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(FontContext::new)
+        .clone()
+}
+
+/// pdf-engine patch: rediscover system fonts (e.g. after fonts were added) and use them for
+/// documents parsed from now on. Documents already being rendered keep their fonts.
+pub fn reload_system_fonts() {
+    let fresh = FontContext::new();
+    *SHARED_SYSTEM_FONTS.write().unwrap_or_else(|e| e.into_inner()) = Some(fresh);
+}
+
 /// The single primitive that actually constructs an `HtmlDocument`.
 /// All other `parse*` functions in this module funnel through here.
 fn parse_inner(
@@ -320,8 +345,7 @@ fn parse_inner(
         // pdf-engine patch (see PATCHES.md): discover system fonts once per process and give
         // each document a clone, instead of letting Blitz rebuild the collection from
         // fontconfig on every parse. `FontContext` is designed to be a shared resource.
-        static SHARED: std::sync::OnceLock<FontContext> = std::sync::OnceLock::new();
-        Some(SHARED.get_or_init(FontContext::new).clone())
+        Some(shared_system_font_context())
     } else {
         let collection = parley::fontique::Collection::new(parley::fontique::CollectionOptions {
             system_fonts,

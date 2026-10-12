@@ -91,4 +91,5 @@ ENV FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf
 COPY --from=builder /pdf-engine /usr/local/bin/pdf-engine
 
 EXPOSE 6767
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["pdf-engine", "healthcheck"]
 CMD ["pdf-engine"]

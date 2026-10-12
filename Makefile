@@ -8,7 +8,7 @@
 # the production font set), for machines without Rust or with a different font setup.
 
 FUNCTIONAL_TESTS := happy_path sad_path poison_pill chaos integration_chaos race_conditions \
-                    zero_absence smoke compression css
+                    zero_absence smoke compression css assets observability fonts_reload
 
 # Parallel build jobs. Linking many test binaries at once is memory hungry; keep this low on
 # machines (or Docker VMs) with less than ~16 GB.
@@ -56,7 +56,8 @@ fmt: ## Format the code
 fmt-check: ## Fail if the code isn't formatted
 	cargo fmt --check
 
-check: fmt-check test ## Formatting check + functional tests (what CI should run)
+check: fmt-check test ## Formatting check + functional tests + benchmarks compile (what CI should run)
+	cargo check -j $(JOBS) --benches
 
 test-live: ## Smoke + integration tests against a running server (SMOKE_URL, API_BEARER_TOKEN)
 	cargo test --test smoke -- --ignored live_

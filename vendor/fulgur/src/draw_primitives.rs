@@ -730,6 +730,9 @@ pub struct BlockStyle {
     pub background_layers: Vec<BackgroundLayer>,
     /// Border color as RGBA
     pub border_color: [u8; 4],
+    /// pdf-engine patch: per-side colors (top, right, bottom, left) when they differ;
+    /// `None` means every side uses `border_color`.
+    pub border_side_colors: Option<[[u8; 4]; 4]>,
     /// Border widths: top, right, bottom, left
     pub border_widths: [crate::units::Pt; 4],
     /// Padding: top, right, bottom, left
@@ -1556,10 +1559,17 @@ pub(crate) fn draw_block_border(
         return;
     }
     let bc = &style.border_color;
+    let side_colors = style.border_side_colors.unwrap_or([*bc; 4]);
+    let uniform_color = style.border_side_colors.is_none();
 
     let uniform_width = bt == br && br == bb && bb == bl;
     let uniform_style = st == sr && sr == sb && sb == sl;
-    if style.has_radius() && uniform_width && uniform_style && st != BorderStyleValue::None {
+    if style.has_radius()
+        && uniform_width
+        && uniform_style
+        && uniform_color
+        && st != BorderStyleValue::None
+    {
         let inset = bt / 2.0;
         let inset_radii = style.border_radii.map(|[rx, ry]| {
             [
@@ -1590,6 +1600,7 @@ pub(crate) fn draw_block_border(
     } else if !style.has_radius()
         && uniform_width
         && uniform_style
+        && uniform_color
         && matches!(st, BorderStyleValue::Solid | BorderStyleValue::Double)
     {
         let opacity = alpha_to_opacity(bc[3]);
@@ -1611,7 +1622,7 @@ pub(crate) fn draw_block_border(
         }
         canvas.surface.set_stroke(None);
     } else {
-        let opacity = alpha_to_opacity(bc[3]);
+        let [ct, cr, cb, cl] = side_colors;
         canvas.surface.set_fill(None);
 
         // top: normal=(0,+half) points down=inward, so outward_sign=-1
@@ -1623,8 +1634,8 @@ pub(crate) fn draw_block_border(
             y + bt / 2.0,
             bt,
             st,
-            bc,
-            opacity,
+            &ct,
+            alpha_to_opacity(ct[3]),
             true,
             -1.0,
         );
@@ -1637,8 +1648,8 @@ pub(crate) fn draw_block_border(
             y + h - bb / 2.0,
             bb,
             sb,
-            bc,
-            opacity,
+            &cb,
+            alpha_to_opacity(cb[3]),
             false,
             1.0, // bottom: normal=(0,+half) points down=outward
         );
@@ -1651,8 +1662,8 @@ pub(crate) fn draw_block_border(
             y + h,
             bl,
             sl,
-            bc,
-            opacity,
+            &cl,
+            alpha_to_opacity(cl[3]),
             true,
             1.0,
         );
@@ -1665,8 +1676,8 @@ pub(crate) fn draw_block_border(
             y + h,
             br,
             sr,
-            bc,
-            opacity,
+            &cr,
+            alpha_to_opacity(cr[3]),
             false,
             -1.0, // right: outward_sign=-1
         );

@@ -102,27 +102,6 @@ async fn full_html_document_with_body_attributes() {
     assert_eq!(page_count(&resp.bytes().await.unwrap()), 1);
 }
 
-/// Font names embedded in the PDF (subset prefixes stripped).
-fn embedded_fonts(pdf: &[u8]) -> Vec<String> {
-    let doc = load_pdf(pdf);
-    let mut names: Vec<String> = doc
-        .objects
-        .values()
-        .filter_map(|o| o.as_dict().ok())
-        .filter(|d| d.get(b"Type").and_then(|t| t.as_name()).ok() == Some(b"Font".as_slice()))
-        .filter_map(|d| d.get(b"BaseFont").and_then(|b| b.as_name()).ok())
-        .map(|n| {
-            let n = String::from_utf8_lossy(n).into_owned();
-            n.split_once('+')
-                .map(|(_, rest)| rest.to_string())
-                .unwrap_or(n)
-        })
-        .collect();
-    names.sort();
-    names.dedup();
-    names
-}
-
 /// Generic and common web font families must resolve to real fonts; text that silently
 /// renders with no font at all is the failure this guards against.
 #[tokio::test]

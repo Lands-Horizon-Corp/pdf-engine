@@ -8,7 +8,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use flate2::{Compression, write::GzEncoder};
 use pdf_engine::{
-    fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm},
+    fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm, RenderJob},
     pdf,
 };
 use std::{hint::black_box, io::Write, path::Path};
@@ -45,13 +45,22 @@ fn documents() -> Vec<(&'static str, String)> {
     ]
 }
 
+fn job(html: &str) -> RenderJob {
+    RenderJob {
+        html: html.to_string(),
+        page: PageMm::parse("8.5in", "11in", "portrait").unwrap(),
+        title: None,
+        images: Vec::new(),
+    }
+}
+
 fn bench_fulgur(c: &mut Criterion) {
     let engine = FulgurEngine::default();
-    let letter = PageMm::parse("8.5in", "11in", "portrait").unwrap();
     let mut g = c.benchmark_group("fulgur");
     for (name, html) in documents() {
-        g.bench_with_input(BenchmarkId::from_parameter(name), &html, |b, html| {
-            b.iter(|| engine.render(black_box(html), letter, None).unwrap())
+        let job = job(&html);
+        g.bench_with_input(BenchmarkId::from_parameter(name), &job, |b, job| {
+            b.iter(|| engine.render(black_box(job)).unwrap())
         });
     }
     g.finish();
@@ -60,10 +69,7 @@ fn bench_fulgur(c: &mut Criterion) {
 fn bench_pipeline(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let engine = FulgurEngine::default();
-    let letter = PageMm::parse("8.5in", "11in", "portrait").unwrap();
-    let pdf_bytes = engine
-        .render("<h1>Invoice</h1><p>body</p>", letter, None)
-        .unwrap();
+    let pdf_bytes = engine.render(&job("<h1>Invoice</h1><p>body</p>")).unwrap();
 
     let template = "<table>{% for r in rows %}<tr><td>{{ r.name }}</td><td>{{ r.price }}</td></tr>{% endfor %}</table>";
     let data = serde_json::json!({

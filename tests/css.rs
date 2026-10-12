@@ -77,3 +77,69 @@ async fn every_css_probe_renders() {
         assert_eq!(page_count(&resp.bytes().await.unwrap()), expected, "{name}");
     }
 }
+
+// ---- patched Fulgur gaps (vendor/fulgur/PATCHES.md) ----
+
+async fn colors_of(app: &TestApp, html: &str) -> Vec<String> {
+    let resp = app.to_bytes(form(html)).await;
+    assert_eq!(resp.status(), 200);
+    color_ops(&resp.bytes().await.unwrap())
+}
+
+#[tokio::test]
+async fn hsl_and_hsla_colors_are_painted() {
+    let app = TestApp::builder().spawn().await;
+
+    let ops = colors_of(
+        &app,
+        r#"<div style="height:20px;background:hsl(0, 100%, 50%)"></div>
+           <div style="height:20px;background:hsla(240, 100%, 50%, 0.5)"></div>
+           <div style="height:20px;background:hsl(120deg 100% 25%)"></div>"#,
+    )
+    .await;
+
+    for expected in ["1 0 0 rg", "0 0 1 rg", "0 0.5019608 0 rg"] {
+        assert!(
+            ops.iter().any(|o| o == expected),
+            "missing {expected} in {ops:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn each_border_side_keeps_its_own_color() {
+    let app = TestApp::builder().spawn().await;
+
+    let ops = colors_of(
+        &app,
+        r#"<div style="width:100px;height:40px;border-style:solid;border-width:4px;
+                       border-color:#ff0000 #00ff00 #0000ff #ffff00"></div>"#,
+    )
+    .await;
+
+    for expected in ["1 0 0 RG", "0 1 0 RG", "0 0 1 RG", "1 1 0 RG"] {
+        assert!(
+            ops.iter().any(|o| o == expected),
+            "missing {expected} in {ops:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn single_side_border_color_is_not_black() {
+    let app = TestApp::builder().spawn().await;
+
+    let ops = colors_of(
+        &app,
+        r#"<table style="border-collapse:collapse"><tr><td style="border-bottom:2px solid #00ff00">a</td></tr></table>
+           <div style="height:20px;border-left:6px solid rgb(255, 0, 0)"></div>"#,
+    )
+    .await;
+
+    assert!(ops.iter().any(|o| o == "0 1 0 RG"), "{ops:?}");
+    assert!(ops.iter().any(|o| o == "1 0 0 RG"), "{ops:?}");
+    assert!(
+        !ops.iter().any(|o| o == "0 0 0 RG"),
+        "a colored border was drawn black: {ops:?}"
+    );
+}

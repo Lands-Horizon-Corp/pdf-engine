@@ -18,10 +18,12 @@ use axum::{
     response::IntoResponse,
 };
 use lopdf::{Document, LoadOptions, Object, Stream, dictionary};
+use metrics_exporter_prometheus::PrometheusHandle;
 use opendal::{Operator, services::S3};
 use pdf_engine::{
+    assets::AssetPolicy,
     config::AppState,
-    fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm},
+    fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm, RenderJob},
 };
 use reqwest::{Client, multipart};
 use std::{
@@ -243,6 +245,9 @@ pub struct TestApp {
 
 pub struct TestAppBuilder {
     renderer: Option<Arc<dyn InProcessRenderer>>,
+    assets: AssetPolicy,
+    metrics: Option<PrometheusHandle>,
+    metrics_token: Option<String>,
     permits: usize,
     timeout: Duration,
     s3_mode: S3Mode,
@@ -254,6 +259,9 @@ impl TestApp {
     pub fn builder() -> TestAppBuilder {
         TestAppBuilder {
             renderer: None,
+            assets: AssetPolicy::default(),
+            metrics: None,
+            metrics_token: None,
             permits: 4,
             timeout: Duration::from_secs(20),
             s3_mode: S3Mode::Ok,
@@ -330,6 +338,18 @@ impl TestAppBuilder {
         self
     }
 
+    pub fn assets(mut self, policy: AssetPolicy) -> Self {
+        self.assets = policy;
+        self
+    }
+
+    /// Enable `/metrics` with the given recorder handle (and optional token).
+    pub fn metrics(mut self, handle: PrometheusHandle, token: Option<&str>) -> Self {
+        self.metrics = Some(handle);
+        self.metrics_token = token.map(String::from);
+        self
+    }
+
     /// Replace the renderer (default: the real Fulgur engine). It is still wrapped in a spy.
     pub fn renderer(mut self, r: Arc<dyn InProcessRenderer>) -> Self {
         self.renderer = Some(r);
@@ -350,9 +370,13 @@ impl TestAppBuilder {
             storage: s3_operator(&endpoint),
             storage_bucket: BUCKET.into(),
             render_permits: Arc::new(Semaphore::new(self.permits)),
+            render_permit_count: self.permits,
             expected_auth: format!("Bearer {TOKEN}").into(),
             renderer: spy.clone(),
             render_timeout: self.timeout,
+            assets: Arc::new(self.assets),
+            metrics: self.metrics,
+            metrics_token: self.metrics_token.map(|t| format!("Bearer {t}").into()),
         };
 
         let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -395,6 +419,8 @@ pub struct Call {
     pub html: String,
     pub page: PageMm,
     pub title: Option<String>,
+    /// `src` keys of the images handed to the renderer.
+    pub images: Vec<String>,
 }
 
 /// Wraps a renderer, recording calls and the peak number of concurrent renders.
@@ -417,11 +443,12 @@ impl Spy {
 }
 
 impl InProcessRenderer for Spy {
-    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
+    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String> {
         self.calls.lock().unwrap().push(Call {
-            html: html.to_string(),
-            page,
-            title: title.map(String::from),
+            html: job.html.clone(),
+            page: job.page,
+            title: job.title.clone(),
+            images: job.images.iter().map(|(k, _)| k.clone()).collect(),
         });
         let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
         self.max_active.fetch_max(now, Ordering::SeqCst);
@@ -432,7 +459,11 @@ impl InProcessRenderer for Spy {
             }
         }
         let _done = Done(&self.active);
-        self.inner.render(html, page, title)
+        self.inner.render(job)
+    }
+
+    fn reload_fonts(&self) {
+        self.inner.reload_fonts()
     }
 }
 
@@ -451,7 +482,7 @@ pub enum FakeRenderer {
 }
 
 impl InProcessRenderer for FakeRenderer {
-    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
+    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String> {
         match self {
             FakeRenderer::Ok(d) => {
                 std::thread::sleep(*d);
@@ -459,8 +490,8 @@ impl InProcessRenderer for FakeRenderer {
             }
             FakeRenderer::Fails => Err("injected failure".into()),
             FakeRenderer::Panics => panic!("injected panic"),
-            FakeRenderer::FailsOn(m) if html.contains(m) => Err("injected failure".into()),
-            FakeRenderer::FailsOn(_) => real_fulgur().render(html, page, title),
+            FakeRenderer::FailsOn(m) if job.html.contains(m) => Err("injected failure".into()),
+            FakeRenderer::FailsOn(_) => real_fulgur().render(job),
             FakeRenderer::Garbage => Ok(b"definitely not a pdf".to_vec()),
             FakeRenderer::Slow(d, finished) => {
                 std::thread::sleep(*d);
@@ -550,6 +581,42 @@ pub fn has_image(doc: &Document) -> bool {
     })
 }
 
+/// Fill/stroke color operators (`r g b rg` / `r g b RG`) from every page's content stream.
+pub fn color_ops(pdf: &[u8]) -> Vec<String> {
+    let doc = load_pdf(pdf);
+    doc.get_pages()
+        .values()
+        .flat_map(|&id| {
+            String::from_utf8_lossy(&doc.get_page_content(id))
+                .lines()
+                .filter(|l| l.ends_with(" rg") || l.ends_with(" RG"))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Font names embedded in the PDF (subset prefixes stripped).
+pub fn embedded_fonts(pdf: &[u8]) -> Vec<String> {
+    let doc = load_pdf(pdf);
+    let mut names: Vec<String> = doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .filter(|d| d.get(b"Type").and_then(|t| t.as_name()).ok() == Some(b"Font".as_slice()))
+        .filter_map(|d| d.get(b"BaseFont").and_then(|b| b.as_name()).ok())
+        .map(|n| {
+            let n = String::from_utf8_lossy(n).into_owned();
+            n.split_once('+')
+                .map(|(_, rest)| rest.to_string())
+                .unwrap_or(n)
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// The server still serves a normal request correctly. Uses a fresh connection so a socket the
 /// server is closing (e.g. after rejecting an oversized upload) can't be reused.
 pub async fn assert_healthy(app: &TestApp) {
@@ -564,13 +631,13 @@ pub async fn assert_healthy(app: &TestApp) {
     assert!(is_pdf(&resp.bytes().await.unwrap()));
 }
 
-/// A 1x1 transparent PNG.
+/// A valid 1x1 red PNG.
 pub const TINY_PNG: &[u8] = &[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-    0x42, 0x60, 0x82,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+    0x00, 0x03, 0x01, 0x01, 0x00, 0xC9, 0xFE, 0x92, 0xEF, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+    0x44, 0xAE, 0x42, 0x60, 0x82,
 ];
 
 pub fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {

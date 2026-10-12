@@ -6,6 +6,7 @@
 //! (`sans-serif`, `serif`, `monospace`) resolve through fontconfig's usual aliases.
 
 use fulgur::{AssetBundle, Engine, Margin, PageSize};
+use std::sync::Arc;
 
 /// Page size in millimetres.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,10 +50,24 @@ fn length_mm(s: &str) -> Option<f32> {
     (mm.is_finite() && (1.0..=5000.0).contains(&mm)).then_some(mm)
 }
 
+/// One document to render.
+#[derive(Debug, Clone)]
+pub struct RenderJob {
+    pub html: String,
+    pub page: PageMm,
+    pub title: Option<String>,
+    /// Image bytes keyed by the exact `<img src>` value they replace.
+    pub images: Vec<(String, Arc<Vec<u8>>)>,
+}
+
 /// Something that turns HTML into PDF bytes synchronously, in-process.
 /// Implemented by [`FulgurEngine`]; tests substitute misbehaving fakes.
 pub trait InProcessRenderer: Send + Sync {
-    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String>;
+    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String>;
+
+    /// Rediscover fonts (after fonts were added or removed). Renders already running keep
+    /// the fonts they started with.
+    fn reload_fonts(&self) {}
 }
 
 /// Default font stack, at zero specificity so any template `body { font-family }` wins.
@@ -71,16 +86,26 @@ impl Default for FulgurEngine {
 }
 
 impl InProcessRenderer for FulgurEngine {
-    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
-        let mut builder = Engine::builder()
-            .page_size(PageSize::custom(page.width, page.height))
-            .margin(Margin::uniform(0.0))
-            .assets(self.assets.clone())
-            .system_fonts(true);
-        if let Some(t) = title {
-            builder = builder.title(t);
+    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String> {
+        let mut assets = self.assets.clone();
+        for (src, data) in &job.images {
+            // Same key normalisation as `AssetBundle::get_image`.
+            let key = src.strip_prefix("./").unwrap_or(src);
+            assets.images.insert(key.to_string(), data.clone());
         }
-        builder.build().render(html).map_err(|e| e.to_string())
+        let mut builder = Engine::builder()
+            .page_size(PageSize::custom(job.page.width, job.page.height))
+            .margin(Margin::uniform(0.0))
+            .assets(assets)
+            .system_fonts(true);
+        if let Some(t) = &job.title {
+            builder = builder.title(t.clone());
+        }
+        builder.build().render(&job.html).map_err(|e| e.to_string())
+    }
+
+    fn reload_fonts(&self) {
+        fulgur::reload_system_fonts();
     }
 }
 

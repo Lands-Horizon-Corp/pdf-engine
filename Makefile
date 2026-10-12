@@ -37,7 +37,7 @@ DOCKER_RUN := docker run --rm $(shell [ -t 1 ] && echo -t) \
 .DEFAULT_GOAL := help
 .PHONY: help test test-unit fmt fmt-check check bench stress test-live \
         docker-dev-image docker-test docker-bench docker-stress docker-image \
-        version release-image release
+        version release-image release push
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -106,3 +106,6 @@ release: ## Tag v<version> in git, push the tag, and push the image (bump Cargo.
 	git tag -a v$(VERSION) -m "pdf-engine v$(VERSION)"
 	git push origin v$(VERSION)
 	$(MAKE) release-image
+
+push: ## Bump to VERSION, commit everything with MESSAGE, push, and release: make push VERSION=1.2.3 MESSAGE="..."
+	scripts/push.sh --version="$(VERSION)" --message="$(MESSAGE)"

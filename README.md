@@ -19,6 +19,56 @@ docker run -d -p 6767:6767 \
 `STORAGE_*` is required even if you only use `/api/to-bytes`. Inside Docker Compose, use the
 service name (e.g. `http://minio:9000`), not `localhost`.
 
+### Docker Compose (no setup needed)
+
+Save as `compose.yaml` and run `docker compose up -d`. It starts pdf-engine with its own
+S3-compatible storage ([RustFS](https://github.com/rustfs/rustfs)) and creates the bucket.
+
+```yaml
+services:
+  pdf-engine:
+    image: zalven88/pdf-engine:1.1.0
+    ports:
+      - "6767:6767"
+    environment:
+      API_BEARER_TOKEN: change-me
+      STORAGE_URL: http://storage:9000
+      STORAGE_BUCKET: pdfs
+      STORAGE_ACCESS_KEY: pdf-engine
+      STORAGE_SECRET_KEY: pdf-engine-secret
+    depends_on:
+      storage-setup:
+        condition: service_completed_successfully
+
+  storage:
+    image: rustfs/rustfs
+    environment:
+      RUSTFS_ACCESS_KEY: pdf-engine
+      RUSTFS_SECRET_KEY: pdf-engine-secret
+    volumes:
+      - storage-data:/data
+
+  storage-setup: # creates the bucket, then exits
+    image: amazon/aws-cli
+    depends_on:
+      - storage
+    environment:
+      AWS_ACCESS_KEY_ID: pdf-engine
+      AWS_SECRET_ACCESS_KEY: pdf-engine-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: >
+      sh -c "until aws --endpoint-url http://storage:9000 s3api head-bucket --bucket pdfs 2>/dev/null ||
+                   aws --endpoint-url http://storage:9000 s3 mb s3://pdfs; do sleep 1; done"
+
+volumes:
+  storage-data:
+```
+
+Change `API_BEARER_TOKEN` and the storage keys before exposing it. To use AWS S3 or your own
+storage instead, drop `storage`/`storage-setup` and point `STORAGE_*` at it. Presigned URLs
+from `/api/to-s3` use `STORAGE_URL`, so they only resolve inside the Compose network unless
+storage is reachable at that address.
+
 ## API
 
 | Endpoint | Auth | Does |

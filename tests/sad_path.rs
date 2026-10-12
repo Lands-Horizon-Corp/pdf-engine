@@ -1,4 +1,4 @@
-//! Sad path: ordinary bad requests get clean 4xx answers and never reach Prince or S3.
+//! Sad path: ordinary bad requests get clean 4xx answers and never reach the renderer or S3.
 
 mod common;
 
@@ -15,8 +15,7 @@ async fn error_message(resp: reqwest::Response) -> String {
 
 #[tokio::test]
 async fn missing_token_is_401_on_both_routes() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for route in ["/api/to-bytes", "/api/to-s3"] {
         let resp = app
@@ -29,14 +28,13 @@ async fn missing_token_is_401_on_both_routes() {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{route}");
         assert_eq!(error_message(resp).await, "Invalid or missing Bearer token");
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
     assert_eq!(app.s3.request_count(), 0);
 }
 
 #[tokio::test]
 async fn wrong_credentials_are_401() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let bad = [
         "Bearer wrong".to_string(),
@@ -57,13 +55,12 @@ async fn wrong_credentials_are_401() {
             .unwrap();
         assert_eq!(resp.status(), 401, "accepted bad header {header:?}");
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn missing_template_is_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for resp in [
         app.to_bytes(multipart::Form::new().text("width", "10in"))
@@ -76,14 +73,13 @@ async fn missing_template_is_400() {
             "Missing required field: template"
         );
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
     assert_eq!(app.s3.request_count(), 0);
 }
 
 #[tokio::test]
 async fn broken_template_syntax_is_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for t in [
         "{% for x in %}broken",
@@ -101,13 +97,12 @@ async fn broken_template_syntax_is_400() {
             "{t:?} -> {msg}"
         );
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn template_error_on_to_s3_writes_nothing() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app.to_s3(form("{% for %}")).await;
 
@@ -117,8 +112,7 @@ async fn template_error_on_to_s3_writes_nothing() {
 
 #[tokio::test]
 async fn non_multipart_body_is_rejected() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let json = app
         .client
@@ -141,13 +135,12 @@ async fn non_multipart_body_is_rejected() {
     for resp in [json, no_boundary] {
         assert!(resp.status().is_client_error(), "got {}", resp.status());
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn wrong_method_and_unknown_route() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let get = app
         .client
@@ -170,8 +163,7 @@ async fn wrong_method_and_unknown_route() {
 
 #[tokio::test]
 async fn unauthenticated_request_is_rejected_before_reading_body() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let huge = "x".repeat(20 * 1024 * 1024);
     let start = std::time::Instant::now();
@@ -187,5 +179,5 @@ async fn unauthenticated_request_is_rejected_before_reading_body() {
         assert_eq!(resp.status(), 401);
     }
     assert!(start.elapsed().as_secs() < 10);
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }

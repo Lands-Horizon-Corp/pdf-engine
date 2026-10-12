@@ -1,4 +1,8 @@
 use pdf_engine::{app, config::AppState, pdf};
+
+/// Rendering is allocation-heavy (DOM, style, layout); mimalloc is ~10% faster than glibc's.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use std::net::SocketAddr;
 
 /// Blitz (inside Fulgur) `println!`s every HTML parse warning. Logs go to stderr, and stdout
@@ -19,9 +23,9 @@ async fn main() {
     silence_stdout();
     dotenvy::dotenv().ok();
 
-    let mut state = AppState::new();
+    let state = AppState::new();
 
-    if let Err(e) = pdf::warm_up(&mut state).await {
+    if let Err(e) = pdf::warm_up(&state).await {
         tracing::error!("Warmup failed: {}", e);
         std::process::exit(1);
     }

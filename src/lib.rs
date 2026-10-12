@@ -8,8 +8,6 @@ pub mod fulgur_engine;
 pub mod handlers;
 pub mod models;
 pub mod pdf;
-pub mod prince;
-pub mod router;
 pub mod storage;
 
 use config::AppState;

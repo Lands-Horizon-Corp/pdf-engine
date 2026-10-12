@@ -2,14 +2,11 @@
 //!
 //! Every suite boots the real `pdf_engine::app` router on an ephemeral port, wired to:
 //! - a **fake S3** (an in-process HTTP server that records PUTs and can be told to misbehave), and
-//! - either a **fake Prince** (a shell script we control) or the **real Prince** binary if installed.
+//! - a **spy** around the renderer that records every render call and tracks concurrency. The
+//!   renderer is the real Fulgur engine unless a test swaps in a [`FakeRenderer`].
 //!
 //! The server runs on its own runtime in a detached thread, so a panicking handler or a
 //! runaway `spawn_blocking` task can't take the test's runtime down with it.
-//!
-//! Tests that need the real Prince call `require_prince!()`. They are skipped (with a
-//! message) when `prince` isn't on PATH, unless `REQUIRE_PRINCE=1` is set, which turns the
-//! skip into a failure. Set that in CI.
 
 #![allow(dead_code)]
 
@@ -25,139 +22,21 @@ use opendal::{Operator, services::S3};
 use pdf_engine::{
     config::AppState,
     fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm},
-    models::EnginePref,
 };
 use reqwest::{Client, multipart};
 use std::{
     net::SocketAddr,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    process::Command,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
-use tempfile::TempDir;
 use tokio::sync::Semaphore;
 
 pub const TOKEN: &str = "test-token";
 pub const BUCKET: &str = "test-bucket";
-
-/// MediaBox of the fixture's 2nd page. The 1st page is the "blank page" the engine strips,
-/// so seeing this box on the only remaining page proves the strip happened.
-pub const CONTENT_PAGE_BOX: [i64; 4] = [0, 0, 200, 300];
-
-// ---------------------------------------------------------------------------------------------
-// Real Prince detection
-// ---------------------------------------------------------------------------------------------
-
-pub fn real_prince_available() -> bool {
-    Command::new("prince")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-/// Early-return from a test when Prince isn't installed (or fail if `REQUIRE_PRINCE=1`).
-#[macro_export]
-macro_rules! require_prince {
-    () => {
-        if !common::real_prince_available() {
-            if std::env::var("REQUIRE_PRINCE").as_deref() == Ok("1") {
-                panic!("REQUIRE_PRINCE=1 but `prince` is not on PATH");
-            }
-            eprintln!("SKIPPED: `prince` not on PATH (set REQUIRE_PRINCE=1 to make this fatal)");
-            return;
-        }
-    };
-}
-
-// ---------------------------------------------------------------------------------------------
-// Fake Prince
-// ---------------------------------------------------------------------------------------------
-
-/// A shell script standing in for Prince. `$D` inside the body is the script's private dir,
-/// which also holds `fixture.pdf` (a valid 2-page PDF).
-pub struct FakePrince {
-    pub dir: TempDir,
-    pub bin: PathBuf,
-}
-
-impl FakePrince {
-    pub fn new(body: &str) -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("fixture.pdf"), fixture_pdf()).unwrap();
-        let bin = dir.path().join("prince");
-        let script = format!("#!/bin/sh\nD='{}'\n{}\n", dir.path().display(), body);
-        std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        Self { dir, bin }
-    }
-
-    /// Well-behaved: records args + stdin per invocation, emits the fixture PDF.
-    pub fn ok() -> Self {
-        Self::new(
-            r#"printf '%s\n' "$@" > "$D/args.$$"
-cat > "$D/stdin.$$"
-cat "$D/fixture.pdf""#,
-        )
-    }
-
-    pub fn path(&self) -> &str {
-        self.bin.to_str().unwrap()
-    }
-
-    fn files_with_prefix(&self, prefix: &str) -> Vec<String> {
-        let mut out: Vec<_> = std::fs::read_dir(self.dir.path())
-            .unwrap()
-            .filter_map(|e| {
-                let e = e.ok()?;
-                let name = e.file_name().into_string().ok()?;
-                name.starts_with(prefix)
-                    .then(|| std::fs::read_to_string(e.path()).unwrap_or_default())
-            })
-            .collect();
-        out.sort();
-        out
-    }
-
-    /// How many times the script was started (counts `stdin.*` files written by `ok()`).
-    pub fn invocations(&self) -> usize {
-        self.files_with_prefix("stdin.").len()
-    }
-
-    /// Captured stdin of every invocation.
-    pub fn stdins(&self) -> Vec<String> {
-        self.files_with_prefix("stdin.")
-    }
-
-    /// Captured argv (one arg per line) of every invocation.
-    pub fn args(&self) -> Vec<String> {
-        self.files_with_prefix("args.")
-    }
-
-    /// PIDs written by scripts that do `echo $$ > "$D/pid.$$"`.
-    pub fn pids(&self) -> Vec<u32> {
-        self.files_with_prefix("pid.")
-            .iter()
-            .filter_map(|s| s.trim().parse().ok())
-            .collect()
-    }
-}
-
-/// A process counts as alive if it exists and isn't a zombie.
-pub fn process_alive(pid: u32) -> bool {
-    let out = Command::new("ps")
-        .args(["-o", "stat=", "-p", &pid.to_string()])
-        .output()
-        .unwrap();
-    let stat = String::from_utf8_lossy(&out.stdout);
-    let stat = stat.trim();
-    !stat.is_empty() && !stat.starts_with('Z')
-}
 
 /// Poll `cond` until it's true or `within` elapses.
 pub async fn eventually(within: Duration, mut cond: impl FnMut() -> bool) -> bool {
@@ -173,29 +52,20 @@ pub async fn eventually(within: Duration, mut cond: impl FnMut() -> bool) -> boo
     }
 }
 
-/// Valid 2-page PDF with a trailer `/ID` (encryption needs one, and Prince always writes it).
-/// Page 1 is US Letter (the stand-in for the engine's blank page), page 2 is `CONTENT_PAGE_BOX`.
+/// A valid one-page US Letter PDF with a trailer `/ID` (encryption needs one).
 pub fn fixture_pdf() -> Vec<u8> {
     let mut doc = Document::with_version("1.5");
     let pages_id = doc.new_object_id();
-    let boxes = [[0, 0, 612, 792], CONTENT_PAGE_BOX];
-    let kids: Vec<Object> = boxes
-        .iter()
-        .map(|b| {
-            let content = doc.add_object(Stream::new(dictionary! {}, b"BT ET".to_vec()));
-            let media: Vec<Object> = b.iter().map(|&v| v.into()).collect();
-            doc.add_object(dictionary! {
-                "Type" => "Page",
-                "Parent" => pages_id,
-                "Contents" => content,
-                "MediaBox" => media,
-            })
-            .into()
-        })
-        .collect();
+    let content = doc.add_object(Stream::new(dictionary! {}, b"BT ET".to_vec()));
+    let media: Vec<Object> = [0, 0, 612, 792].iter().map(|&v: &i64| v.into()).collect();
+    let page = doc.add_object(dictionary! {
+        "Type" => "Page", "Parent" => pages_id, "Contents" => content, "MediaBox" => media,
+    });
     doc.objects.insert(
         pages_id,
-        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => kids, "Count" => 2 }),
+        Object::Dictionary(
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        ),
     );
     let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
     doc.trailer.set("Root", catalog);
@@ -368,12 +238,11 @@ pub struct TestApp {
     pub s3: FakeS3,
     pub client: Client,
     pub permits: usize,
+    pub spy: Arc<Spy>,
 }
 
 pub struct TestAppBuilder {
-    prince_bin: Option<String>,
-    fulgur: Option<Arc<dyn InProcessRenderer>>,
-    default_engine: EnginePref,
+    renderer: Option<Arc<dyn InProcessRenderer>>,
     permits: usize,
     timeout: Duration,
     s3_mode: S3Mode,
@@ -381,15 +250,10 @@ pub struct TestAppBuilder {
 }
 
 impl TestApp {
-    /// App wired to the given Prince binary (`FakePrince::path()` or `"prince"`).
-    ///
-    /// Requests default to the Prince engine so the Prince-focused suites keep exercising
-    /// that path; use `.default_engine(EnginePref::Auto)` for the hybrid behaviour.
-    pub fn builder(prince_bin: &str) -> TestAppBuilder {
+    /// App with the real Fulgur renderer; swap it with `.renderer(...)`.
+    pub fn builder() -> TestAppBuilder {
         TestAppBuilder {
-            prince_bin: Some(prince_bin.to_string()),
-            fulgur: None,
-            default_engine: EnginePref::Prince,
+            renderer: None,
             permits: 4,
             timeout: Duration::from_secs(20),
             s3_mode: S3Mode::Ok,
@@ -425,7 +289,17 @@ impl TestApp {
         self.state.render_permits.available_permits()
     }
 
-    /// Every Prince permit eventually comes back (nothing leaked / dangling).
+    /// How many times the renderer was invoked.
+    pub fn renders(&self) -> usize {
+        self.spy.calls.lock().unwrap().len()
+    }
+
+    /// Every render call so far.
+    pub fn calls(&self) -> Vec<Call> {
+        self.spy.calls.lock().unwrap().clone()
+    }
+
+    /// Every render permit eventually comes back (nothing leaked / dangling).
     pub async fn assert_permits_restored(&self) {
         let ok = eventually(Duration::from_secs(5), || {
             self.available_permits() == self.permits
@@ -456,20 +330,9 @@ impl TestAppBuilder {
         self
     }
 
-    pub fn default_engine(mut self, e: EnginePref) -> Self {
-        self.default_engine = e;
-        self
-    }
-
-    /// Run as if Prince failed its warm-up.
-    pub fn without_prince(mut self) -> Self {
-        self.prince_bin = None;
-        self
-    }
-
-    /// Replace the in-process renderer (default: the real Fulgur engine).
-    pub fn fulgur(mut self, r: Arc<dyn InProcessRenderer>) -> Self {
-        self.fulgur = Some(r);
+    /// Replace the renderer (default: the real Fulgur engine). It is still wrapped in a spy.
+    pub fn renderer(mut self, r: Arc<dyn InProcessRenderer>) -> Self {
+        self.renderer = Some(r);
         self
     }
 
@@ -482,14 +345,13 @@ impl TestAppBuilder {
     pub async fn spawn(self) -> TestApp {
         let s3 = FakeS3::start(self.s3_mode);
         let endpoint = self.s3_endpoint.unwrap_or_else(|| s3.endpoint());
+        let spy = Arc::new(Spy::new(self.renderer.unwrap_or_else(real_fulgur)));
         let state = AppState {
             storage: s3_operator(&endpoint),
             storage_bucket: BUCKET.into(),
             render_permits: Arc::new(Semaphore::new(self.permits)),
             expected_auth: format!("Bearer {TOKEN}").into(),
-            prince_bin: self.prince_bin.map(Into::into),
-            fulgur: self.fulgur.unwrap_or_else(real_fulgur),
-            default_engine: self.default_engine,
+            renderer: spy.clone(),
             render_timeout: self.timeout,
         };
 
@@ -511,6 +373,7 @@ impl TestAppBuilder {
                 .build()
                 .unwrap(),
             permits: self.permits,
+            spy,
         }
     }
 }
@@ -519,30 +382,87 @@ impl TestAppBuilder {
 // In-process renderers
 // ---------------------------------------------------------------------------------------------
 
-pub const FONT_DIR: &str = "/usr/share/fonts/truetype/noto";
-
-/// The production Fulgur engine, fonts loaded once per test binary.
+/// The production Fulgur engine.
 pub fn real_fulgur() -> Arc<dyn InProcessRenderer> {
     static ENGINE: OnceLock<Arc<FulgurEngine>> = OnceLock::new();
     ENGINE
-        .get_or_init(|| Arc::new(FulgurEngine::from_font_dir(Path::new(FONT_DIR))))
+        .get_or_init(|| Arc::new(FulgurEngine::default()))
         .clone()
 }
 
-/// An in-process renderer that misbehaves on demand.
-pub enum FakeFulgur {
+#[derive(Clone, Debug)]
+pub struct Call {
+    pub html: String,
+    pub page: PageMm,
+    pub title: Option<String>,
+}
+
+/// Wraps a renderer, recording calls and the peak number of concurrent renders.
+pub struct Spy {
+    inner: Arc<dyn InProcessRenderer>,
+    pub calls: Mutex<Vec<Call>>,
+    active: AtomicUsize,
+    pub max_active: AtomicUsize,
+}
+
+impl Spy {
+    fn new(inner: Arc<dyn InProcessRenderer>) -> Self {
+        Self {
+            inner,
+            calls: Mutex::default(),
+            active: AtomicUsize::new(0),
+            max_active: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl InProcessRenderer for Spy {
+    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
+        self.calls.lock().unwrap().push(Call {
+            html: html.to_string(),
+            page,
+            title: title.map(String::from),
+        });
+        let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active.fetch_max(now, Ordering::SeqCst);
+        struct Done<'a>(&'a AtomicUsize);
+        impl Drop for Done<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+        let _done = Done(&self.active);
+        self.inner.render(html, page, title)
+    }
+}
+
+/// A renderer that misbehaves on demand.
+pub enum FakeRenderer {
+    /// Returns `fixture_pdf()` after an optional delay.
+    Ok(Duration),
     Fails,
     Panics,
+    /// Fails when the HTML contains this marker, otherwise renders for real.
+    FailsOn(&'static str),
+    /// Returns bytes that aren't a PDF.
+    Garbage,
     /// Sleeps, then reports when it actually finished.
     Slow(Duration, Arc<AtomicUsize>),
 }
 
-impl InProcessRenderer for FakeFulgur {
-    fn render(&self, _html: &str, _page: PageMm, _title: Option<&str>) -> Result<Vec<u8>, String> {
+impl InProcessRenderer for FakeRenderer {
+    fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
         match self {
-            FakeFulgur::Fails => Err("injected failure".into()),
-            FakeFulgur::Panics => panic!("injected panic"),
-            FakeFulgur::Slow(d, finished) => {
+            FakeRenderer::Ok(d) => {
+                std::thread::sleep(*d);
+                Ok(fixture_pdf())
+            }
+            FakeRenderer::Fails => Err("injected failure".into()),
+            FakeRenderer::Panics => panic!("injected panic"),
+            FakeRenderer::FailsOn(m) if html.contains(m) => Err("injected failure".into()),
+            FakeRenderer::FailsOn(_) => real_fulgur().render(html, page, title),
+            FakeRenderer::Garbage => Ok(b"definitely not a pdf".to_vec()),
+            FakeRenderer::Slow(d, finished) => {
                 std::thread::sleep(*d);
                 finished.fetch_add(1, Ordering::SeqCst);
                 Ok(fixture_pdf())

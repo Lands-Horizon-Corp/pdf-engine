@@ -1,12 +1,11 @@
 //! In-process HTML → PDF rendering with Fulgur.
 //!
-//! Fonts: Fulgur rescans every system font on each render when `system_fonts` is on (~35 ms
-//! with the ~2,300 Noto files in our image). We instead bundle a curated Noto set (~8 ms)
-//! and only fall back to system fonts when the document contains a character those fonts
-//! don't cover (CJK, emoji, Arabic, ...), which we know from their `cmap` tables.
+//! Fonts come from fontconfig. The vendored Fulgur (see `vendor/fulgur/PATCHES.md`) builds the
+//! font collection once per process; the Docker image points `FONTCONFIG_FILE` at
+//! `fonts/fonts.conf`, a curated Noto set, rather than every installed font. Generic families
+//! (`sans-serif`, `serif`, `monospace`) resolve through fontconfig's usual aliases.
 
 use fulgur::{AssetBundle, Engine, Margin, PageSize};
-use std::path::Path;
 
 /// Page size in millimetres.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,8 +15,8 @@ pub struct PageMm {
 }
 
 impl PageMm {
-    /// Parse the request's `width`/`height`/`orientation` the way Prince's `@page size`
-    /// understands them. `None` when Fulgur can't represent it (Prince will be used).
+    /// Parse the request's `width`/`height`/`orientation`. `None` for anything that isn't a
+    /// positive length with a unit (`in`, `mm`, `cm`, `pt`, `pc`, `px`) or a known orientation.
     pub fn parse(width: &str, height: &str, orientation: &str) -> Option<Self> {
         let (mut w, mut h) = (length_mm(width)?, length_mm(height)?);
         match orientation.trim().to_ascii_lowercase().as_str() {
@@ -56,108 +55,28 @@ pub trait InProcessRenderer: Send + Sync {
     fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String>;
 }
 
-/// Same default font stack the Prince path injects, at zero specificity so any template
-/// `body { font-family }` wins.
+/// Default font stack, at zero specificity so any template `body { font-family }` wins.
 const BASE_CSS: &str = ":where(body) { font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }";
 
-/// Bundled for the fast path. Missing files are skipped.
-const BUNDLED_FONTS: &[&str] = &[
-    "NotoSans-Regular.ttf",
-    "NotoSans-Italic.ttf",
-    "NotoSans-Light.ttf",
-    "NotoSans-LightItalic.ttf",
-    "NotoSans-Medium.ttf",
-    "NotoSans-SemiBold.ttf",
-    "NotoSans-Bold.ttf",
-    "NotoSans-BoldItalic.ttf",
-    "NotoSans-ExtraBold.ttf",
-    "NotoSans-Black.ttf",
-    "NotoSerif-Regular.ttf",
-    "NotoSerif-Italic.ttf",
-    "NotoSerif-Bold.ttf",
-    "NotoSerif-BoldItalic.ttf",
-    "NotoSansMono-Medium.ttf",
-    "NotoSansMono-ExtraBold.ttf",
-];
-
 pub struct FulgurEngine {
-    bundled: AssetBundle,
-    system: AssetBundle,
-    /// Bitset of codepoints the bundled fonts cover.
-    coverage: Vec<u64>,
+    assets: AssetBundle,
 }
 
-impl FulgurEngine {
-    /// Load the bundled fonts from `font_dir`. With no usable fonts every render uses
-    /// system fonts (correct, just slower).
-    pub fn from_font_dir(font_dir: &Path) -> Self {
-        let mut bundled = AssetBundle::new();
-        let mut system = AssetBundle::new();
-        bundled.add_css(BASE_CSS);
-        system.add_css(BASE_CSS);
-        let mut coverage = vec![0u64; 0x110000 / 64];
-        let mut loaded = 0;
-        for name in BUNDLED_FONTS {
-            let Ok(bytes) = std::fs::read(font_dir.join(name)) else {
-                continue;
-            };
-            let Ok(face) = ttf_parser::Face::parse(&bytes, 0) else {
-                tracing::warn!("Skipping unparseable font {name}");
-                continue;
-            };
-            if let Some(cmap) = face.tables().cmap {
-                for sub in cmap.subtables.into_iter().filter(|s| s.is_unicode()) {
-                    sub.codepoints(|cp| {
-                        if let Some(word) = coverage.get_mut(cp as usize / 64) {
-                            *word |= 1 << (cp % 64);
-                        }
-                    });
-                }
-            }
-            if bundled.add_font_bytes(bytes).is_ok() {
-                loaded += 1;
-            }
-        }
-        if loaded == 0 {
-            tracing::warn!(
-                "No bundled fonts found in {}; Fulgur will use system fonts for every render",
-                font_dir.display()
-            );
-            coverage.fill(0);
-        } else {
-            tracing::info!("Fulgur: bundled {loaded} fonts from {}", font_dir.display());
-        }
-        Self {
-            bundled,
-            system,
-            coverage,
-        }
-    }
-
-    fn covered(&self, c: char) -> bool {
-        let cp = c as usize;
-        self.coverage[cp / 64] & (1 << (cp % 64)) != 0
-    }
-
-    /// Can the bundled fonts draw every character in `html`?
-    pub fn bundled_fonts_cover(&self, html: &str) -> bool {
-        html.chars()
-            .all(|c| matches!(c, '\n' | '\r' | '\t') || self.covered(c))
+impl Default for FulgurEngine {
+    fn default() -> Self {
+        let mut assets = AssetBundle::new();
+        assets.add_css(BASE_CSS);
+        Self { assets }
     }
 }
 
 impl InProcessRenderer for FulgurEngine {
     fn render(&self, html: &str, page: PageMm, title: Option<&str>) -> Result<Vec<u8>, String> {
-        let use_bundle = self.bundled_fonts_cover(html);
         let mut builder = Engine::builder()
             .page_size(PageSize::custom(page.width, page.height))
             .margin(Margin::uniform(0.0))
-            .assets(if use_bundle {
-                self.bundled.clone()
-            } else {
-                self.system.clone()
-            })
-            .system_fonts(!use_bundle);
+            .assets(self.assets.clone())
+            .system_fonts(true);
         if let Some(t) = title {
             builder = builder.title(t);
         }
@@ -192,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_what_only_prince_understands() {
+    fn rejects_non_lengths() {
         for (w, h, o) in [
             ("A4", "", ""),
             ("8.5", "11", ""),

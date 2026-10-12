@@ -1,19 +1,12 @@
-use crate::{
-    config::AppState,
-    error::AppError,
-    models::{EngineKind, EnginePref, MediaPayload, PdfRequest},
-    pdf, storage,
-};
+use crate::{config::AppState, error::AppError, models::PdfRequest, pdf, storage};
 use axum::{
     Json,
     body::Body,
     extract::{Multipart, State},
-    http::{HeaderMap, HeaderName, HeaderValue, header},
+    http::{HeaderMap, HeaderValue, header},
     response::IntoResponse,
 };
 use tokio::time::timeout;
-
-pub const ENGINE_HEADER: HeaderName = HeaderName::from_static("x-pdf-engine");
 
 async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, AppError> {
     let mut template = None;
@@ -23,7 +16,6 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut orientation = "portrait".to_string();
     let mut filename = "document.pdf".to_string();
     let mut password = None;
-    let mut engine = EnginePref::Auto;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or_default().to_string();
@@ -51,12 +43,6 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
                     password = Some(p);
                 }
             }
-            "engine" => {
-                let v = field.text().await.unwrap_or_default();
-                engine = EnginePref::parse(&v).ok_or_else(|| {
-                    AppError::InvalidField("engine: expected auto, fulgur or prince".into())
-                })?;
-            }
             _ => {}
         }
     }
@@ -69,7 +55,6 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
         orientation,
         filename,
         password,
-        engine,
     })
 }
 
@@ -84,10 +69,6 @@ fn content_disposition(filename: &str) -> HeaderValue {
         .unwrap_or_else(|_| HeaderValue::from_static("inline; filename=\"document.pdf\""))
 }
 
-fn engine_header(engine: EngineKind) -> (HeaderName, HeaderValue) {
-    (ENGINE_HEADER, HeaderValue::from_static(engine.as_str()))
-}
-
 pub async fn handle_to_s3(
     State(state): State<AppState>,
     multipart: Multipart,
@@ -99,9 +80,8 @@ pub async fn handle_to_s3(
         chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
         uuid::Uuid::new_v4().simple()
     );
-    let (payload, engine): (MediaPayload, _) =
-        storage::html_to_pdf_to_storage(req, key, &state).await?;
-    Ok(([engine_header(engine)], Json(payload)))
+    let payload = storage::html_to_pdf_to_storage(req, key, &state).await?;
+    Ok(Json(payload))
 }
 
 pub async fn handle_to_bytes(
@@ -110,7 +90,7 @@ pub async fn handle_to_bytes(
 ) -> Result<impl IntoResponse, AppError> {
     let req = parse_pdf_multipart(multipart).await?;
     let disposition = content_disposition(&req.filename);
-    let rendered = timeout(state.render_timeout, pdf::render(req, &state))
+    let pdf_bytes = timeout(state.render_timeout, pdf::render(req, &state))
         .await
         .map_err(|_| AppError::Timeout(state.render_timeout))??;
 
@@ -120,10 +100,8 @@ pub async fn handle_to_bytes(
         HeaderValue::from_static("application/pdf"),
     );
     headers.insert(header::CONTENT_DISPOSITION, disposition);
-    let (name, value) = engine_header(rendered.engine);
-    headers.insert(name, value);
 
-    Ok((headers, Body::from(rendered.bytes)))
+    Ok((headers, Body::from(pdf_bytes)))
 }
 
 #[cfg(test)]

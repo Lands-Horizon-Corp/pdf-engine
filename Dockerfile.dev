@@ -1,0 +1,20 @@
+# Toolchain image for running tests, benchmarks and load tests (`make docker-*`).
+# Same font setup as the production image, so results match production.
+FROM rust:bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig \
+    fonts-noto-core \
+    fonts-noto-extra \
+    fonts-noto-mono \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rustup component add rustfmt
+
+COPY fonts /etc/pdf-engine
+RUN /etc/pdf-engine/install.sh
+ENV FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf
+
+WORKDIR /app

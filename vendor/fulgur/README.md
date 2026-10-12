@@ -1,0 +1,371 @@
+# Fulgur
+
+[![codecov](https://codecov.io/gh/fulgur-rs/fulgur/graph/badge.svg)](https://codecov.io/gh/fulgur-rs/fulgur)
+[![Coverage](https://raw.githubusercontent.com/mitsuru/octocovs/main/badges/fulgur-rs/fulgur/coverage.svg)](https://github.com/mitsuru/octocovs)
+[![Code to Test Ratio](https://raw.githubusercontent.com/mitsuru/octocovs/main/badges/fulgur-rs/fulgur/ratio.svg)](https://github.com/mitsuru/octocovs)
+[![Test Execution Time](https://raw.githubusercontent.com/mitsuru/octocovs/main/badges/fulgur-rs/fulgur/time.svg)](https://github.com/mitsuru/octocovs)
+
+A modern, lightweight alternative to wkhtmltopdf. Converts HTML/CSS to PDF without a browser engine.
+
+Built in Rust for server-side workloads where memory footprint and startup time matter.
+
+## Why Fulgur?
+
+- **No browser required** — No Chromium, no WebKit, no headless browser. Single binary, instant cold start.
+- **Low memory footprint** — Designed for server-side batch processing without blowing up your container's memory limits.
+- **Deterministic output** — Same input always produces the same PDF, byte for byte. Safe for CI/CD and automated pipelines.
+- **Template + JSON data** — Feed an HTML template and a JSON file to generate PDFs at scale. Built-in [MiniJinja](https://github.com/mitsuhiko/minijinja) engine.
+- **Offline by design** — No network access. All assets (fonts, images, CSS) are explicitly bundled.
+
+## Features
+
+- HTML/CSS to PDF conversion with automatic page splitting
+- CSS pagination control (`break-before`, `break-after`, `break-inside`, orphans/widows)
+- CSS Generated Content for Paged Media (page counters, running headers/footers, margin boxes)
+- Template engine with JSON data binding (MiniJinja)
+- Image embedding (PNG / JPEG / GIF)
+- Custom font bundling with subsetting (TTF / OTF / TTC / WOFF2)
+- External CSS injection
+- Page sizes (A4 / Letter / A3) with landscape support
+- PDF metadata (title, author, keywords, language)
+- PDF bookmarks from heading structure
+- Tagged PDF / PDF/UA-1 for accessibility (structure tree, alt text, heading levels)
+- [CSS property support reference](docs/css-support.md)
+
+## Installation
+
+Run directly with `npx` (no install needed):
+
+```bash
+npx @fulgur-rs/cli render -o output.pdf input.html
+```
+
+Or install globally via npm:
+
+```bash
+npm install -g @fulgur-rs/cli
+fulgur render -o output.pdf input.html
+```
+
+Or via Cargo:
+
+```bash
+cargo install fulgur-cli
+```
+
+From source:
+
+```bash
+cargo install --path crates/fulgur-cli
+```
+
+## CLI Usage
+
+```bash
+# Basic conversion
+fulgur render -o output.pdf input.html
+
+# Read from stdin
+cat input.html | fulgur render --stdin -o output.pdf
+
+# Page options
+fulgur render -o output.pdf -s Letter -l --margin "20 30" input.html
+
+# Custom fonts and CSS
+fulgur render -o output.pdf -f fonts/NotoSansJP.ttf --css style.css input.html
+
+# Images
+fulgur render -o output.pdf -i logo.png=assets/logo.png input.html
+
+# Template + JSON data
+fulgur render -o invoice.pdf -d data.json template.html
+
+# Tagged PDF (accessibility / PDF/UA-1)
+fulgur render --tagged --language en -o report.pdf report.html
+fulgur render --pdf-ua --language en -o report.pdf report.html
+```
+
+### Template Example
+
+`template.html`:
+
+```html
+<h1>Invoice #{{ invoice_number }}</h1>
+<p>{{ customer_name }}</p>
+<table>
+  {% for item in items %}
+  <tr><td>{{ item.name }}</td><td>{{ item.price }}</td></tr>
+  {% endfor %}
+</table>
+```
+
+`data.json`:
+
+```json
+{
+  "invoice_number": "2026-001",
+  "customer_name": "Acme Corp",
+  "items": [
+    { "name": "Widget", "price": "$10.00" },
+    { "name": "Gadget", "price": "$25.00" }
+  ]
+}
+```
+
+### Options
+
+| Option | Description | Default |
+|---|---|---|
+| `-o, --output` | Output PDF file path (required, use `-` for stdout) | — |
+| `-s, --size` | Page size (A4, Letter, A3) | A4 |
+| `-l, --landscape` | Landscape orientation | false |
+| `--margin` | Page margins in mm (CSS shorthand: `"20"`, `"20 30"`, `"10 20 30"`, `"10 20 30 40"`) | — |
+| `--title` | PDF title metadata | — |
+| `--language` | Document language tag (BCP 47, e.g. `en`, `ja`). Required for PDF/UA-1. | — |
+| `-f, --font` | Font files to bundle (repeatable) | — |
+| `--css` | CSS files to include (repeatable) | — |
+| `-i, --image` | Image files to bundle as name=path (repeatable) | — |
+| `-d, --data` | JSON data file for template mode (use `-` for stdin) | — |
+| `--bookmarks` | Generate PDF bookmarks (outline) from `h1`-`h6` headings | false |
+| `--tagged` | Enable Tagged PDF output (structure tree for accessibility) | false |
+| `--pdf-ua` | Enable PDF/UA-1 conformance (implies `--tagged` and `--bookmarks`) | false |
+| `--stdin` | Read HTML from stdin | false |
+
+## Library Usage
+
+```rust
+use fulgur::engine::Engine;
+use fulgur::config::{PageSize, Margin};
+
+// Basic conversion
+let engine = Engine::builder().build();
+let pdf = engine.render("<h1>Hello</h1>")?;
+
+// With page options
+let engine = Engine::builder()
+    .page_size(PageSize::A4)
+    .margin(Margin::uniform_mm(20.0))
+    .title("My Document")
+    .build();
+
+let pdf = engine.render(html)?;
+engine.render_file(html, "output.pdf")?;
+
+// Template + JSON
+let engine = Engine::builder()
+    .template("invoice.html", template_str)
+    .data(serde_json::json!({
+        "invoice_number": "2026-001",
+        "customer_name": "Acme Corp",
+    }))
+    .build();
+
+let pdf = engine.render_template()?;
+
+// Tagged PDF (accessibility / PDF/UA-1)
+let engine = Engine::builder()
+    .tagged(true)  // structure tree only
+    .build();
+// or: .pdf_ua(true) for full PDF/UA-1 conformance (implies tagged + bookmarks)
+
+let pdf = engine.render(html)?;
+```
+
+### Layout output (advanced)
+
+`Engine::layout()` exposes the shared parse → style → layout stage as a
+renderer-agnostic `LayoutOutput`, letting out-of-core consumers (image
+rasterization, OCR label generation) reuse Fulgur's layout without pulling PDF
+serialization into the core crate.
+
+```rust
+use fulgur::engine::{Engine, LayoutOutput};
+use fulgur::config::PageSize;
+
+let html = "<h1>Hello</h1>";
+let engine = Engine::builder().page_size(PageSize::A4).build();
+let out: LayoutOutput = engine.layout(html)?;
+
+// `LayoutOutput` is `#[non_exhaustive]`: read its fields, do not destructure it.
+let drawables = &out.drawables; // per-node draw payloads — coordinates in PDF pt
+let geometry = &out.geometry;   // pagination fragments — coordinates in CSS px
+```
+
+`layout()` runs the same two-pass resolution as `render()`, so `target-counter()`
+/ `target-text()` cross-references are already resolved in the returned
+`drawables`.
+
+**Limitations:** `LayoutOutput` carries **body** layout only. `@page` margin
+boxes and `position: running()` headers/footers are painted render-side and are
+not included, and the resolved page box (after `@page { size / margin }`
+overrides) is not yet surfaced — a consumer must not assume `Engine::config()`
+alone describes the canvas. See the design doc for the full contract and the
+consumer split (core owns unit conversion; consumers own composition):
+[`docs/plans/2026-06-27-engine-layout-api-design.md`](docs/plans/2026-06-27-engine-layout-api-design.md).
+
+## Tagged PDF
+
+Fulgur can embed a semantic structure tree in the PDF output, required for accessibility tools and PDF/UA-1 conformance.
+
+### CLI
+
+```bash
+# Structure tree only (--tagged)
+fulgur render --tagged --language en -o report.pdf report.html
+
+# Full PDF/UA-1 conformance (implies --tagged and --bookmarks)
+fulgur render --pdf-ua --language en -o report.pdf report.html
+```
+
+### Supported HTML elements
+
+| HTML element | PDF structure tag |
+|---|---|
+| `h1`–`h6` | H1–H6 |
+| `p`, `div` | P, Div |
+| `span` | Span |
+| `ul` | L (unordered) |
+| `ol` | L (ordered) |
+| `li` | LI → Lbl + LBody |
+| `table` | Table |
+| `thead` / `tbody` / `tfoot` | THead / TBody / TFoot |
+| `tr` | TR |
+| `th` | TH (scope: Row/Column/Both) |
+| `td` | TD |
+| `img` | Figure (alt text propagated) |
+| `a` | Link |
+
+### Limitations
+
+- Alt text is propagated from `<img alt>` attributes only. CSS background images are not tagged.
+- PDF/UA-1 requires a document language. Always pass `--language` (CLI) or `.lang()` (Rust API) when using `--pdf-ua`.
+- Python and Ruby bindings do not yet expose `tagged` / `pdf_ua`. Follow-up work is tracked separately.
+
+## Architecture
+
+Fulgur integrates [Blitz](https://github.com/nickelpack/blitz) (HTML parsing, CSS style resolution, layout) with [Krilla](https://github.com/LaurenzV/krilla) (PDF generation) through a pagination-aware layout abstraction.
+
+```text
+HTML/CSS input
+  ↓
+Blitz (HTML parse → DOM → style resolution → Taffy layout)
+  ↓
+DOM → Pageable conversion (BlockPageable / ParagraphPageable / ImagePageable)
+  ↓
+Pagination (split Pageable tree at page boundaries)
+  ↓
+Krilla rendering (Pageable.draw() per page → PDF Surface)
+  ↓
+PDF bytes
+```
+
+## Project Structure
+
+```text
+crates/
+├── fulgur/        # Core library (conversion, layout, rendering)
+└── fulgur-cli/    # CLI tool
+```
+
+## Development
+
+```bash
+# Build
+cargo build
+
+# Test
+cargo test
+
+# Run CLI directly
+cargo run -p fulgur-cli -- render -o output.pdf input.html
+```
+
+## Versioning
+
+Fulgur follows the [ZeroVer](https://0ver.org) convention while still in
+the `0.x` line. The number after the leading zero — the **minor** — is
+what we treat as a release boundary; the patch field exists only to ship
+hotfixes between minors.
+
+- **Each normal release bumps the minor** (`0.5.x` → `0.6` → `0.7`). We
+  refer to it as "Fulgur 0.6" externally; internal artefacts (Cargo.toml,
+  PyPI, RubyGems, npm, git tag) carry the full semver string `0.6.0`
+  because those registries require it.
+- **Patch numbers are reserved for hotfixes** off a previous minor
+  (e.g. `0.6.1` to fix a regression in `0.6.0`). They are not used for
+  routine releases.
+- **`fulgur`, `fulgur-cli`, `fulgur-wasm`, `fulgur-ruby`, `pyfulgur` share
+  the same version**. Independent binding versioning is tracked as future
+  work.
+- **API stability is not guaranteed in `0.x`**. Each minor may introduce
+  breaking changes. The 1.0 line will be cut once the public surface
+  stabilises (criteria TBD).
+
+If you depend on Fulgur from another Rust crate or a binding, pin the
+exact minor (`fulgur = "0.6"` resolves to `>=0.6.0, <0.7.0` under Cargo's
+default caret behaviour) until you are ready to absorb a breaking change.
+
+## Release
+
+Releases are automated with [release-plz](https://release-plz.dev): a push to
+`main` opens a Release PR (minor version bump + a PR-based changelog rendered
+from `release-notes:*` labels). Approving and merging it publishes to crates.io,
+creates the `vX.Y.Z` tag, and cascades to the platform binaries, npm, PyPI and
+RubyGems. See [docs/RELEASE_SETUP.md](docs/RELEASE_SETUP.md) for the full flow
+and PyPI / RubyGems Trusted Publisher setup.
+
+## Determinism and fonts
+
+Fulgur aims for byte-identical PDF output from identical input. The core pipeline
+(Blitz → Taffy → Parley → Krilla) is deterministic, but there is **one known
+environment dependency** you should be aware of:
+
+- [Blitz `blitz-dom` 0.2.4](https://docs.rs/blitz-dom) uses a process-global
+  `fontdb::Database::load_system_fonts()` call for parsing inline `<svg>`
+  elements. Fulgur cannot currently override it, so the font chosen for
+  `<text>` elements inside SVG — and the default fallback for HTML text when
+  no bundled fonts are supplied — depends on which `.ttf`/`.otf` files are
+  installed on the host. The same HTML can therefore produce *different*
+  PDFs on two machines if their system font sets differ.
+
+To get reproducible output today, pin the font environment via `fontconfig`:
+
+```bash
+# Point fontconfig at a controlled set of font files.
+export FONTCONFIG_FILE="$PWD/my-fonts.conf"
+fulgur render -o output.pdf input.html
+```
+
+The repository ships a pinned Noto Sans bundle under `examples/.fonts/`
+together with a matching `examples/.fontconfig/fonts.conf`, which is what
+`mise run update-examples` and the GitHub Actions regen workflows use to
+keep `examples/*/index.pdf` byte-identical across environments. See
+`examples/.fonts/README.md` for the exact font list and re-fetch
+instructions. Making this configurable at the library API level (so
+`fulgur::Engine` callers get determinism without touching fontconfig) is
+tracked as a follow-up — once landed, library callers will be able to
+supply their own font database directly.
+
+## Security
+
+If you plan to accept untrusted HTML templates or JSON data (e.g. in a
+multi-tenant SaaS), see the
+[threat model](docs/security/threat-model.md)
+([日本語](docs/security/threat-model.ja.md)) for the full analysis of
+attack vectors and mitigations.
+
+## Contributing
+
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md)
+before opening a pull request. All contributors must sign the
+[Contributor License Agreement](CLA.md) — a bot will guide you through the
+one-time sign-off on your first PR.
+
+## License
+
+Fulgur is dual-licensed under either of:
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT License](LICENSE-MIT)
+
+at your option.

@@ -1,21 +1,26 @@
 //! Zero values, absent values, and dangling resources.
 //!
 //! Safe Rust has no dangling pointers, so the "dangling" cases here are the resource
-//! equivalents: an orphaned Prince process, a leaked semaphore permit, or an object written to
+//! equivalents: a render that outlives its request, a leaked semaphore permit, or an object written to
 //! storage that no response points at.
 
 mod common;
 
 use common::*;
 use reqwest::multipart;
-use std::time::Duration;
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 // ---- absent / empty fields ----
 
 #[tokio::test]
 async fn empty_multipart_is_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app.to_bytes(multipart::Form::new()).await;
 
@@ -24,8 +29,7 @@ async fn empty_multipart_is_400() {
 
 #[tokio::test]
 async fn zero_length_body_is_4xx() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .client
@@ -42,8 +46,7 @@ async fn zero_length_body_is_4xx() {
 
 #[tokio::test]
 async fn empty_template_renders_a_pdf() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app.to_bytes(form("")).await;
 
@@ -53,8 +56,7 @@ async fn empty_template_renders_a_pdf() {
 
 #[tokio::test]
 async fn absent_data_renders_top_level_variables_as_empty() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(form(
@@ -63,17 +65,13 @@ async fn absent_data_renders_top_level_variables_as_empty() {
         .await;
 
     assert_eq!(resp.status(), 200);
-    assert!(
-        prince.stdins()[0].contains("<p>[][none given]</p>"),
-        "{}",
-        prince.stdins()[0]
-    );
+    let html = &app.calls()[0].html;
+    assert!(html.contains("<p>[][none given]</p>"), "{html}");
 }
 
 #[tokio::test]
 async fn absent_nested_data_is_a_clean_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app.to_bytes(form("<p>{{ user.email }}</p>")).await;
 
@@ -82,13 +80,12 @@ async fn absent_nested_data_is_a_clean_400() {
         400,
         "attribute of a missing value is a template error"
     );
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn zero_and_empty_data_values_are_accepted() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for data in [
         "", "null", "{}", "[]", "0", "false", "\"\"", "not json", "{\"a\":",
@@ -102,8 +99,7 @@ async fn zero_and_empty_data_values_are_accepted() {
 
 #[tokio::test]
 async fn zero_numbers_and_falsy_values_render_literally() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     app.to_bytes(
         form("<p>{{ zero }}|{{ f }}|{{ empty }}|{{ list|length }}</p>")
@@ -112,17 +108,13 @@ async fn zero_numbers_and_falsy_values_render_literally() {
     .await;
 
     // minijinja prints booleans/null Python-style: `False`, `None`.
-    assert!(
-        prince.stdins()[0].contains("<p>0|False||0</p>"),
-        "{}",
-        prince.stdins()[0]
-    );
+    let html = &app.calls()[0].html;
+    assert!(html.contains("<p>0|False||0</p>"), "{html}");
 }
 
 #[tokio::test]
-async fn empty_page_fields_are_passed_through() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+async fn empty_page_fields_are_a_clean_400() {
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(
@@ -133,18 +125,15 @@ async fn empty_page_fields_are_passed_through() {
         )
         .await;
 
-    assert_eq!(resp.status(), 200);
-    assert!(
-        prince.args()[0].contains("size:   ;"),
-        "{}",
-        prince.args()[0]
-    );
+    assert_eq!(resp.status(), 400);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert!(json["error"].as_str().unwrap().contains("width/height"));
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn empty_filename_still_has_valid_header() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for name in ["", "\"\"\""] {
         let resp = app.to_bytes(form("<p>x</p>").text("filename", name)).await;
@@ -158,8 +147,7 @@ async fn empty_filename_still_has_valid_header() {
 
 #[tokio::test]
 async fn empty_password_means_no_encryption() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let body = app
         .to_bytes(form("<p>x</p>").text("password", ""))
@@ -173,8 +161,7 @@ async fn empty_password_means_no_encryption() {
 
 #[tokio::test]
 async fn unnamed_and_unknown_fields_are_ignored() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(
@@ -193,8 +180,7 @@ async fn unnamed_and_unknown_fields_are_ignored() {
 
 #[tokio::test]
 async fn empty_authorization_values_are_401() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for h in ["", "Bearer", "Bearer ", " "] {
         let resp = app
@@ -210,31 +196,22 @@ async fn empty_authorization_values_are_401() {
 }
 
 #[tokio::test]
-async fn zero_permits_times_out_without_spawning_prince() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+async fn zero_permits_times_out_without_rendering() {
+    let app = TestApp::builder()
         .permits(0)
         .timeout(Duration::from_secs(1))
         .spawn()
         .await;
 
     assert_eq!(app.to_bytes(form("<p>x</p>")).await.status(), 408);
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
-async fn real_empty_template_and_page_fields() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn empty_template_with_default_page_fields() {
+    let app = TestApp::builder().spawn().await;
 
-    let resp = app
-        .to_bytes(
-            form("")
-                .text("width", "")
-                .text("height", "")
-                .text("orientation", ""),
-        )
-        .await;
+    let resp = app.to_bytes(form("")).await;
 
     assert_eq!(resp.status(), 200);
     assert_eq!(page_count(&resp.bytes().await.unwrap()), 1);
@@ -242,38 +219,51 @@ async fn real_empty_template_and_page_fields() {
 
 // ---- dangling resources ----
 
+/// A render can't be interrupted once it's running. The request times out on schedule, and
+/// the render keeps its permit until it really finishes, then gives it back.
 #[tokio::test]
-async fn timeout_kills_prince_and_returns_permit() {
-    let prince = FakePrince::new(r#"echo $$ > "$D/pid.$$"; exec sleep 3600"#);
-    let app = TestApp::builder(prince.path())
+async fn timed_out_render_returns_its_permit_when_it_finishes() {
+    let finished = Arc::new(AtomicUsize::new(0));
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Slow(
+            Duration::from_secs(2),
+            finished.clone(),
+        )))
         .permits(1)
-        .timeout(Duration::from_secs(1))
+        .timeout(Duration::from_millis(500))
         .spawn()
         .await;
 
     assert_eq!(app.to_bytes(form("<p>x</p>")).await.status(), 408);
+    assert_eq!(
+        app.available_permits(),
+        0,
+        "the running render holds its permit"
+    );
 
-    let pid = prince.pids()[0];
-    let dead = eventually(Duration::from_secs(5), || !process_alive(pid)).await;
     assert!(
-        dead,
-        "Prince pid {pid} outlived its request (orphaned process)"
+        eventually(Duration::from_secs(5), || finished.load(Ordering::SeqCst)
+            == 1)
+        .await
     );
     app.assert_permits_restored().await;
 }
 
 #[tokio::test]
-async fn client_disconnect_does_not_leave_prince_running() {
-    let prince = FakePrince::new(r#"echo $$ > "$D/pid.$$"; exec sleep 3600"#);
-    let render_timeout = Duration::from_secs(3);
-    let app = TestApp::builder(prince.path())
+async fn client_disconnect_does_not_leak_the_render() {
+    let finished = Arc::new(AtomicUsize::new(0));
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Slow(
+            Duration::from_secs(1),
+            finished.clone(),
+        )))
         .permits(1)
-        .timeout(render_timeout)
+        .timeout(Duration::from_secs(3))
         .spawn()
         .await;
 
     let impatient = reqwest::Client::builder()
-        .timeout(Duration::from_millis(300))
+        .timeout(Duration::from_millis(200))
         .build()
         .unwrap();
     let r = impatient
@@ -284,21 +274,20 @@ async fn client_disconnect_does_not_leave_prince_running() {
         .await;
     assert!(r.is_err());
 
-    // At worst it lives until the render timeout; it must never outlive that.
-    assert!(eventually(Duration::from_secs(2), || !prince.pids().is_empty()).await);
-    let pid = prince.pids()[0];
-    let dead = eventually(render_timeout + Duration::from_secs(3), || {
-        !process_alive(pid)
-    })
-    .await;
-    assert!(dead, "Prince pid {pid} outlived the abandoned request");
+    assert!(
+        eventually(Duration::from_secs(5), || finished.load(Ordering::SeqCst)
+            == 1)
+        .await
+    );
     app.assert_permits_restored().await;
 }
 
 #[tokio::test]
 async fn failed_render_leaves_no_object_in_storage() {
-    let prince = FakePrince::new("cat > /dev/null; exit 1");
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Fails))
+        .spawn()
+        .await;
 
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 500);
     assert!(app.s3.puts().is_empty());
@@ -306,8 +295,7 @@ async fn failed_render_leaves_no_object_in_storage() {
 
 #[tokio::test]
 async fn presigned_url_points_at_the_object_that_was_written() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let json: serde_json::Value = app.to_s3(form("<p>x</p>")).await.json().await.unwrap();
     let url = reqwest::Url::parse(json["url"].as_str().unwrap()).unwrap();

@@ -1,7 +1,7 @@
 use crate::{
     config::AppState,
     error::AppError,
-    models::{EngineKind, MediaPayload, PdfRequest},
+    models::{MediaPayload, PdfRequest},
     pdf,
 };
 use tokio::time::{Duration, timeout};
@@ -10,15 +10,15 @@ pub async fn html_to_pdf_to_storage(
     req: PdfRequest,
     object_name: String,
     state: &AppState,
-) -> Result<(MediaPayload, EngineKind), AppError> {
+) -> Result<MediaPayload, AppError> {
     let work = async {
-        let rendered = pdf::render(req, state).await?;
-        let file_size = rendered.bytes.len() as i64;
+        let pdf_bytes = pdf::render(req, state).await?;
+        let file_size = pdf_bytes.len() as i64;
 
         // `Bytes` converts into opendal's `Buffer` without copying.
         state
             .storage
-            .write_with(&object_name, rendered.bytes)
+            .write_with(&object_name, pdf_bytes)
             .content_disposition("inline")
             .content_type("application/pdf")
             .await?;
@@ -42,7 +42,7 @@ pub async fn html_to_pdf_to_storage(
             status: "success".into(),
             progress: 100,
         };
-        Ok((payload, rendered.engine))
+        Ok(payload)
     };
 
     timeout(state.render_timeout, work)

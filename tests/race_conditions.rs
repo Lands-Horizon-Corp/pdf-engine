@@ -5,13 +5,16 @@ mod common;
 
 use common::*;
 use futures_util::future::join_all;
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 
 /// Storage keys must be unique even when many uploads start in the same instant.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn concurrent_uploads_get_unique_keys() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).permits(16).spawn().await;
+    let app = TestApp::builder().permits(16).spawn().await;
     let n = 150;
 
     let resps = join_all((0..n).map(|_| app.to_s3(form("<p>x</p>")))).await;
@@ -35,20 +38,12 @@ async fn concurrent_uploads_get_unique_keys() {
     );
 }
 
-/// The semaphore caps concurrent Prince processes.
+/// The semaphore caps concurrent renders.
 #[tokio::test(flavor = "multi_thread")]
-async fn prince_concurrency_never_exceeds_permits() {
-    // Each run drops a marker file while alive and records how many markers it saw.
-    let prince = FakePrince::new(
-        r#"touch "$D/running.$$"
-ls "$D" | grep -c '^running\.' >> "$D/seen"
-cat > /dev/null
-sleep 0.3
-rm -f "$D/running.$$"
-cat "$D/fixture.pdf""#,
-    );
+async fn render_concurrency_never_exceeds_permits() {
     let permits = 3;
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Ok(Duration::from_millis(300))))
         .permits(permits)
         .spawn()
         .await;
@@ -56,19 +51,14 @@ cat "$D/fixture.pdf""#,
     let resps = join_all((0..15).map(|_| app.to_bytes(form("<p>x</p>")))).await;
     assert!(resps.iter().all(|r| r.status() == 200));
 
-    let seen = std::fs::read_to_string(prince.dir.path().join("seen")).unwrap();
-    let max = seen
-        .lines()
-        .filter_map(|l| l.trim().parse::<usize>().ok())
-        .max()
-        .unwrap();
+    let max = app.spy.max_active.load(Ordering::SeqCst);
     assert!(
         max <= permits,
-        "saw {max} concurrent Prince processes with {permits} permits"
+        "saw {max} concurrent renders with {permits} permits"
     );
     assert!(
         max >= 2,
-        "requests were not processed in parallel at all (max {max})"
+        "requests were not rendered in parallel at all (max {max})"
     );
     app.assert_permits_restored().await;
 }
@@ -76,8 +66,7 @@ cat "$D/fixture.pdf""#,
 /// Concurrent encrypted renders with different passwords don't swap or share keys.
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_passwords_stay_isolated() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).permits(8).spawn().await;
+    let app = TestApp::builder().permits(8).spawn().await;
 
     let futs = (0..30).map(|i| {
         let app = &app;
@@ -108,8 +97,7 @@ async fn concurrent_passwords_stay_isolated() {
 /// Each response belongs to its own request: filenames and rendered bodies never cross over.
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_responses_are_not_cross_wired() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).permits(8).spawn().await;
+    let app = TestApp::builder().permits(8).spawn().await;
 
     let futs = (0..40).map(|i| {
         let app = &app;
@@ -133,11 +121,12 @@ async fn concurrent_responses_are_not_cross_wired() {
     for (i, cd) in join_all(futs).await {
         assert_eq!(cd, format!("inline; filename=\"f-{i}.pdf\""));
     }
-    let rendered: HashSet<String> = prince
-        .stdins()
+    let rendered: HashSet<String> = app
+        .calls()
         .iter()
-        .map(|s| {
-            s.split("req-")
+        .map(|c| {
+            c.html
+                .split("req-")
                 .nth(1)
                 .unwrap()
                 .split('<')
@@ -152,8 +141,7 @@ async fn concurrent_responses_are_not_cross_wired() {
 /// Good and bad requests interleaved: each gets its own correct answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn mixed_valid_and_invalid_requests() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).permits(2).spawn().await;
+    let app = TestApp::builder().permits(2).spawn().await;
 
     let futs = (0..60).map(|i| {
         let app = &app;
@@ -176,15 +164,14 @@ async fn mixed_valid_and_invalid_requests() {
     for (i, status) in join_all(futs).await {
         assert_eq!(status, [200, 400, 401][i % 3], "request {i}");
     }
-    assert_eq!(prince.invocations(), 20);
+    assert_eq!(app.renders(), 20);
     app.assert_permits_restored().await;
 }
 
 /// A queue of requests behind a single permit drains in full without deadlock.
 #[tokio::test(flavor = "multi_thread")]
 async fn single_permit_queue_drains() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).permits(1).spawn().await;
+    let app = TestApp::builder().permits(1).spawn().await;
 
     let resps = tokio::time::timeout(
         Duration::from_secs(30),
@@ -200,8 +187,8 @@ async fn single_permit_queue_drains() {
 /// Client cancellations in the middle of a burst don't wedge the semaphore.
 #[tokio::test(flavor = "multi_thread")]
 async fn cancellation_storm_releases_permits() {
-    let prince = FakePrince::new(r#"cat > /dev/null; sleep 0.5; cat "$D/fixture.pdf""#);
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Ok(Duration::from_millis(500))))
         .permits(2)
         .timeout(Duration::from_secs(10))
         .spawn()
@@ -230,8 +217,7 @@ async fn cancellation_storm_releases_permits() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn real_concurrent_documents_keep_their_own_content() {
-    require_prince!();
-    let app = TestApp::builder("prince").permits(4).spawn().await;
+    let app = TestApp::builder().permits(4).spawn().await;
 
     let futs = (0..16).map(|i| {
         let app = &app;

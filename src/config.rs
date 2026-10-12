@@ -1,24 +1,17 @@
-use crate::{
-    fulgur_engine::{FulgurEngine, InProcessRenderer},
-    models::EnginePref,
-};
+use crate::fulgur_engine::{FulgurEngine, InProcessRenderer};
 use opendal::{Operator, services::S3};
-use std::{env, path::Path, sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Operator,
     pub storage_bucket: Arc<str>,
-    /// Caps concurrent renders across both engines (one per core by default).
+    /// Caps concurrent renders (one per core by default).
     pub render_permits: Arc<Semaphore>,
     pub expected_auth: Arc<str>,
-    /// Prince executable (`PRINCE_BIN`, default `prince`); `None` when it isn't usable.
-    pub prince_bin: Option<Arc<str>>,
-    /// In-process renderer (Fulgur).
-    pub fulgur: Arc<dyn InProcessRenderer>,
-    /// Engine used when a request doesn't ask for one (`PDF_ENGINE`, default `auto`).
-    pub default_engine: EnginePref,
+    /// HTML → PDF renderer (Fulgur, in-process).
+    pub renderer: Arc<dyn InProcessRenderer>,
     pub render_timeout: Duration,
 }
 
@@ -44,25 +37,17 @@ impl AppState {
             builder = builder.enable_virtual_host_style();
         }
         let storage = Operator::new(builder).expect("Storage init failed");
-        let prince_bin = env::var("PRINCE_BIN").unwrap_or_else(|_| "prince".to_string());
         let render_timeout = env::var("RENDER_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
             .map(Duration::from_secs)
             .unwrap_or(Duration::from_secs(45));
-        let font_dir = env::var("FULGUR_FONT_DIR")
-            .unwrap_or_else(|_| "/usr/share/fonts/truetype/noto".to_string());
-        let default_engine = env::var("PDF_ENGINE")
-            .map(|v| EnginePref::parse(&v).expect("PDF_ENGINE must be auto, fulgur or prince"))
-            .unwrap_or(EnginePref::Auto);
         Self {
             storage,
             storage_bucket: storage_bucket.into(),
             render_permits,
             expected_auth: format!("Bearer {}", api_token).into(),
-            prince_bin: Some(prince_bin.into()),
-            fulgur: Arc::new(FulgurEngine::from_font_dir(Path::new(&font_dir))),
-            default_engine,
+            renderer: Arc::new(FulgurEngine::default()),
             render_timeout,
         }
     }

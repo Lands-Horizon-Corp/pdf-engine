@@ -14,8 +14,7 @@ use std::time::Duration;
 
 #[tokio::test]
 async fn smoke_in_process() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     assert_eq!(app.to_bytes(form("<p>x</p>")).await.status(), 200);
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 200);
@@ -28,11 +27,10 @@ async fn smoke_in_process() {
     assert_eq!(anon.status(), 401);
 }
 
-/// Mirrors the startup warm-up: Prince is installed and can render mixed scripts.
+/// Mirrors the startup warm-up: the renderer handles mixed scripts.
 #[tokio::test]
-async fn smoke_real_prince_warmup_content() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn smoke_warmup_content() {
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(form("<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>"))

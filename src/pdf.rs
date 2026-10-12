@@ -1,23 +1,16 @@
-//! Template rendering and engine dispatch.
+//! Template rendering and PDF generation.
 //!
 //! `render` produces the final PDF as a single `Bytes` buffer that is handed to the HTTP
-//! response or the S3 upload without further copies. The only re-serialization happens when
-//! it's required: stripping Prince's blank lead page, or encrypting.
+//! response or the S3 upload without further copies. It is only re-serialized to encrypt.
 
-use crate::{
-    config::AppState,
-    error::AppError,
-    fulgur_engine::PageMm,
-    models::{EngineKind, EnginePref, PdfRequest},
-    prince, router,
-};
+use crate::{config::AppState, error::AppError, fulgur_engine::PageMm, models::PdfRequest};
 use bytes::Bytes;
 use lopdf::{
     Document, Object,
     encryption::{EncryptionState, EncryptionVersion, Permissions},
 };
 use minijinja::Environment;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 static TEMPLATE_ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     let mut env = Environment::new();
@@ -38,92 +31,25 @@ pub async fn render_template(
     .await?
 }
 
-pub struct Rendered {
-    pub bytes: Bytes,
-    pub engine: EngineKind,
-}
-
 /// Render a request to its final PDF bytes.
-pub async fn render(req: PdfRequest, state: &AppState) -> Result<Rendered, AppError> {
-    let html = Arc::new(render_template(req.template, req.data).await?);
-    let page = PageMm::parse(&req.width, &req.height, &req.orientation);
-    let pref = match req.engine {
-        EnginePref::Auto => state.default_engine,
-        explicit => explicit,
-    };
-
-    let engine = match (pref, &state.prince_bin) {
-        (EnginePref::Prince, None) => {
-            return Err(AppError::InvalidField(
-                "engine: Prince is not available".into(),
-            ));
-        }
-        (EnginePref::Prince, Some(_)) => EngineKind::Prince,
-        (EnginePref::Fulgur, _) | (EnginePref::Auto, None) => {
-            if page.is_none() {
-                return Err(AppError::InvalidField(
-                    "width/height/orientation: use lengths like 8.5in, 210mm, 21cm, 612pt".into(),
-                ));
-            }
-            EngineKind::Fulgur
-        }
-        (EnginePref::Auto, Some(_)) => {
-            let reason = match page {
-                None => Some("page size"),
-                Some(_) => router::prince_reason(&html),
-            };
-            match reason {
-                Some(r) => {
-                    tracing::debug!(reason = r, "routing to Prince");
-                    EngineKind::Prince
-                }
-                None => EngineKind::Fulgur,
-            }
-        }
-    };
-
-    if engine == EngineKind::Fulgur {
-        let page = page.expect("page validated above");
-        let may_fall_back = pref == EnginePref::Auto && state.prince_bin.is_some();
-        match render_fulgur(html.clone(), page, state).await {
-            Ok(pdf) if may_fall_back && needs_repeated_headers(&html, &pdf) => {
-                tracing::debug!("multi-page table with <thead>; re-rendering with Prince");
-            }
-            Ok(pdf) => {
-                let bytes = finalize(pdf, false, req.password).await?;
-                return Ok(Rendered { bytes, engine });
-            }
-            Err(e) if may_fall_back => {
-                tracing::warn!("Fulgur failed, falling back to Prince: {e}");
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    let prince_bin = state
-        .prince_bin
-        .as_deref()
-        .expect("Prince availability checked above");
-    let raw = {
-        let _permit = state
-            .render_permits
-            .acquire()
-            .await
-            .expect("semaphore closed");
-        prince::render(&html, &req.width, &req.height, &req.orientation, prince_bin).await?
-    };
-    let bytes = finalize(raw, true, req.password).await?;
-    Ok(Rendered {
-        bytes,
-        engine: EngineKind::Prince,
-    })
+pub async fn render(req: PdfRequest, state: &AppState) -> Result<Bytes, AppError> {
+    let page = PageMm::parse(&req.width, &req.height, &req.orientation).ok_or_else(|| {
+        AppError::InvalidField(
+            "width/height/orientation: use lengths like 8.5in, 210mm, 21cm, 612pt and \
+             portrait or landscape"
+                .into(),
+        )
+    })?;
+    let html = render_template(req.template, req.data).await?;
+    let pdf = render_html(html, page, state).await?;
+    finalize(pdf, req.password).await
 }
 
-/// Run Fulgur on a blocking thread. The permit moves into that thread, so a render the
+/// Render HTML on a blocking thread. The permit moves into that thread, so a render the
 /// request has already timed out on keeps counting against concurrency until it really ends.
-/// A panic inside Fulgur is contained to this request (requires `panic = "unwind"`).
-async fn render_fulgur(
-    html: Arc<String>,
+/// A panic inside the renderer is contained to this request (requires `panic = "unwind"`).
+pub async fn render_html(
+    html: String,
     page: PageMm,
     state: &AppState,
 ) -> Result<Vec<u8>, AppError> {
@@ -133,7 +59,7 @@ async fn render_fulgur(
         .acquire_owned()
         .await
         .expect("semaphore closed");
-    let renderer = state.fulgur.clone();
+    let renderer = state.renderer.clone();
     let joined = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let title = extract_title(&html);
@@ -142,58 +68,48 @@ async fn render_fulgur(
     .await;
     match joined {
         Ok(Ok(pdf)) => Ok(pdf),
-        Ok(Err(e)) => Err(AppError::Fulgur(e)),
-        Err(e) if e.is_panic() => Err(AppError::Fulgur("renderer panicked".into())),
+        Ok(Err(e)) => Err(AppError::Render(e)),
+        Err(e) if e.is_panic() => Err(AppError::Render("renderer panicked".into())),
         Err(e) => Err(e.into()),
     }
 }
 
-/// Fulgur doesn't repeat `<thead>` on continuation pages; Prince does.
-fn needs_repeated_headers(html: &str, pdf: &[u8]) -> bool {
-    html.to_ascii_lowercase().contains("<thead")
-        && Document::load_mem(pdf)
-            .map(|d| d.get_pages().len() > 1)
-            .unwrap_or(false)
-}
-
+/// `<title>` text, found without allocating a lowercased copy of the document.
 fn extract_title(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let start = lower.find("<title")?;
-    let open_end = start + lower[start..].find('>')? + 1;
-    let end = open_end + lower[open_end..].find("</title")?;
+    let start = find_ascii_ci(html, "<title", 0)?;
+    let open_end = start + html[start..].find('>')? + 1;
+    let end = find_ascii_ci(html, "</title", open_end)?;
     let t = html[open_end..end].trim();
     (!t.is_empty()).then(|| t.to_string())
 }
 
-/// Strip the leading blank page and/or encrypt. Without either, the input is returned as is.
-pub async fn finalize(
-    pdf: Vec<u8>,
-    strip_first_page: bool,
-    password: Option<String>,
-) -> Result<Bytes, AppError> {
-    if !strip_first_page && password.is_none() {
+/// Byte offset of the ASCII `needle` in `hay[from..]`, ignoring ASCII case.
+fn find_ascii_ci(hay: &str, needle: &str, from: usize) -> Option<usize> {
+    hay.as_bytes()[from..]
+        .windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle.as_bytes()))
+        .map(|i| i + from)
+}
+
+/// Encrypt if a password was given; otherwise hand the buffer through untouched.
+pub async fn finalize(pdf: Vec<u8>, password: Option<String>) -> Result<Bytes, AppError> {
+    let Some(password) = password else {
         return Ok(Bytes::from(pdf));
-    }
+    };
     tokio::task::spawn_blocking(move || {
         let err = |e: lopdf::Error| AppError::PdfProcessing(e.to_string());
         let mut doc = Document::load_mem(&pdf).map_err(err)?;
         drop(pdf);
-        if strip_first_page && doc.get_pages().len() > 1 {
-            doc.delete_pages(&[1]);
-            doc.prune_objects();
-        }
-        if let Some(p) = password {
-            ensure_file_id(&mut doc);
-            let version = EncryptionVersion::V2 {
-                document: &doc,
-                owner_password: &p,
-                user_password: &p,
-                permissions: Permissions::all(),
-                key_length: 128,
-            };
-            let state: EncryptionState = version.try_into().map_err(err)?;
-            doc.encrypt(&state).map_err(err)?;
-        }
+        ensure_file_id(&mut doc);
+        let version = EncryptionVersion::V2 {
+            document: &doc,
+            owner_password: &password,
+            user_password: &password,
+            permissions: Permissions::all(),
+            key_length: 128,
+        };
+        let state: EncryptionState = version.try_into().map_err(err)?;
+        doc.encrypt(&state).map_err(err)?;
         let mut out = Vec::with_capacity(1024 * 1024);
         doc.save_to(&mut out)
             .map_err(|e| AppError::PdfProcessing(e.to_string()))?;
@@ -211,30 +127,13 @@ fn ensure_file_id(doc: &mut Document) {
     }
 }
 
-pub async fn warm_up(state: &mut AppState) -> Result<(), AppError> {
-    tracing::info!("Warming up engines...");
-    let content = "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>";
+pub async fn warm_up(state: &AppState) -> Result<(), AppError> {
+    tracing::info!("Warming up renderer...");
+    let content = "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>".to_string();
     let letter = PageMm::parse("8.5in", "11in", "portrait").unwrap();
-
-    let fulgur_pdf = render_fulgur(Arc::new(content.into()), letter, state).await?;
-    tracing::info!("Fulgur ready");
-
-    let mut sample = fulgur_pdf;
-    if let Some(bin) = state.prince_bin.clone() {
-        match prince::render(content, "8.5in", "11in", "portrait", &bin).await {
-            Ok(raw) => {
-                sample = finalize(raw, true, None).await?.to_vec();
-                tracing::info!("Prince ready");
-            }
-            Err(e) => {
-                tracing::warn!("Prince unavailable ({e}); every document will render with Fulgur");
-                state.prince_bin = None;
-            }
-        }
-    }
-
-    tokio::fs::write("sample.pdf", &sample).await?;
-    tracing::info!("Engines warmed up. 'sample.pdf' has been saved to the root directory.");
+    let pdf = render_html(content, letter, state).await?;
+    tokio::fs::write("sample.pdf", &pdf).await?;
+    tracing::info!("Renderer warmed up. 'sample.pdf' has been saved to the root directory.");
     Ok(())
 }
 
@@ -265,10 +164,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalize_is_zero_copy_without_work() {
+    async fn finalize_is_zero_copy_without_password() {
         let input = b"%PDF-not-really".to_vec();
         let ptr = input.as_ptr();
-        let out = finalize(input, false, None).await.unwrap();
+        let out = finalize(input, None).await.unwrap();
         assert_eq!(
             out.as_ptr(),
             ptr,

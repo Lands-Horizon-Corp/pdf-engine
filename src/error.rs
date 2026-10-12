@@ -20,10 +20,8 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("Storage error: {0}")]
     Storage(#[from] opendal::Error),
-    #[error("Prince failed: {0}")]
-    PrinceStatus(String),
-    #[error("Fulgur failed: {0}")]
-    Fulgur(String),
+    #[error("Render failed: {0}")]
+    Render(String),
     #[error("PDF post-processing failed: {0}")]
     PdfProcessing(String),
     #[error("Operation timed out after {0:?}")]

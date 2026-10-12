@@ -7,6 +7,7 @@ mod common;
 use common::*;
 use std::{
     collections::HashSet,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -21,8 +22,7 @@ async fn assert_generic_500(resp: reqwest::Response) {
 
 #[tokio::test]
 async fn s3_returns_500() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::Status(500))
         .spawn()
         .await;
@@ -33,8 +33,7 @@ async fn s3_returns_500() {
 
 #[tokio::test]
 async fn s3_access_denied() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::Status(403))
         .spawn()
         .await;
@@ -44,8 +43,7 @@ async fn s3_access_denied() {
 
 #[tokio::test]
 async fn s3_unreachable_fails_fast() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_endpoint(format!("http://{}", closed_port()))
         .spawn()
         .await;
@@ -61,8 +59,7 @@ async fn s3_unreachable_fails_fast() {
 
 #[tokio::test]
 async fn s3_drops_connections() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_endpoint(format!("http://{}", start_connection_dropper()))
         .spawn()
         .await;
@@ -73,8 +70,7 @@ async fn s3_drops_connections() {
 
 #[tokio::test]
 async fn s3_hangs_hits_timeout() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::Hang)
         .timeout(Duration::from_secs(2))
         .spawn()
@@ -90,8 +86,7 @@ async fn s3_hangs_hits_timeout() {
 
 #[tokio::test]
 async fn s3_outage_does_not_affect_to_bytes() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::Status(503))
         .spawn()
         .await;
@@ -102,8 +97,7 @@ async fn s3_outage_does_not_affect_to_bytes() {
 
 #[tokio::test]
 async fn s3_recovers_after_outage() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::Status(503))
         .spawn()
         .await;
@@ -114,9 +108,11 @@ async fn s3_recovers_after_outage() {
 }
 
 #[tokio::test]
-async fn prince_failure_never_touches_s3() {
-    let prince = FakePrince::new("cat > /dev/null; exit 1");
-    let app = TestApp::builder(prince.path()).spawn().await;
+async fn render_failure_never_touches_s3() {
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::Fails))
+        .spawn()
+        .await;
 
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 500);
     assert_eq!(app.s3.request_count(), 0);
@@ -126,8 +122,7 @@ async fn prince_failure_never_touches_s3() {
 /// stored object must belong to exactly one successful response.
 #[tokio::test(flavor = "multi_thread")]
 async fn flaky_s3_never_reports_phantom_success() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .s3_mode(S3Mode::FailEvery(2))
         .permits(8)
         .spawn()
@@ -161,15 +156,11 @@ async fn flaky_s3_never_reports_phantom_success() {
     app.assert_permits_restored().await;
 }
 
-/// Prince and S3 both flaky at the same time.
+/// Renderer and S3 both flaky at the same time.
 #[tokio::test(flavor = "multi_thread")]
-async fn prince_and_s3_both_flaky() {
-    let prince = FakePrince::new(
-        r#"input=$(cat)
-case "$input" in *FAIL*) exit 1;; esac
-cat "$D/fixture.pdf""#,
-    );
-    let app = TestApp::builder(prince.path())
+async fn renderer_and_s3_both_flaky() {
+    let app = TestApp::builder()
+        .renderer(Arc::new(FakeRenderer::FailsOn("FAIL")))
         .s3_mode(S3Mode::FailEvery(3))
         .permits(4)
         .spawn()
@@ -186,7 +177,7 @@ cat "$D/fixture.pdf""#,
     });
     for (i, status) in futures_util::future::join_all(futs).await {
         if i % 5 == 0 {
-            assert_eq!(status, 500, "prince failure {i}");
+            assert_eq!(status, 500, "render failure {i}");
         } else {
             assert!(status == 200 || status == 500, "request {i} -> {status}");
         }
@@ -197,9 +188,8 @@ cat "$D/fixture.pdf""#,
 }
 
 #[tokio::test]
-async fn real_prince_with_flaky_s3() {
-    require_prince!();
-    let app = TestApp::builder("prince")
+async fn real_render_with_flaky_s3() {
+    let app = TestApp::builder()
         .s3_mode(S3Mode::FailEvery(2))
         .spawn()
         .await;

@@ -1,5 +1,5 @@
 //! Poison pills: hostile or pathological inputs. A single bad request must never crash the
-//! process, hang a worker forever, leak a Prince permit, or escape the sandbox.
+//! process, hang a worker forever, leak a render permit, or escape the sandbox.
 //!
 //! Note: release builds use `panic = 'abort'`, so any handler panic there kills the whole
 //! server. A panic here shows up as a transport error on the client.
@@ -12,8 +12,7 @@ use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn crlf_in_filename_does_not_crash_the_server() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for name in [
         "evil\r\nSet-Cookie: pwned=1.pdf",
@@ -45,8 +44,7 @@ async fn crlf_in_filename_does_not_crash_the_server() {
 
 #[tokio::test]
 async fn quotes_in_filename_cannot_break_out_of_content_disposition() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(form("<p>x</p>").text("filename", r#"a"; filename*=UTF-8''evil.exe; x=".pdf"#))
@@ -59,8 +57,7 @@ async fn quotes_in_filename_cannot_break_out_of_content_disposition() {
 
 #[tokio::test]
 async fn unicode_filename_is_accepted() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(form("<p>x</p>").text("filename", "报告-é.pdf"))
@@ -71,21 +68,19 @@ async fn unicode_filename_is_accepted() {
 
 #[tokio::test]
 async fn template_recursion_bomb_is_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let resp = app
         .to_bytes(form("{% macro f() %}{{ f() }}{% endmacro %}{{ f() }}"))
         .await;
 
     assert_eq!(resp.status(), 400);
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 #[tokio::test]
 async fn template_runtime_errors_are_400() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for t in [
         "{{ 1 / 0 }}",
@@ -95,7 +90,7 @@ async fn template_runtime_errors_are_400() {
         let resp = app.to_bytes(form(t)).await;
         assert_eq!(resp.status(), 400, "{t}");
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
 }
 
 /// A template that would spin for hours must be cut off by the render timeout.
@@ -104,8 +99,7 @@ async fn template_runtime_errors_are_400() {
 /// a CPU until it finishes. Enabling minijinja's `fuel` feature would stop it for real.
 #[tokio::test]
 async fn cpu_bomb_template_times_out() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path())
+    let app = TestApp::builder()
         .timeout(Duration::from_secs(2))
         .spawn()
         .await;
@@ -119,14 +113,13 @@ async fn cpu_bomb_template_times_out() {
 
     assert_eq!(resp.status(), 408);
     assert!(start.elapsed() < Duration::from_secs(6));
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
     assert_healthy(&app).await;
 }
 
 #[tokio::test]
 async fn oversized_body_is_rejected_without_5xx() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let huge = "x".repeat(26 * 1024 * 1024);
     let resp = app
@@ -141,14 +134,13 @@ async fn oversized_body_is_rejected_without_5xx() {
     if let Ok(resp) = resp {
         assert!(resp.status().is_client_error(), "got {}", resp.status());
     }
-    assert_eq!(prince.invocations(), 0);
+    assert_eq!(app.renders(), 0);
     assert_healthy(&app).await;
 }
 
 #[tokio::test]
 async fn deeply_nested_json_data_does_not_crash() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let depth = 100_000;
     let data = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
@@ -162,8 +154,7 @@ async fn deeply_nested_json_data_does_not_crash() {
 
 #[tokio::test]
 async fn invalid_utf8_template_does_not_crash() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     let part = multipart::Part::bytes(vec![0x3C, 0x70, 0x3E, 0xFF, 0xFE, 0xC3, 0x28, 0x80]);
     let resp = app
@@ -175,27 +166,8 @@ async fn invalid_utf8_template_does_not_crash() {
 }
 
 #[tokio::test]
-async fn page_args_are_never_shell_interpreted() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
-    let marker = prince.dir.path().join("pwned");
-
-    let inject = format!("$(touch {m}); `touch {m}`; touch {m}", m = marker.display());
-    app.to_bytes(
-        form("<p>x</p>")
-            .text("width", inject.clone())
-            .text("height", inject.clone())
-            .text("orientation", inject),
-    )
-    .await;
-
-    assert!(!marker.exists(), "page arguments reached a shell");
-}
-
-#[tokio::test]
 async fn unicode_password_does_not_5xx() {
-    let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).spawn().await;
+    let app = TestApp::builder().spawn().await;
 
     for pw in ["密码🔑", &"p".repeat(10_000)] {
         let resp = app
@@ -210,12 +182,9 @@ async fn unicode_password_does_not_5xx() {
     }
 }
 
-// ---- real Prince ----
-
 #[tokio::test]
-async fn real_css_injection_via_page_args_does_not_5xx() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn hostile_page_args_are_rejected_cleanly() {
+    let app = TestApp::builder().spawn().await;
 
     for w in [
         "1in; } html { display:none } @page { size: 1in",
@@ -224,19 +193,14 @@ async fn real_css_injection_via_page_args_does_not_5xx() {
         "9999999in",
     ] {
         let resp = app.to_bytes(form("<p>x</p>").text("width", w)).await;
-        assert!(
-            !resp.status().is_server_error(),
-            "width {w:?} -> {}",
-            resp.status()
-        );
+        assert_eq!(resp.status(), 400, "width {w:?}");
     }
     assert_healthy(&app).await;
 }
 
 #[tokio::test]
-async fn real_no_outbound_network_requests() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn no_outbound_network_requests() {
+    let app = TestApp::builder().spawn().await;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let a = listener.local_addr().unwrap();
@@ -250,14 +214,13 @@ async fn real_no_outbound_network_requests() {
     assert_eq!(resp.status(), 200);
     assert!(
         listener.accept().is_err(),
-        "Prince made an outbound connection (SSRF)"
+        "the renderer made an outbound connection (SSRF)"
     );
 }
 
 #[tokio::test]
-async fn real_local_files_cannot_be_embedded() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn local_files_cannot_be_embedded() {
+    let app = TestApp::builder().spawn().await;
     let dir = tempfile::tempdir().unwrap();
     let png = write_file(dir.path(), "canary.png", TINY_PNG);
 
@@ -274,9 +237,8 @@ async fn real_local_files_cannot_be_embedded() {
 }
 
 #[tokio::test]
-async fn real_body_tag_edge_cases_render() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn body_tag_edge_cases_render() {
+    let app = TestApp::builder().spawn().await;
 
     for t in [
         "<body",
@@ -292,9 +254,8 @@ async fn real_body_tag_edge_cases_render() {
 }
 
 #[tokio::test]
-async fn real_nul_and_control_bytes_in_template() {
-    require_prince!();
-    let app = TestApp::builder("prince").spawn().await;
+async fn nul_and_control_bytes_in_template() {
+    let app = TestApp::builder().spawn().await;
 
     let resp = app.to_bytes(form("<p>a\0b\x01c\x1bd</p>")).await;
 

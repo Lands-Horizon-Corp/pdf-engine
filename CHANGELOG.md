@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is a git tag `vX.Y.Z` and the Docker
 image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
+## [1.1.1] - 2026-10-13
+
+### Fixed
+
+- Docker build works on Railway (cache mounts carry the required service-scoped ids).
+
+### Security
+
+- Runtime image moved to Debian 13 (`trixie-slim`) and installs pending security updates,
+  clearing most Docker Scout findings from the bookworm base.
+
 ## [1.1.0] - 2026-10-12
 
 ### Added

@@ -14,7 +14,7 @@ A standalone microservice that converts HTML/CSS templates to PDFs. Built with *
 
 ## 🛠️ Installation & Quickstart
 
-The Docker image contains the server, fontconfig and a curated Noto font set.
+The Docker image ([zalven88/pdf-engine](https://hub.docker.com/r/zalven88/pdf-engine), linux/amd64 and linux/arm64) contains the server, fontconfig and a curated Noto font set. Pin a version in production (`zalven88/pdf-engine:1.0.0`); `latest` follows the newest release.
 
 ### 1. Using Docker CLI
 
@@ -23,8 +23,14 @@ docker run -d \
   --name pdf-engine \
   -p 6767:6767 \
   -e API_BEARER_TOKEN="your_secret_token_here" \
-  zalven88/pdf-engine:latest
+  -e STORAGE_URL="http://minio:9000" \
+  -e STORAGE_BUCKET="my-bucket" \
+  -e STORAGE_ACCESS_KEY="..." \
+  -e STORAGE_SECRET_KEY="..." \
+  zalven88/pdf-engine:1.0.0
 ```
+
+The `STORAGE_*` variables are required at startup even if you only use `/api/to-bytes`.
 
 ### 2. Using Docker Compose (Recommended)
 
@@ -33,7 +39,7 @@ Inside a Docker network, use the service name (e.g., `minio`) for `STORAGE_URL`.
 ```yaml
 services:
   pdf-engine:
-    image: zalven88/pdf-engine:latest
+    image: zalven88/pdf-engine:1.0.0
     container_name: pdf-engine
     restart: always
     ports:
@@ -296,6 +302,19 @@ If your logs show `Connection Refused` when trying to upload to S3/MinIO:
 ### Text missing or in the wrong font
 
 The renderer only sees fonts fontconfig exposes. Check what a family resolves to with `FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf fc-match "<family>"`, and add the font as described in [Fonts](#fonts).
+
+---
+
+## 🏷️ Versioning & Releases
+
+Releases follow [Semantic Versioning](https://semver.org/) and are listed in [CHANGELOG.md](CHANGELOG.md). Each release is a git tag `vX.Y.Z` and a multi-arch image tagged `X.Y.Z`, `X.Y`, `X` and `latest`.
+
+To cut a release:
+
+1. Bump `version` in `Cargo.toml` and add a section to `CHANGELOG.md`.
+2. Commit, then run `make release`. This tags `vX.Y.Z`, pushes the tag, cross-compiles the image for linux/amd64 and linux/arm64, and pushes it to Docker Hub (`docker login` first).
+
+`make release-image` pushes the image without tagging git; `make docker-image` builds for the local machine only.
 
 ---
 

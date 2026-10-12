@@ -21,6 +21,11 @@ ifneq ($(wildcard /usr/share/fonts/pdf-engine),)
 export FONTCONFIG_FILE ?= $(CURDIR)/fonts/fonts.conf
 endif
 
+# Release version comes from Cargo.toml; images go to $(IMAGE) for $(PLATFORMS).
+VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+IMAGE ?= zalven88/pdf-engine
+PLATFORMS ?= linux/amd64,linux/arm64
+
 DEV_IMAGE := pdf-engine-dev
 DOCKER_RUN := docker run --rm $(shell [ -t 1 ] && echo -t) \
 	-v "$(CURDIR)":/app -w /app \
@@ -31,7 +36,8 @@ DOCKER_RUN := docker run --rm $(shell [ -t 1 ] && echo -t) \
 
 .DEFAULT_GOAL := help
 .PHONY: help test test-unit fmt fmt-check check bench stress test-live \
-        docker-dev-image docker-test docker-bench docker-stress docker-image
+        docker-dev-image docker-test docker-bench docker-stress docker-image \
+        version release-image release
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -78,5 +84,25 @@ docker-bench: docker-dev-image ## `make bench` inside the dev image
 docker-stress: docker-dev-image ## `make stress` inside the dev image
 	$(DOCKER_RUN) make stress
 
-docker-image: ## Build the production image
-	docker build -t pdf-engine .
+docker-image: ## Build the production image for this machine (tagged pdf-engine:$(VERSION))
+	docker build --build-arg VERSION=$(VERSION) -t pdf-engine:$(VERSION) .
+
+# ---- release --------------------------------------------------------------------------------
+
+version: ## Print the version from Cargo.toml
+	@echo $(VERSION)
+
+release-image: ## Build and push the multi-arch image: $(IMAGE):<version>, :<major.minor>, :<major>, :latest
+	docker buildx build --platform $(PLATFORMS) --build-arg VERSION=$(VERSION) \
+		-t $(IMAGE):$(VERSION) \
+		-t $(IMAGE):$(word 1,$(subst ., ,$(VERSION))).$(word 2,$(subst ., ,$(VERSION))) \
+		-t $(IMAGE):$(word 1,$(subst ., ,$(VERSION))) \
+		-t $(IMAGE):latest \
+		--push .
+
+release: ## Tag v<version> in git, push the tag, and push the image (bump Cargo.toml + CHANGELOG.md first)
+	@git diff --quiet && git diff --cached --quiet || { echo "commit your changes first" >&2; exit 1; }
+	@! git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null || { echo "tag v$(VERSION) already exists" >&2; exit 1; }
+	git tag -a v$(VERSION) -m "pdf-engine v$(VERSION)"
+	git push origin v$(VERSION)
+	$(MAKE) release-image

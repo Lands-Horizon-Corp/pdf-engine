@@ -35,7 +35,11 @@ async fn main() {
     let port = std::env::var("API_PORT").unwrap_or_else(|_| "6767".to_string());
     let addr_str = format!("0.0.0.0:{}", port);
     let addr: SocketAddr = addr_str.parse().expect("Invalid address");
-    tracing::info!("Listening on http://{}", addr);
+    tracing::info!(
+        "pdf-engine v{} listening on http://{}",
+        env!("CARGO_PKG_VERSION"),
+        addr
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

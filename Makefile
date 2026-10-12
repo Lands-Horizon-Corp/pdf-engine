@@ -93,13 +93,12 @@ docker-image: ## Build the production image for this machine (tagged pdf-engine:
 version: ## Print the version from Cargo.toml
 	@echo $(VERSION)
 
-release-image: ## Build and push the multi-arch image: $(IMAGE):<version>, :<major.minor>, :<major>, :latest
-	docker buildx build --platform $(PLATFORMS) --build-arg VERSION=$(VERSION) \
-		-t $(IMAGE):$(VERSION) \
-		-t $(IMAGE):$(word 1,$(subst ., ,$(VERSION))).$(word 2,$(subst ., ,$(VERSION))) \
-		-t $(IMAGE):$(word 1,$(subst ., ,$(VERSION))) \
-		-t $(IMAGE):latest \
-		--push .
+release-image: ## Push the multi-arch image: $(IMAGE):<version>, :<major.minor>, :<major>, :latest
+	scripts/release-image.sh $(IMAGE) $(VERSION) $(PLATFORMS) \
+		$(VERSION) \
+		$(word 1,$(subst ., ,$(VERSION))).$(word 2,$(subst ., ,$(VERSION))) \
+		$(word 1,$(subst ., ,$(VERSION))) \
+		latest
 
 release: ## Tag v<version> in git, push the tag, and push the image (bump Cargo.toml + CHANGELOG.md first)
 	@git diff --quiet && git diff --cached --quiet || { echo "commit your changes first" >&2; exit 1; }

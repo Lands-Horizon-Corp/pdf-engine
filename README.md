@@ -111,7 +111,7 @@ No Rust locally? Use the `docker-` variants (`make docker-test`, ...).
 
 Bump `version` in `Cargo.toml`, add a [CHANGELOG.md](CHANGELOG.md) entry, commit, then
 `make release`. It tags `vX.Y.Z` and pushes `zalven88/pdf-engine:X.Y.Z`, `X.Y`, `X` and
-`latest` for amd64 and arm64.
+`latest` for amd64 and arm64 (built one after the other; also `X.Y.Z-amd64` / `-arm64`).
 
 ## License
 

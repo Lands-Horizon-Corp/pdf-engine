@@ -13,13 +13,19 @@ use std::{
 async fn assert_generic_500(resp: reqwest::Response) {
     assert_eq!(resp.status(), 500);
     let json: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(json["error"], "Internal server error", "internals must not leak");
+    assert_eq!(
+        json["error"], "Internal server error",
+        "internals must not leak"
+    );
 }
 
 #[tokio::test]
 async fn s3_returns_500() {
     let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).s3_mode(S3Mode::Status(500)).spawn().await;
+    let app = TestApp::builder(prince.path())
+        .s3_mode(S3Mode::Status(500))
+        .spawn()
+        .await;
 
     assert_generic_500(app.to_s3(form("<p>x</p>")).await).await;
     app.assert_permits_restored().await;
@@ -28,7 +34,10 @@ async fn s3_returns_500() {
 #[tokio::test]
 async fn s3_access_denied() {
     let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).s3_mode(S3Mode::Status(403)).spawn().await;
+    let app = TestApp::builder(prince.path())
+        .s3_mode(S3Mode::Status(403))
+        .spawn()
+        .await;
 
     assert_generic_500(app.to_s3(form("<p>x</p>")).await).await;
 }
@@ -43,7 +52,11 @@ async fn s3_unreachable_fails_fast() {
 
     let start = Instant::now();
     assert_generic_500(app.to_s3(form("<p>x</p>")).await).await;
-    assert!(start.elapsed() < Duration::from_secs(5), "took {:?}", start.elapsed());
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "took {:?}",
+        start.elapsed()
+    );
 }
 
 #[tokio::test]
@@ -78,7 +91,10 @@ async fn s3_hangs_hits_timeout() {
 #[tokio::test]
 async fn s3_outage_does_not_affect_to_bytes() {
     let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).s3_mode(S3Mode::Status(503)).spawn().await;
+    let app = TestApp::builder(prince.path())
+        .s3_mode(S3Mode::Status(503))
+        .spawn()
+        .await;
 
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 500);
     assert_eq!(app.to_bytes(form("<p>x</p>")).await.status(), 200);
@@ -87,7 +103,10 @@ async fn s3_outage_does_not_affect_to_bytes() {
 #[tokio::test]
 async fn s3_recovers_after_outage() {
     let prince = FakePrince::ok();
-    let app = TestApp::builder(prince.path()).s3_mode(S3Mode::Status(503)).spawn().await;
+    let app = TestApp::builder(prince.path())
+        .s3_mode(S3Mode::Status(503))
+        .spawn()
+        .await;
 
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 500);
     app.s3.set_mode(S3Mode::Ok);
@@ -130,7 +149,11 @@ async fn flaky_s3_never_reports_phantom_success() {
         .s3
         .puts()
         .into_iter()
-        .map(|p| p.path.trim_start_matches(&format!("/{BUCKET}/")).to_string())
+        .map(|p| {
+            p.path
+                .trim_start_matches(&format!("/{BUCKET}/"))
+                .to_string()
+        })
         .collect();
 
     assert!(!ok_keys.is_empty(), "nothing succeeded");
@@ -153,7 +176,11 @@ cat "$D/fixture.pdf""#,
         .await;
 
     let futs = (0..45).map(|i| {
-        let t = if i % 5 == 0 { "<p>FAIL</p>" } else { "<p>ok</p>" };
+        let t = if i % 5 == 0 {
+            "<p>FAIL</p>"
+        } else {
+            "<p>ok</p>"
+        };
         let app = &app;
         async move { (i, app.to_s3(form(t)).await.status().as_u16()) }
     });
@@ -172,7 +199,10 @@ cat "$D/fixture.pdf""#,
 #[tokio::test]
 async fn real_prince_with_flaky_s3() {
     require_prince!();
-    let app = TestApp::builder("prince").s3_mode(S3Mode::FailEvery(2)).spawn().await;
+    let app = TestApp::builder("prince")
+        .s3_mode(S3Mode::FailEvery(2))
+        .spawn()
+        .await;
 
     let a = app.to_s3(form("<h1>a</h1>")).await.status();
     let b = app.to_s3(form("<h1>b</h1>")).await.status();

@@ -1,14 +1,27 @@
 use pdf_engine::{app, config::AppState, pdf};
 use std::net::SocketAddr;
 
+/// Blitz (inside Fulgur) `println!`s every HTML parse warning. Logs go to stderr, and stdout
+/// is pointed at /dev/null once, at startup, before any rendering happens.
+fn silence_stdout() {
+    use std::os::fd::AsRawFd;
+    if let Ok(devnull) = std::fs::OpenOptions::new().write(true).open("/dev/null") {
+        // SAFETY: dup2 on valid descriptors; nothing else is using stdout yet.
+        unsafe { libc::dup2(devnull.as_raw_fd(), libc::STDOUT_FILENO) };
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
+    silence_stdout();
     dotenvy::dotenv().ok();
 
-    let state = AppState::new();
+    let mut state = AppState::new();
 
-    if let Err(e) = pdf::warm_up_engine(&state.prince_bin, state.prince_concurrency.clone()).await {
+    if let Err(e) = pdf::warm_up(&mut state).await {
         tracing::error!("Warmup failed: {}", e);
         std::process::exit(1);
     }

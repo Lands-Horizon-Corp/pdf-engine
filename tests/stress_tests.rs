@@ -10,6 +10,7 @@
 //!   STRESS_REQUESTS     requests per scenario (default 200)
 //!   STRESS_CONCURRENCY  in-flight requests    (default 32)
 //!   STRESS_MAX_P99_MS   fail if p99 exceeds   (default: no limit)
+//!   STRESS_ENGINE       send `engine=<value>` (auto | fulgur | prince; default: server default)
 
 #[cfg(test)]
 mod tests {
@@ -133,7 +134,11 @@ mod tests {
         let start = Instant::now();
         let results: Vec<(Duration, String)> = stream::iter(0..total)
             .map(|i| {
-                let req = client.post(url).bearer_auth(token).multipart(make_form(i));
+                let mut form = make_form(i);
+                if let Ok(engine) = env::var("STRESS_ENGINE") {
+                    form = form.text("engine", engine);
+                }
+                let req = client.post(url).bearer_auth(token).multipart(form);
                 let check = &check;
                 async move {
                     let t = Instant::now();
@@ -252,6 +257,51 @@ mod tests {
         .await;
         report.assert_all(StatusCode::OK, cfg.max_p99);
         assert_healthy(&cfg).await;
+    }
+
+    /// A typical invoice: flex header, bordered 20-line table, totals; data differs per request.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn stress_to_bytes_invoice() {
+        let cfg = config();
+        let c = client(cfg.concurrency);
+        let template = r#"<!DOCTYPE html><html><head><title>Invoice {{ no }}</title><style>
+            body { font-family: 'Noto Sans', sans-serif; font-size: 12px; color: #1f2937; padding: 40px; }
+            .hdr { display: flex; justify-content: space-between; border: 0; padding-bottom: 12px; }
+            .brand { font-size: 24px; font-weight: 800; color: #4f46e5; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #eef2ff; color: #3730a3; text-align: left; padding: 6px; }
+            td { padding: 6px; border: 1px solid #e5e7eb; }
+            .r { text-align: right; } .tot { margin-top: 12px; text-align: right; font-size: 15px; font-weight: 800; }
+            </style></head><body>
+            <div class="hdr"><div class="brand">Lands Horizon</div><div class="r">INVOICE #{{ no }}<br>{{ date }}</div></div>
+            <p><b>{{ customer }}</b><br>{{ email }}</p>
+            <table><tr><th>Description</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr>
+            {% for l in lines %}<tr><td>{{ l.d }}</td><td class="r">{{ l.q }}</td><td class="r">₱{{ l.u }}</td><td class="r">₱{{ l.q * l.u }}</td></tr>{% endfor %}
+            </table><div class="tot">Total ₱{{ total }}</div></body></html>"#;
+        let report = run_load(
+            "to-bytes/invoice",
+            &c,
+            &format!("{}/api/to-bytes", cfg.base_url),
+            &cfg.token,
+            cfg.requests,
+            cfg.concurrency,
+            |i| {
+                let lines: Vec<_> = (1..=20)
+                    .map(|k| serde_json::json!({ "d": format!("Service line {k} for order {i}"), "q": k, "u": 125 + i % 50 }))
+                    .collect();
+                let data = serde_json::json!({
+                    "no": format!("2026-{i:06}"), "date": "2026-10-12", "customer": format!("Customer {i}"),
+                    "email": format!("billing{i}@example.ph"), "lines": lines, "total": 26250 + i,
+                });
+                multipart::Form::new()
+                    .text("template", template)
+                    .text("data", data.to_string())
+            },
+            is_pdf,
+        )
+        .await;
+        report.assert_all(StatusCode::OK, cfg.max_p99);
     }
 
     #[tokio::test(flavor = "multi_thread")]

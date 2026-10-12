@@ -23,8 +23,16 @@ async fn concurrent_uploads_get_unique_keys() {
     }
     let stored: HashSet<_> = app.s3.puts().into_iter().map(|p| p.path).collect();
 
-    assert_eq!(keys.len(), n, "two responses share a storage key (object overwritten)");
-    assert_eq!(stored.len(), n, "fewer distinct objects stored than successful uploads");
+    assert_eq!(
+        keys.len(),
+        n,
+        "two responses share a storage key (object overwritten)"
+    );
+    assert_eq!(
+        stored.len(),
+        n,
+        "fewer distinct objects stored than successful uploads"
+    );
 }
 
 /// The semaphore caps concurrent Prince processes.
@@ -40,15 +48,28 @@ rm -f "$D/running.$$"
 cat "$D/fixture.pdf""#,
     );
     let permits = 3;
-    let app = TestApp::builder(prince.path()).permits(permits).spawn().await;
+    let app = TestApp::builder(prince.path())
+        .permits(permits)
+        .spawn()
+        .await;
 
     let resps = join_all((0..15).map(|_| app.to_bytes(form("<p>x</p>")))).await;
     assert!(resps.iter().all(|r| r.status() == 200));
 
     let seen = std::fs::read_to_string(prince.dir.path().join("seen")).unwrap();
-    let max = seen.lines().filter_map(|l| l.trim().parse::<usize>().ok()).max().unwrap();
-    assert!(max <= permits, "saw {max} concurrent Prince processes with {permits} permits");
-    assert!(max >= 2, "requests were not processed in parallel at all (max {max})");
+    let max = seen
+        .lines()
+        .filter_map(|l| l.trim().parse::<usize>().ok())
+        .max()
+        .unwrap();
+    assert!(
+        max <= permits,
+        "saw {max} concurrent Prince processes with {permits} permits"
+    );
+    assert!(
+        max >= 2,
+        "requests were not processed in parallel at all (max {max})"
+    );
     app.assert_permits_restored().await;
 }
 
@@ -72,9 +93,15 @@ async fn concurrent_passwords_stay_isolated() {
         }
     });
     for (i, body) in join_all(futs).await {
-        assert!(load_pdf_with_password(&body, &format!("pw-{i}")).is_ok(), "request {i}");
+        assert!(
+            load_pdf_with_password(&body, &format!("pw-{i}")).is_ok(),
+            "request {i}"
+        );
         let other = format!("pw-{}", (i + 1) % 30);
-        assert!(load_pdf_with_password(&body, &other).is_err(), "request {i} opens with {other}");
+        assert!(
+            load_pdf_with_password(&body, &other).is_err(),
+            "request {i} opens with {other}"
+        );
     }
 }
 
@@ -94,7 +121,13 @@ async fn concurrent_responses_are_not_cross_wired() {
                         .text("filename", format!("f-{i}.pdf")),
                 )
                 .await;
-            (i, r.headers()["content-disposition"].to_str().unwrap().to_string())
+            (
+                i,
+                r.headers()["content-disposition"]
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            )
         }
     });
     for (i, cd) in join_all(futs).await {
@@ -103,7 +136,15 @@ async fn concurrent_responses_are_not_cross_wired() {
     let rendered: HashSet<String> = prince
         .stdins()
         .iter()
-        .map(|s| s.split("req-").nth(1).unwrap().split('<').next().unwrap().to_string())
+        .map(|s| {
+            s.split("req-")
+                .nth(1)
+                .unwrap()
+                .split('<')
+                .next()
+                .unwrap()
+                .to_string()
+        })
         .collect();
     assert_eq!(rendered, (0..40).map(|i| i.to_string()).collect());
 }
@@ -195,11 +236,15 @@ async fn real_concurrent_documents_keep_their_own_content() {
     let futs = (0..16).map(|i| {
         let app = &app;
         async move {
-            let t = format!("<html><head><title>doc-{i}</title></head><body><p>{i}</p></body></html>");
+            let t =
+                format!("<html><head><title>doc-{i}</title></head><body><p>{i}</p></body></html>");
             (i, app.to_bytes(form(&t)).await.bytes().await.unwrap())
         }
     });
     for (i, body) in join_all(futs).await {
-        assert_eq!(info_title(&load_pdf(&body)).as_deref(), Some(&*format!("doc-{i}")));
+        assert_eq!(
+            info_title(&load_pdf(&body)).as_deref(),
+            Some(&*format!("doc-{i}"))
+        );
     }
 }

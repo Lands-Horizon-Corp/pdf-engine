@@ -1,0 +1,5 @@
+<html><head><style>body { font-family: sans-serif; padding: 24px; } .card { border: 2px solid #333; padding: 12px; margin: 10px 0; height: 180px; break-inside: avoid; }</style></head><body>
+<h2>Page breaks — expect 3 pages</h2><p>Page one.</p>
+<div style="break-before: page"><h2>Page two</h2><div class="card">card A</div><div class="card">card B</div><div class="card">card C (must not split)</div></div>
+<div style="page-break-before: always"><h2>Page three (legacy page-break-before)</h2></div>
+</body></html>

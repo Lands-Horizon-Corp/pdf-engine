@@ -12,6 +12,8 @@ pub enum AppError {
     Unauthorized,
     #[error("Missing required field: {0}")]
     MissingField(String),
+    #[error("Invalid field: {0}")]
+    InvalidField(String),
     #[error("Template rendering failed: {0}")]
     Template(#[from] minijinja::Error),
     #[error("I/O error: {0}")]
@@ -20,6 +22,10 @@ pub enum AppError {
     Storage(#[from] opendal::Error),
     #[error("Prince failed: {0}")]
     PrinceStatus(String),
+    #[error("Fulgur failed: {0}")]
+    Fulgur(String),
+    #[error("PDF post-processing failed: {0}")]
+    PdfProcessing(String),
     #[error("Operation timed out after {0:?}")]
     Timeout(Duration),
     #[error("Internal Task Error: {0}")]
@@ -33,7 +39,7 @@ impl IntoResponse for AppError {
                 StatusCode::UNAUTHORIZED,
                 "Invalid or missing Bearer token".to_string(),
             ),
-            AppError::MissingField(_) | AppError::Template(_) => {
+            AppError::MissingField(_) | AppError::InvalidField(_) | AppError::Template(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
             }
             AppError::Timeout(_) => (StatusCode::REQUEST_TIMEOUT, self.to_string()),

@@ -7,7 +7,10 @@ use reqwest::{StatusCode, multipart};
 
 async fn error_message(resp: reqwest::Response) -> String {
     let json: serde_json::Value = resp.json().await.expect("error body must be JSON");
-    json["error"].as_str().expect("error body must have `error`").to_string()
+    json["error"]
+        .as_str()
+        .expect("error body must have `error`")
+        .to_string()
 }
 
 #[tokio::test]
@@ -63,11 +66,15 @@ async fn missing_template_is_400() {
     let app = TestApp::builder(prince.path()).spawn().await;
 
     for resp in [
-        app.to_bytes(multipart::Form::new().text("width", "10in")).await,
+        app.to_bytes(multipart::Form::new().text("width", "10in"))
+            .await,
         app.to_s3(multipart::Form::new().text("data", "{}")).await,
     ] {
         assert_eq!(resp.status(), 400);
-        assert_eq!(error_message(resp).await, "Missing required field: template");
+        assert_eq!(
+            error_message(resp).await,
+            "Missing required field: template"
+        );
     }
     assert_eq!(prince.invocations(), 0);
     assert_eq!(app.s3.request_count(), 0);
@@ -89,7 +96,10 @@ async fn broken_template_syntax_is_400() {
         let resp = app.to_bytes(form(t)).await;
         assert_eq!(resp.status(), 400, "template {t:?}");
         let msg = error_message(resp).await;
-        assert!(msg.starts_with("Template rendering failed"), "{t:?} -> {msg}");
+        assert!(
+            msg.starts_with("Template rendering failed"),
+            "{t:?} -> {msg}"
+        );
     }
     assert_eq!(prince.invocations(), 0);
 }
@@ -139,10 +149,22 @@ async fn wrong_method_and_unknown_route() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    let get = app.client.get(app.url("/api/to-bytes")).bearer_auth(TOKEN).send().await.unwrap();
+    let get = app
+        .client
+        .get(app.url("/api/to-bytes"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(get.status(), StatusCode::METHOD_NOT_ALLOWED);
 
-    let unknown = app.client.post(app.url("/api/nope")).bearer_auth(TOKEN).send().await.unwrap();
+    let unknown = app
+        .client
+        .post(app.url("/api/nope"))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
 }
 

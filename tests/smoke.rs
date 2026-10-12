@@ -19,7 +19,12 @@ async fn smoke_in_process() {
 
     assert_eq!(app.to_bytes(form("<p>x</p>")).await.status(), 200);
     assert_eq!(app.to_s3(form("<p>x</p>")).await.status(), 200);
-    let anon = app.client.post(app.url("/api/to-bytes")).send().await.unwrap();
+    let anon = app
+        .client
+        .post(app.url("/api/to-bytes"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(anon.status(), 401);
 }
 
@@ -43,7 +48,10 @@ fn live() -> (Client, String, String) {
     dotenvy::dotenv().ok();
     let base = std::env::var("SMOKE_URL").unwrap_or_else(|_| "http://localhost:6767".into());
     let token = std::env::var("API_BEARER_TOKEN").expect("API_BEARER_TOKEN must be set");
-    let client = Client::builder().timeout(Duration::from_secs(60)).build().unwrap();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .unwrap();
     (client, base.trim_end_matches('/').to_string(), token)
 }
 
@@ -51,7 +59,12 @@ fn live() -> (Client, String, String) {
 #[ignore]
 async fn live_rejects_anonymous() {
     let (c, base, _) = live();
-    let r = c.post(format!("{base}/api/to-bytes")).multipart(form("<p>x</p>")).send().await.unwrap();
+    let r = c
+        .post(format!("{base}/api/to-bytes"))
+        .multipart(form("<p>x</p>"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(r.status(), 401);
 }
 

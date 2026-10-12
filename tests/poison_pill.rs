@@ -15,7 +15,11 @@ async fn crlf_in_filename_does_not_crash_the_server() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    for name in ["evil\r\nSet-Cookie: pwned=1.pdf", "nul\0byte.pdf", "bell\x07.pdf"] {
+    for name in [
+        "evil\r\nSet-Cookie: pwned=1.pdf",
+        "nul\0byte.pdf",
+        "bell\x07.pdf",
+    ] {
         let resp = app
             .client
             .post(app.url("/api/to-bytes"))
@@ -31,7 +35,10 @@ async fn crlf_in_filename_does_not_crash_the_server() {
             "{name:?} -> {}",
             resp.status()
         );
-        assert!(resp.headers().get("set-cookie").is_none(), "header injection");
+        assert!(
+            resp.headers().get("set-cookie").is_none(),
+            "header injection"
+        );
     }
     assert_healthy(&app).await;
 }
@@ -55,7 +62,9 @@ async fn unicode_filename_is_accepted() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    let resp = app.to_bytes(form("<p>x</p>").text("filename", "报告-é.pdf")).await;
+    let resp = app
+        .to_bytes(form("<p>x</p>").text("filename", "报告-é.pdf"))
+        .await;
 
     assert_eq!(resp.status(), 200);
 }
@@ -78,7 +87,11 @@ async fn template_runtime_errors_are_400() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    for t in ["{{ 1 / 0 }}", "{{ range(1000000) }}", "{{ [1,2][\"x\"] + {} }}"] {
+    for t in [
+        "{{ 1 / 0 }}",
+        "{{ range(1000000) }}",
+        "{{ [1,2][\"x\"] + {} }}",
+    ] {
         let resp = app.to_bytes(form(t)).await;
         assert_eq!(resp.status(), 400, "{t}");
     }
@@ -139,7 +152,9 @@ async fn deeply_nested_json_data_does_not_crash() {
 
     let depth = 100_000;
     let data = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
-    let resp = app.to_bytes(form("<p>{{ x }}</p>").text("data", data)).await;
+    let resp = app
+        .to_bytes(form("<p>{{ x }}</p>").text("data", data))
+        .await;
 
     assert!(!resp.status().is_server_error(), "got {}", resp.status());
     assert_healthy(&app).await;
@@ -151,7 +166,9 @@ async fn invalid_utf8_template_does_not_crash() {
     let app = TestApp::builder(prince.path()).spawn().await;
 
     let part = multipart::Part::bytes(vec![0x3C, 0x70, 0x3E, 0xFF, 0xFE, 0xC3, 0x28, 0x80]);
-    let resp = app.to_bytes(multipart::Form::new().part("template", part)).await;
+    let resp = app
+        .to_bytes(multipart::Form::new().part("template", part))
+        .await;
 
     assert!(!resp.status().is_server_error(), "got {}", resp.status());
     assert_healthy(&app).await;
@@ -181,8 +198,15 @@ async fn unicode_password_does_not_5xx() {
     let app = TestApp::builder(prince.path()).spawn().await;
 
     for pw in ["密码🔑", &"p".repeat(10_000)] {
-        let resp = app.to_bytes(form("<p>x</p>").text("password", pw.to_string())).await;
-        assert!(!resp.status().is_server_error(), "password {:.20?} -> {}", pw, resp.status());
+        let resp = app
+            .to_bytes(form("<p>x</p>").text("password", pw.to_string()))
+            .await;
+        assert!(
+            !resp.status().is_server_error(),
+            "password {:.20?} -> {}",
+            pw,
+            resp.status()
+        );
     }
 }
 
@@ -193,9 +217,18 @@ async fn real_css_injection_via_page_args_does_not_5xx() {
     require_prince!();
     let app = TestApp::builder("prince").spawn().await;
 
-    for w in ["1in; } html { display:none } @page { size: 1in", "8.5in#frag", "100%25", "9999999in"] {
+    for w in [
+        "1in; } html { display:none } @page { size: 1in",
+        "8.5in#frag",
+        "100%25",
+        "9999999in",
+    ] {
         let resp = app.to_bytes(form("<p>x</p>").text("width", w)).await;
-        assert!(!resp.status().is_server_error(), "width {w:?} -> {}", resp.status());
+        assert!(
+            !resp.status().is_server_error(),
+            "width {w:?} -> {}",
+            resp.status()
+        );
     }
     assert_healthy(&app).await;
 }
@@ -215,7 +248,10 @@ async fn real_no_outbound_network_requests() {
     let resp = app.to_bytes(form(&t)).await;
 
     assert_eq!(resp.status(), 200);
-    assert!(listener.accept().is_err(), "Prince made an outbound connection (SSRF)");
+    assert!(
+        listener.accept().is_err(),
+        "Prince made an outbound connection (SSRF)"
+    );
 }
 
 #[tokio::test]
@@ -231,7 +267,10 @@ async fn real_local_files_cannot_be_embedded() {
     );
     let body = app.to_bytes(form(&t)).await.bytes().await.unwrap();
 
-    assert!(!has_image(&load_pdf(&body)), "a local file was read into the PDF");
+    assert!(
+        !has_image(&load_pdf(&body)),
+        "a local file was read into the PDF"
+    );
 }
 
 #[tokio::test]
@@ -239,7 +278,13 @@ async fn real_body_tag_edge_cases_render() {
     require_prince!();
     let app = TestApp::builder("prince").spawn().await;
 
-    for t in ["<body", "<p><body</p>", "<BODY><p>x</p></BODY>", "<p>&lt;body&gt;</p>", "<bodyguard>x</bodyguard>"] {
+    for t in [
+        "<body",
+        "<p><body</p>",
+        "<BODY><p>x</p></BODY>",
+        "<p>&lt;body&gt;</p>",
+        "<bodyguard>x</bodyguard>",
+    ] {
         let resp = app.to_bytes(form(t)).await;
         assert_eq!(resp.status(), 200, "{t:?}");
         assert!(is_pdf(&resp.bytes().await.unwrap()));

@@ -33,7 +33,11 @@ async fn blank_lead_page_is_stripped() {
     let body = app.to_bytes(form("<p>x</p>")).await.bytes().await.unwrap();
 
     let doc = load_pdf(&body);
-    assert_eq!(media_boxes(&doc), vec![CONTENT_PAGE_BOX], "page 1 should be removed");
+    assert_eq!(
+        media_boxes(&doc),
+        vec![CONTENT_PAGE_BOX],
+        "page 1 should be removed"
+    );
 }
 
 #[tokio::test]
@@ -102,7 +106,10 @@ async fn password_encrypts_output() {
         .unwrap();
 
     let raw = String::from_utf8_lossy(&body);
-    assert!(raw.contains("/Encrypt"), "output should carry an /Encrypt dictionary");
+    assert!(
+        raw.contains("/Encrypt"),
+        "output should carry an /Encrypt dictionary"
+    );
     let doc = load_pdf_with_password(&body, "hunter2").expect("correct password must open it");
     assert_eq!(doc.get_pages().len(), 1);
 }
@@ -124,7 +131,10 @@ async fn to_s3_uploads_and_returns_presigned_payload() {
     assert_eq!(json["status"], "success");
     assert_eq!(json["progress"], 100);
     let url = json["url"].as_str().unwrap();
-    assert!(url.contains(key) && url.contains("X-Amz-Signature="), "{url}");
+    assert!(
+        url.contains(key) && url.contains("X-Amz-Signature="),
+        "{url}"
+    );
 
     let puts = app.s3.puts();
     assert_eq!(puts.len(), 1);
@@ -143,11 +153,20 @@ async fn real_single_page_document() {
     require_prince!();
     let app = TestApp::builder("prince").spawn().await;
 
-    let body = app.to_bytes(form("<h1>One page</h1>")).await.bytes().await.unwrap();
+    let body = app
+        .to_bytes(form("<h1>One page</h1>"))
+        .await
+        .bytes()
+        .await
+        .unwrap();
 
     let doc = load_pdf(&body);
     assert_eq!(doc.get_pages().len(), 1);
-    assert_eq!(media_boxes(&doc), vec![[0, 0, 612, 792]], "US Letter by default");
+    assert_eq!(
+        media_boxes(&doc),
+        vec![[0, 0, 612, 792]],
+        "US Letter by default"
+    );
 }
 
 #[tokio::test]
@@ -230,7 +249,11 @@ async fn real_to_s3_end_to_end() {
     let app = TestApp::builder("prince").spawn().await;
 
     let resp = app
-        .to_s3(multipart::Form::new().text("template", "<h1>{{ t }}</h1>").text("data", r#"{"t":"E2E"}"#))
+        .to_s3(
+            multipart::Form::new()
+                .text("template", "<h1>{{ t }}</h1>")
+                .text("data", r#"{"t":"E2E"}"#),
+        )
         .await;
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await.unwrap();

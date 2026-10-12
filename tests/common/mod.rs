@@ -22,7 +22,11 @@ use axum::{
 };
 use lopdf::{Document, LoadOptions, Object, Stream, dictionary};
 use opendal::{Operator, services::S3};
-use pdf_engine::config::AppState;
+use pdf_engine::{
+    config::AppState,
+    fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm},
+    models::EnginePref,
+};
 use reqwest::{Client, multipart};
 use std::{
     net::SocketAddr,
@@ -30,7 +34,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -244,7 +248,9 @@ impl FakeS3 {
             puts: Default::default(),
             requests: Default::default(),
         };
-        let router = Router::new().fallback(fake_s3_handler).with_state(s3.clone());
+        let router = Router::new()
+            .fallback(fake_s3_handler)
+            .with_state(s3.clone());
         spawn_detached(async move {
             let listener = tokio::net::TcpListener::from_std(std_listener).unwrap();
             axum::serve(listener, router).await.unwrap();
@@ -294,7 +300,12 @@ async fn fake_s3_handler(
         _ => {}
     }
     if method == Method::PUT {
-        let h = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(String::from);
+        let h = |k: &str| {
+            headers
+                .get(k)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from)
+        };
         s3.puts.lock().unwrap().push(PutRecord {
             path: uri.path().to_string(),
             content_type: h("content-type"),
@@ -360,7 +371,9 @@ pub struct TestApp {
 }
 
 pub struct TestAppBuilder {
-    prince_bin: String,
+    prince_bin: Option<String>,
+    fulgur: Option<Arc<dyn InProcessRenderer>>,
+    default_engine: EnginePref,
     permits: usize,
     timeout: Duration,
     s3_mode: S3Mode,
@@ -369,9 +382,14 @@ pub struct TestAppBuilder {
 
 impl TestApp {
     /// App wired to the given Prince binary (`FakePrince::path()` or `"prince"`).
+    ///
+    /// Requests default to the Prince engine so the Prince-focused suites keep exercising
+    /// that path; use `.default_engine(EnginePref::Auto)` for the hybrid behaviour.
     pub fn builder(prince_bin: &str) -> TestAppBuilder {
         TestAppBuilder {
-            prince_bin: prince_bin.to_string(),
+            prince_bin: Some(prince_bin.to_string()),
+            fulgur: None,
+            default_engine: EnginePref::Prince,
             permits: 4,
             timeout: Duration::from_secs(20),
             s3_mode: S3Mode::Ok,
@@ -404,7 +422,7 @@ impl TestApp {
     }
 
     pub fn available_permits(&self) -> usize {
-        self.state.prince_concurrency.available_permits()
+        self.state.render_permits.available_permits()
     }
 
     /// Every Prince permit eventually comes back (nothing leaked / dangling).
@@ -438,6 +456,23 @@ impl TestAppBuilder {
         self
     }
 
+    pub fn default_engine(mut self, e: EnginePref) -> Self {
+        self.default_engine = e;
+        self
+    }
+
+    /// Run as if Prince failed its warm-up.
+    pub fn without_prince(mut self) -> Self {
+        self.prince_bin = None;
+        self
+    }
+
+    /// Replace the in-process renderer (default: the real Fulgur engine).
+    pub fn fulgur(mut self, r: Arc<dyn InProcessRenderer>) -> Self {
+        self.fulgur = Some(r);
+        self
+    }
+
     /// Point storage somewhere other than the fake S3 (e.g. a closed port).
     pub fn s3_endpoint(mut self, e: String) -> Self {
         self.s3_endpoint = Some(e);
@@ -450,9 +485,11 @@ impl TestAppBuilder {
         let state = AppState {
             storage: s3_operator(&endpoint),
             storage_bucket: BUCKET.into(),
-            prince_concurrency: Arc::new(Semaphore::new(self.permits)),
+            render_permits: Arc::new(Semaphore::new(self.permits)),
             expected_auth: format!("Bearer {TOKEN}").into(),
-            prince_bin: self.prince_bin.into(),
+            prince_bin: self.prince_bin.map(Into::into),
+            fulgur: self.fulgur.unwrap_or_else(real_fulgur),
+            default_engine: self.default_engine,
             render_timeout: self.timeout,
         };
 
@@ -474,6 +511,42 @@ impl TestAppBuilder {
                 .build()
                 .unwrap(),
             permits: self.permits,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// In-process renderers
+// ---------------------------------------------------------------------------------------------
+
+pub const FONT_DIR: &str = "/usr/share/fonts/truetype/noto";
+
+/// The production Fulgur engine, fonts loaded once per test binary.
+pub fn real_fulgur() -> Arc<dyn InProcessRenderer> {
+    static ENGINE: OnceLock<Arc<FulgurEngine>> = OnceLock::new();
+    ENGINE
+        .get_or_init(|| Arc::new(FulgurEngine::from_font_dir(Path::new(FONT_DIR))))
+        .clone()
+}
+
+/// An in-process renderer that misbehaves on demand.
+pub enum FakeFulgur {
+    Fails,
+    Panics,
+    /// Sleeps, then reports when it actually finished.
+    Slow(Duration, Arc<AtomicUsize>),
+}
+
+impl InProcessRenderer for FakeFulgur {
+    fn render(&self, _html: &str, _page: PageMm, _title: Option<&str>) -> Result<Vec<u8>, String> {
+        match self {
+            FakeFulgur::Fails => Err("injected failure".into()),
+            FakeFulgur::Panics => panic!("injected panic"),
+            FakeFulgur::Slow(d, finished) => {
+                std::thread::sleep(*d);
+                finished.fetch_add(1, Ordering::SeqCst);
+                Ok(fixture_pdf())
+            }
         }
     }
 }
@@ -526,7 +599,13 @@ pub fn media_boxes(doc: &Document) -> Vec<[i64; 4]> {
 /// `/Title` from the document info dictionary, if any.
 pub fn info_title(doc: &Document) -> Option<String> {
     let info = doc.trailer.get(b"Info").ok()?.as_reference().ok()?;
-    let raw = doc.get_dictionary(info).ok()?.get(b"Title").ok()?.as_str().ok()?;
+    let raw = doc
+        .get_dictionary(info)
+        .ok()?
+        .get(b"Title")
+        .ok()?
+        .as_str()
+        .ok()?;
     if raw.starts_with(&[0xFE, 0xFF]) {
         let units: Vec<u16> = raw[2..]
             .chunks_exact(2)
@@ -567,11 +646,11 @@ pub async fn assert_healthy(app: &TestApp) {
 
 /// A 1x1 transparent PNG.
 pub const TINY_PNG: &[u8] = &[
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
-    0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
-    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
-    0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
 ];
 
 pub fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {

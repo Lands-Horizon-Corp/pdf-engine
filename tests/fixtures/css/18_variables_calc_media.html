@@ -1,0 +1,14 @@
+<html><head><style>
+:root { --brand: #db2777; --pad: 12px; }
+body { font-family: sans-serif; padding: 24px; }
+.v { background: var(--brand); color: #fff; padding: var(--pad); width: calc(100% - 2 * var(--pad)); }
+.fallback { color: var(--missing, #16a34a); }
+@media print { .print-only { display: block; color: #2563eb; } .screen-only { display: none; } }
+@media screen { .screen-only { display: block; color: red; } }
+.print-only { display: none; }
+</style></head><body><h2>Variables, calc(), @media</h2>
+<div class="v">var(--brand) + calc() width</div>
+<p class="fallback">var() fallback should be green</p>
+<p class="print-only">@media print applied (blue)</p><p class="screen-only">@media screen applied (red) — should NOT show in print</p>
+<p style="width:min(300px, 50%); background:#eee">min()</p><p style="font-size:clamp(10px, 3vw, 20px)">clamp()</p>
+</body></html>

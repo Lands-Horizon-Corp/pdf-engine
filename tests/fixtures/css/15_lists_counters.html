@@ -1,0 +1,11 @@
+<html><head><style>body { font-family: sans-serif; padding: 24px; font-size: 13px; }
+.steps { counter-reset: step; list-style: none; padding: 0; } .steps li { counter-increment: step; margin: 6px 0; }
+.steps li::before { content: "Step " counter(step) ": "; font-weight: bold; color: #4f46e5; }</style></head><body>
+<h2>Lists &amp; counters</h2>
+<ul><li>Disc bullet</li><li>Second<ul style="list-style:circle"><li>Nested circle</li></ul></li></ul>
+<ol><li>Decimal one</li><li>Decimal two</li></ol>
+<ol style="list-style-type:lower-roman"><li>roman i</li><li>roman ii</li></ol>
+<ol style="list-style-type:upper-alpha"><li>Alpha A</li><li>Alpha B</li></ol>
+<ul style="list-style:square"><li>Square</li></ul>
+<ol class="steps"><li>Custom counter</li><li>Via ::before</li></ol>
+</body></html>

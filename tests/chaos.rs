@@ -9,7 +9,10 @@ use std::time::{Duration, Instant};
 async fn assert_generic_500(resp: reqwest::Response) {
     assert_eq!(resp.status(), 500);
     let json: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(json["error"], "Internal server error", "internals must not leak");
+    assert_eq!(
+        json["error"], "Internal server error",
+        "internals must not leak"
+    );
 }
 
 async fn run_broken_prince(body: &str) {
@@ -140,7 +143,11 @@ cat "$D/fixture.pdf""#,
     let app = TestApp::builder(prince.path()).permits(3).spawn().await;
 
     let futs = (0..60).map(|i| {
-        let body = if i % 3 == 0 { format!("<p>FAIL {i}</p>") } else { format!("<p>ok {i}</p>") };
+        let body = if i % 3 == 0 {
+            format!("<p>FAIL {i}</p>")
+        } else {
+            format!("<p>ok {i}</p>")
+        };
         let app = &app;
         async move { (i, app.to_bytes(form(&body)).await) }
     });

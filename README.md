@@ -80,6 +80,27 @@ All endpoints require a `multipart/form-data` payload and your Bearer token in t
 | `height` | String | No | `11in` | Page height. |
 | `filename` | String | No | `document.pdf` | Download name (or S3 key suffix). |
 | `password` | String | No | None | Encrypts the PDF with this password. |
+| `orientation` | String | No | `portrait` | `portrait` or `landscape`. |
+| `engine` | String | No | `auto` | `auto`, `fulgur` or `prince` (see below). |
+
+### Rendering Engines
+
+Documents render with **Fulgur** (pure Rust, in-process) by default, and with **PrinceXML** when the template uses CSS Fulgur can't render faithfully yet. Every response says which engine ran in the `X-Pdf-Engine` header.
+
+| Sent to Prince when the template uses | Why |
+| --- | --- |
+| `data:` images, `url()`, `@font-face`, `@import` | Fulgur doesn't load them |
+| `hsl()` / `hsla()` | Element isn't painted |
+| `border-top/right/bottom/left` with a colour, or per-side `border-color` | Drawn black / single colour |
+| `display: inline-block` (and `inline-flex`/`inline-grid`) | Wrapping rows aren't drawn at all |
+| `float`, `z-index`, `position: fixed`, `rowspan` | Wrong layout or stacking |
+| `@page`, `@media`, running headers, `::before`/`::after`, counters, `::first-letter` | Ignored or misplaced |
+| `text-transform`, `outline`, multi-column, backgrounds on inline elements, SVG `<text>` | Not rendered |
+| Page sizes other than plain lengths (e.g. `A4` keyword) | Fulgur needs lengths |
+
+A table with `<thead>` that spans more than one page is re-rendered with Prince, because Fulgur doesn't repeat headers on continuation pages. If Fulgur fails or panics, the request falls back to Prince. `engine=fulgur` / `engine=prince` skips the routing.
+
+Responses are compressed with gzip, brotli or zstd at level 6 when the client sends `Accept-Encoding`. The PDF is produced once and handed to the response or the S3 upload without further copies; it's only rewritten to strip Prince's blank lead page or to encrypt.
 
 ### Endpoint 1: Direct to Bytes
 
@@ -112,6 +133,10 @@ curl -X POST http://localhost:6767/api/to-s3 \
 | --- | --- | --- |
 | `PRINCE_BIN` | `prince` | Prince executable to run. |
 | `RENDER_TIMEOUT_SECS` | `45` | Per-request budget for render + upload; exceeding it returns `408`. |
+| `PDF_ENGINE` | `auto` | Default engine when a request doesn't send `engine`. |
+| `FULGUR_FONT_DIR` | `/usr/share/fonts/truetype/noto` | Where Fulgur's bundled Noto fonts are loaded from. Documents with characters those fonts don't cover use system fonts (slower). |
+
+If Prince fails its startup warm-up, the server keeps running with Fulgur only.
 
 ---
 
@@ -129,13 +154,20 @@ The suites under `tests/` boot the real router in-process against a fake S3 and 
 | `race_conditions` | Unique keys, concurrency cap, isolation, cancellation storms |
 | `zero_absence` | Empty/missing fields, orphaned Prince processes, leaked permits |
 | `smoke` | Quick liveness; `live_*` tests hit a deployed instance (`--ignored`) |
+| `hybrid` | Engine routing, overrides, Fulgur failure/panic fallback, timeouts, compression |
+| `css_parity` | Every CSS probe the router sends to Fulgur must match Prince pixel-for-pixel and by colour; 20 realistic documents render end to end |
 
 ```bash
-cargo test --test happy_path --test sad_path --test poison_pill --test chaos \
-  --test integration_chaos --test race_conditions --test zero_absence --test smoke
+cargo test --lib --test happy_path --test sad_path --test poison_pill --test chaos \
+  --test integration_chaos --test race_conditions --test zero_absence --test smoke \
+  --test hybrid --test css_parity
 ```
 
-Tests that need the real Prince are skipped when it isn't on `PATH`; set `REQUIRE_PRINCE=1` (e.g. in CI) to make that a failure instead.
+Tests that need the real Prince (and `pdftoppm` from poppler-utils, for `css_parity`) are skipped when they aren't on `PATH`; set `REQUIRE_PRINCE=1` (e.g. in CI) to make that a failure instead.
+
+To check whether a newer Fulgur fixes any of the routed-away features, run `cargo test --test css_parity report_fulgur_gaps -- --nocapture`.
+
+Benchmarks: `cargo bench --bench render` (Fulgur vs Prince per document type, routing, templating, encryption, gzip levels).
 
 ---
 

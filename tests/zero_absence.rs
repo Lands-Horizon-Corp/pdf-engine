@@ -56,10 +56,18 @@ async fn absent_data_renders_top_level_variables_as_empty() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    let resp = app.to_bytes(form("<p>[{{ name }}][{{ name|default('none given') }}]</p>")).await;
+    let resp = app
+        .to_bytes(form(
+            "<p>[{{ name }}][{{ name|default('none given') }}]</p>",
+        ))
+        .await;
 
     assert_eq!(resp.status(), 200);
-    assert!(prince.stdins()[0].contains("<p>[][none given]</p>"), "{}", prince.stdins()[0]);
+    assert!(
+        prince.stdins()[0].contains("<p>[][none given]</p>"),
+        "{}",
+        prince.stdins()[0]
+    );
 }
 
 #[tokio::test]
@@ -69,7 +77,11 @@ async fn absent_nested_data_is_a_clean_400() {
 
     let resp = app.to_bytes(form("<p>{{ user.email }}</p>")).await;
 
-    assert_eq!(resp.status(), 400, "attribute of a missing value is a template error");
+    assert_eq!(
+        resp.status(),
+        400,
+        "attribute of a missing value is a template error"
+    );
     assert_eq!(prince.invocations(), 0);
 }
 
@@ -78,8 +90,12 @@ async fn zero_and_empty_data_values_are_accepted() {
     let prince = FakePrince::ok();
     let app = TestApp::builder(prince.path()).spawn().await;
 
-    for data in ["", "null", "{}", "[]", "0", "false", "\"\"", "not json", "{\"a\":"] {
-        let resp = app.to_bytes(form("<p>{{ a }}</p>").text("data", data)).await;
+    for data in [
+        "", "null", "{}", "[]", "0", "false", "\"\"", "not json", "{\"a\":",
+    ] {
+        let resp = app
+            .to_bytes(form("<p>{{ a }}</p>").text("data", data))
+            .await;
         assert_eq!(resp.status(), 200, "data {data:?}");
     }
 }
@@ -96,7 +112,11 @@ async fn zero_numbers_and_falsy_values_render_literally() {
     .await;
 
     // minijinja prints booleans/null Python-style: `False`, `None`.
-    assert!(prince.stdins()[0].contains("<p>0|False||0</p>"), "{}", prince.stdins()[0]);
+    assert!(
+        prince.stdins()[0].contains("<p>0|False||0</p>"),
+        "{}",
+        prince.stdins()[0]
+    );
 }
 
 #[tokio::test]
@@ -105,11 +125,20 @@ async fn empty_page_fields_are_passed_through() {
     let app = TestApp::builder(prince.path()).spawn().await;
 
     let resp = app
-        .to_bytes(form("<p>x</p>").text("width", "").text("height", "").text("orientation", ""))
+        .to_bytes(
+            form("<p>x</p>")
+                .text("width", "")
+                .text("height", "")
+                .text("orientation", ""),
+        )
         .await;
 
     assert_eq!(resp.status(), 200);
-    assert!(prince.args()[0].contains("size:   ;"), "{}", prince.args()[0]);
+    assert!(
+        prince.args()[0].contains("size:   ;"),
+        "{}",
+        prince.args()[0]
+    );
 }
 
 #[tokio::test]
@@ -120,7 +149,10 @@ async fn empty_filename_still_has_valid_header() {
     for name in ["", "\"\"\""] {
         let resp = app.to_bytes(form("<p>x</p>").text("filename", name)).await;
         assert_eq!(resp.status(), 200);
-        assert_eq!(resp.headers()["content-disposition"], "inline; filename=\"\"");
+        assert_eq!(
+            resp.headers()["content-disposition"],
+            "inline; filename=\"\""
+        );
     }
 }
 
@@ -149,7 +181,10 @@ async fn unnamed_and_unknown_fields_are_ignored() {
             form("<p>x</p>")
                 .text("", "nameless")
                 .text("bogus", "value")
-                .part("file", multipart::Part::bytes(vec![0u8; 1024]).file_name("x.bin")),
+                .part(
+                    "file",
+                    multipart::Part::bytes(vec![0u8; 1024]).file_name("x.bin"),
+                ),
         )
         .await;
 
@@ -193,7 +228,12 @@ async fn real_empty_template_and_page_fields() {
     let app = TestApp::builder("prince").spawn().await;
 
     let resp = app
-        .to_bytes(form("").text("width", "").text("height", "").text("orientation", ""))
+        .to_bytes(
+            form("")
+                .text("width", "")
+                .text("height", "")
+                .text("orientation", ""),
+        )
         .await;
 
     assert_eq!(resp.status(), 200);
@@ -215,7 +255,10 @@ async fn timeout_kills_prince_and_returns_permit() {
 
     let pid = prince.pids()[0];
     let dead = eventually(Duration::from_secs(5), || !process_alive(pid)).await;
-    assert!(dead, "Prince pid {pid} outlived its request (orphaned process)");
+    assert!(
+        dead,
+        "Prince pid {pid} outlived its request (orphaned process)"
+    );
     app.assert_permits_restored().await;
 }
 
@@ -244,7 +287,10 @@ async fn client_disconnect_does_not_leave_prince_running() {
     // At worst it lives until the render timeout; it must never outlive that.
     assert!(eventually(Duration::from_secs(2), || !prince.pids().is_empty()).await);
     let pid = prince.pids()[0];
-    let dead = eventually(render_timeout + Duration::from_secs(3), || !process_alive(pid)).await;
+    let dead = eventually(render_timeout + Duration::from_secs(3), || {
+        !process_alive(pid)
+    })
+    .await;
     assert!(dead, "Prince pid {pid} outlived the abandoned request");
     app.assert_permits_restored().await;
 }

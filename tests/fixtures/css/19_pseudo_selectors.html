@@ -1,0 +1,12 @@
+<html><head><style>body { font-family: sans-serif; padding: 24px; }
+.q::before { content: "“"; font-size: 30px; color: #999; } .q::after { content: "”"; font-size: 30px; color: #999; }
+.req::after { content: " *"; color: red; }
+li:first-child { color: #16a34a; } li:last-child { color: #dc2626; } li:nth-child(2) { font-weight: bold; }
+p:not(.skip) + p { border-left: 3px solid #f59e0b; padding-left: 6px; }
+a[href^="https"] { color: #2563eb; } .parent > .child { background: #e0e7ff; }
+h3::first-letter { font-size: 28px; color: #4f46e5; }</style></head><body>
+<h2>Pseudo-elements &amp; selectors</h2><p class="q">Quoted via ::before/::after</p><p><span class="req">Required field</span></p>
+<ul><li>first (green)</li><li>second (bold)</li><li>last (red)</li></ul>
+<p class="skip">plain</p><p>adjacent sibling (amber border)</p>
+<p><a href="https://example.com">attribute selector link</a></p><div class="parent"><div class="child">child combinator</div></div><h3>First-letter</h3>
+</body></html>

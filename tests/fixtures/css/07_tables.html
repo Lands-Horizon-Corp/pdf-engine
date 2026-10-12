@@ -1,0 +1,18 @@
+<html><head><style>
+body { font-family: sans-serif; padding: 24px; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+th { background: #1e293b; color: #fff; text-align: left; padding: 6px 8px; }
+td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+tr:nth-child(even) td { background: #f8fafc; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.bordered td, .bordered th { border: 1px solid #94a3b8; }
+</style></head><body><h2>Tables</h2>
+<table><thead><tr><th>Item</th><th>Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead><tbody>
+<tr><td>Widget</td><td>2</td><td class="num">₱10.00</td><td class="num">₱20.00</td></tr>
+<tr><td>Gadget with a much longer description that wraps onto two lines inside the cell</td><td>1</td><td class="num">₱25.00</td><td class="num">₱25.00</td></tr>
+<tr><td>Doohickey</td><td>10</td><td class="num">₱1.50</td><td class="num">₱15.00</td></tr>
+</tbody><tfoot><tr><td colspan="3" class="num"><b>Grand total</b></td><td class="num"><b>₱60.00</b></td></tr></tfoot></table>
+<table class="bordered"><tr><th rowspan="2">Region</th><th colspan="2">Q1</th></tr><tr><th>Jan</th><th>Feb</th></tr>
+<tr><td>North</td><td>10</td><td>12</td></tr><tr><td>South</td><td>8</td><td>9</td></tr></table>
+<table style="table-layout:fixed"><tr><td style="width:30%; background:#fee2e2">fixed 30%</td><td style="background:#dbeafe">rest</td></tr></table>
+</body></html>

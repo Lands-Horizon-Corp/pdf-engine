@@ -1,0 +1,8 @@
+<html><head><style>
+@page { size: A4; margin: 25mm 15mm;
+  @top-center { content: "Quarterly Report"; font-size: 10px; color: #555; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 10px; }
+  @bottom-left { content: "Confidential"; font-size: 10px; color: #a00; } }
+body { font-family: sans-serif; }
+</style></head><body><h1>@page margin boxes</h1><p>Header "Quarterly Report" top-center, "Page X of Y" bottom-right, "Confidential" bottom-left.</p>
+<div style="break-before:page"><h1>Second page</h1></div></body></html>

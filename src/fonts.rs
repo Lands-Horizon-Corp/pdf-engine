@@ -33,8 +33,6 @@ pub fn watch(
                 if !is_change(&event) {
                     continue;
                 }
-                // Wait until changes stop for `debounce`, then reload once. Reads (renders
-                // opening font files) don't count, or a busy server would never settle.
                 let mut last_change = Instant::now();
                 loop {
                     let remaining = debounce.saturating_sub(last_change.elapsed());
@@ -50,7 +48,6 @@ pub fn watch(
                 }
                 let started = Instant::now();
                 renderer.reload_fonts();
-                metrics::counter!("pdf_font_reloads_total").increment(1);
                 tracing::info!(
                     took_ms = started.elapsed().as_millis() as u64,
                     "fonts reloaded"
@@ -60,7 +57,6 @@ pub fn watch(
     Ok(())
 }
 
-/// Files added, removed, renamed or written; not reads or metadata touches.
 fn is_change(event: &notify::Result<notify::Event>) -> bool {
     matches!(
         event.as_ref().map(|e| e.kind),
@@ -71,7 +67,6 @@ fn is_change(event: &notify::Result<notify::Event>) -> bool {
     )
 }
 
-/// Start the watcher if `FONT_WATCH` is truthy. Directory: `FONT_WATCH_DIR` or the default.
 pub fn watch_from_env(renderer: Arc<dyn InProcessRenderer>) {
     let enabled =
         std::env::var("FONT_WATCH").is_ok_and(|v| matches!(v.trim(), "1" | "true" | "yes"));

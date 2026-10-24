@@ -16,6 +16,21 @@ pub struct PageMm {
 }
 
 impl PageMm {
+    /// [`parse`](Self::parse), with the error callers show to users.
+    pub fn parse_request(
+        width: &str,
+        height: &str,
+        orientation: &str,
+    ) -> Result<Self, crate::error::AppError> {
+        Self::parse(width, height, orientation).ok_or_else(|| {
+            crate::error::AppError::InvalidField(
+                "width/height/orientation: use lengths like 8.5in, 210mm, 21cm, 612pt and \
+                 portrait or landscape"
+                    .into(),
+            )
+        })
+    }
+
     /// Parse the request's `width`/`height`/`orientation`. `None` for anything that isn't a
     /// positive length with a unit (`in`, `mm`, `cm`, `pt`, `pc`, `px`) or a known orientation.
     pub fn parse(width: &str, height: &str, orientation: &str) -> Option<Self> {
@@ -68,6 +83,9 @@ pub trait InProcessRenderer: Send + Sync {
     /// Rediscover fonts (after fonts were added or removed). Renders already running keep
     /// the fonts they started with.
     fn reload_fonts(&self) {}
+
+    /// Use these font files in addition to the system fonts, replacing any earlier set.
+    fn set_extra_fonts(&self, _fonts: Vec<Vec<u8>>) {}
 }
 
 /// Default font stack, at zero specificity so any template `body { font-family }` wins.
@@ -107,11 +125,42 @@ impl InProcessRenderer for FulgurEngine {
     fn reload_fonts(&self) {
         fulgur::reload_system_fonts();
     }
+
+    fn set_extra_fonts(&self, fonts: Vec<Vec<u8>>) {
+        fulgur::set_extra_fonts(fonts);
+    }
+}
+
+/// `<title>` text, found without allocating a lowercased copy of the document.
+pub fn extract_title(html: &str) -> Option<String> {
+    let start = find_ascii_ci(html, "<title", 0)?;
+    let open_end = start + html[start..].find('>')? + 1;
+    let end = find_ascii_ci(html, "</title", open_end)?;
+    let t = html[open_end..end].trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
+
+/// Byte offset of the ASCII `needle` in `hay[from..]`, ignoring ASCII case.
+fn find_ascii_ci(hay: &str, needle: &str, from: usize) -> Option<usize> {
+    hay.as_bytes()[from..]
+        .windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle.as_bytes()))
+        .map(|i| i + from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_extraction() {
+        assert_eq!(
+            extract_title("<html><head><TITLE> Inv 1 </TITLE>"),
+            Some("Inv 1".into())
+        );
+        assert_eq!(extract_title("<title></title>"), None);
+        assert_eq!(extract_title("<p>no title</p>"), None);
+    }
 
     #[test]
     fn parses_page_lengths() {

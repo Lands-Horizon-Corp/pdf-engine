@@ -20,7 +20,8 @@ static MAX_OUTPUT: LazyLock<usize> = LazyLock::new(|| {
     std::env::var("TEMPLATE_MAX_OUTPUT_BYTES")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(5 * 1024 * 1024 * 1024)
+        // 5 GiB; capped at the platform's address space (4 GiB on 32-bit targets like wasm32).
+        .unwrap_or_else(|| usize::try_from(5u64 << 30).unwrap_or(usize::MAX))
 });
 
 /// Template instruction budget (`TEMPLATE_FUEL`, default 50 million).
@@ -152,13 +153,8 @@ fn render_with_limit(
     match tmpl.render_captured_to(ctx, &mut out) {
         Ok(_) => String::from_utf8(out.buf)
             .map_err(|_| AppError::InvalidField("template produced invalid UTF-8".into())),
-        Err(_) if out.exceeded => Err(AppError::InvalidField(format!(
-            "template output exceeds {} bytes",
-            out.limit
-        ))),
-        Err(e) if e.kind() == ErrorKind::OutOfFuel => Err(AppError::InvalidField(
-            "template is too expensive to render (execution budget exceeded)".into(),
-        )),
+        Err(_) if out.exceeded => Err(AppError::TemplateOutputTooLarge(out.limit)),
+        Err(e) if e.kind() == ErrorKind::OutOfFuel => Err(AppError::TemplateTooExpensive),
         Err(e) => Err(e.into()),
     }
 }
@@ -192,7 +188,7 @@ mod tests {
     fn output_is_capped() {
         let tmpl = "{% for i in range(1000) %}{{ s }}{% endfor %}";
         let err = render_with_limit(tmpl, json!({ "s": "x".repeat(1024) }), 64 * 1024).unwrap_err();
-        assert!(matches!(err, AppError::InvalidField(_)));
+        assert!(matches!(err, AppError::TemplateOutputTooLarge(_)));
     }
 
     fn ok(t: &str, d: serde_json::Value) -> String {

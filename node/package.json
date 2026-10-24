@@ -1,0 +1,37 @@
+{
+  "name": "@lands-horizon-corp/pdf-engine",
+  "version": "1.1.1",
+  "description": "HTML to PDF for Node.js and Electron. Talks to the Rust engine over stdin/stdout: no HTTP, no port.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build:native": "node scripts/build-native.js",
+    "test": "node --test test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lands-Horizon-Corp/pdf-engine.git",
+    "directory": "node"
+  },
+  "keywords": [
+    "pdf",
+    "html-to-pdf",
+    "electron",
+    "tauri",
+    "invoice",
+    "receipt"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

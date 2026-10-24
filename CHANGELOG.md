@@ -4,6 +4,41 @@ All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is a git tag `vX.Y.Z` and the Docker
 image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
+## [Unreleased]
+
+### Added
+
+- **IPC mode** for Node.js and Electron: `pdf-engine ipc` serves render requests over
+  stdin/stdout (no HTTP server, no port, no token, no storage settings). PDFs come back as raw
+  bytes. Protocol: `src/ipc.rs`.
+- **Browser package** in `wasm/` (`@lands-horizon-corp/pdf-engine-wasm`): the same renderer compiled to
+  WebAssembly for React, Vue, Svelte and plain JS. No server; bundled Latin fonts, add others with `fonts`.
+- **Node.js client** in `node/`: `new PDFEngine({ fonts })` and `generate({ template, data,
+  password, ... })`, with TypeScript types. See `node/README.md`. Published as
+  `@lands-horizon-corp/pdf-engine`.
+- Every error now has a stable `code` (`TEMPLATE_ERROR`, `MISSING_FIELD`, ...), plus `status`,
+  `hint` and, for templates, the `line`. The HTTP `error` field keeps its message.
+- Custom fonts: the `fonts` option (IPC `load_fonts`).
+- About 150 Noto fonts in the image: practically every living script, plus symbols and emoji.
+- Template output cap and execution budget (`TEMPLATE_MAX_OUTPUT_BYTES`, `TEMPLATE_FUEL`);
+  remote image cache (`ASSET_CACHE_BYTES`, `ASSET_CACHE_TTL_SECS`).
+
+### Changed
+
+- Faster rendering: fonts opened once per process, per-document style data without a global
+  lock, no per-render copies of font files. Patched copies of fulgur, stylo, fontique and taffy
+  live in `vendor/` (see each `PATCHES.md`).
+- HTTP server moved from axum to actix-web; `data` is parsed with simd-json.
+- `width: 100%` tables no longer overflow a padded parent.
+- S3 storage is optional; `POST /api/to-s3` answers `STORAGE_NOT_CONFIGURED` without it.
+
+### Removed
+
+- **All observability:** Prometheus `/metrics` (`METRICS_ENABLED`, `METRICS_TOKEN`),
+  OpenTelemetry (`OTEL_*`), request metrics and tracing spans. Logs still go to stderr.
+- Benchmarks, the load-test script, the `#[ignore]` stress and live-server tests, `docs/`
+  and the sample templates.
+
 ## [1.1.1] - 2026-10-13
 
 ### Fixed

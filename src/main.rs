@@ -1,4 +1,4 @@
-use pdf_engine::{config::AppState, fonts, pdf, serve, telemetry};
+use pdf_engine::{config::AppState, fonts, ipc, pdf, serve};
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -11,12 +11,25 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// Blitz (inside Fulgur) `println!`s every HTML parse warning. Logs go to stderr, and stdout
 /// is pointed at /dev/null once, at startup, before any rendering happens.
+#[cfg(unix)]
 fn silence_stdout() {
     use std::os::fd::AsRawFd;
     if let Ok(devnull) = std::fs::OpenOptions::new().write(true).open("/dev/null") {
         // SAFETY: dup2 on valid descriptors; nothing else is using stdout yet.
         unsafe { libc::dup2(devnull.as_raw_fd(), libc::STDOUT_FILENO) };
     }
+}
+
+#[cfg(not(unix))]
+fn silence_stdout() {}
+
+/// Warnings and errors to stderr; `RUST_LOG` changes the level (default `info`).
+fn init_logging() {
+    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
 }
 
 fn port() -> String {
@@ -39,34 +52,76 @@ fn healthcheck() -> ! {
     std::process::exit(if ok { 0 } else { 1 });
 }
 
-#[actix_web::main]
-async fn main() {
-    dotenvy::dotenv().ok();
-    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
-        healthcheck();
-    }
+/// `pdf-engine ipc`: serve render requests over stdin/stdout (see `src/ipc.rs`). No HTTP
+/// server, no port, no token and no storage settings are needed.
+fn run_ipc() -> ! {
+    init_logging();
+    let output = match ipc::take_stdout() {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("pdf-engine ipc: cannot take over stdout: {e}");
+            std::process::exit(1);
+        }
+    };
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let code = runtime.block_on(async {
+        let state = AppState::for_ipc();
+        if let Err(e) = pdf::warm_up_in_memory(&state).await {
+            tracing::error!("Warmup failed: {e}");
+            return 1;
+        }
+        fonts::watch_from_env(state.renderer.clone());
+        tracing::info!("pdf-engine v{} ready (ipc)", env!("CARGO_PKG_VERSION"));
+        match ipc::run(state, tokio::io::stdin(), output).await {
+            Ok(()) => 0,
+            Err(e) => {
+                tracing::error!("ipc stream ended with an error: {e}");
+                2
+            }
+        }
+    });
+    std::process::exit(code);
+}
 
-    let _telemetry = telemetry::init_tracing();
+/// `pdf-engine` (default): the HTTP API.
+fn run_http() {
+    init_logging();
     silence_stdout();
-    let metrics = telemetry::init_metrics_from_env();
+    actix_web::rt::System::new().block_on(async {
+        let state = AppState::from_env();
 
-    let state = AppState::new(metrics);
+        if let Err(e) = pdf::warm_up(&state).await {
+            tracing::error!("Warmup failed: {}", e);
+            std::process::exit(1);
+        }
+        fonts::watch_from_env(state.renderer.clone());
 
-    if let Err(e) = pdf::warm_up(&state).await {
-        tracing::error!("Warmup failed: {}", e);
-        std::process::exit(1);
+        let addr: SocketAddr = format!("0.0.0.0:{}", port())
+            .parse()
+            .expect("Invalid address");
+        tracing::info!(
+            "pdf-engine v{} listening on http://{}",
+            env!("CARGO_PKG_VERSION"),
+            addr
+        );
+
+        let listener = std::net::TcpListener::bind(addr).unwrap();
+        serve(listener, state).unwrap().await.unwrap();
+    });
+}
+
+fn main() {
+    dotenvy::dotenv().ok();
+    match std::env::args().nth(1).as_deref() {
+        Some("healthcheck") => healthcheck(),
+        Some("ipc") => run_ipc(),
+        Some("serve") | None => run_http(),
+        Some(other) => {
+            eprintln!("unknown command `{other}`; use `ipc`, `serve` (default) or `healthcheck`");
+            std::process::exit(64);
+        }
     }
-    fonts::watch_from_env(state.renderer.clone());
-
-    let addr: SocketAddr = format!("0.0.0.0:{}", port())
-        .parse()
-        .expect("Invalid address");
-    tracing::info!(
-        "pdf-engine v{} listening on http://{}",
-        env!("CARGO_PKG_VERSION"),
-        addr
-    );
-
-    let listener = std::net::TcpListener::bind(addr).unwrap();
-    serve(listener, state).unwrap().await.unwrap();
 }

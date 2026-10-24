@@ -23,3 +23,13 @@ target
 .env
 
 *.pdf
+# Built Node.js client binaries
+node/bin/
+
+# WebAssembly package build output
+wasm/dist/
+wasm/rust/target/
+wasm/*.tgz
+
+# Local sample apps
+sample/

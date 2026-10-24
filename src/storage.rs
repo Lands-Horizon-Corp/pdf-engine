@@ -6,34 +6,29 @@ use crate::{
 };
 use std::future::IntoFuture;
 use tokio::time::{Duration, timeout};
-use tracing::Instrument;
 
 pub async fn html_to_pdf_to_storage(
     req: PdfRequest,
     object_name: String,
     state: &AppState,
 ) -> Result<MediaPayload, AppError> {
+    let storage = state
+        .storage
+        .as_ref()
+        .ok_or(AppError::StorageNotConfigured)?;
     let work = async {
         let pdf_bytes = pdf::render(req, state).await?;
         let file_size = pdf_bytes.len() as i64;
 
         // `Bytes` converts into opendal's `Buffer` without copying.
-        let started = std::time::Instant::now();
-        let upload = state
-            .storage
+        storage
             .write_with(&object_name, pdf_bytes)
             .content_disposition("inline")
             .content_type("application/pdf")
             .into_future()
-            .instrument(tracing::info_span!("s3_upload"))
-            .await;
-        metrics::histogram!("pdf_s3_upload_seconds").record(started.elapsed().as_secs_f64());
-        let outcome = if upload.is_ok() { "ok" } else { "error" };
-        metrics::counter!("pdf_s3_uploads_total", "outcome" => outcome).increment(1);
-        upload?;
+            .await?;
 
-        let signed = state
-            .storage
+        let signed = storage
             .presign_read(&object_name, Duration::from_secs(3600))
             .await?;
 

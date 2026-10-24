@@ -11,6 +11,7 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 3 | `src/convert/style/border.rs`, `src/draw_primitives.rs` | Per-side border colors | Every side used `border-top-color` |
 | 4 | `src/blitz_adapter.rs` | The shared font context starts with every font file already loaded | Each render re-opened and re-mapped the font files |
 | 5 | `src/convert/mod.rs` | Font file bytes are copied once per process | Each render copied every font it used (many MB for CJK fonts) |
+| 6 | `src/blitz_adapter.rs`, `src/lib.rs` | `set_extra_fonts`: host-supplied font files join the shared font context | Lets an embedding app (the Node.js client's `fonts` option) bring its own fonts |
 
 ## Upgrading fulgur
 

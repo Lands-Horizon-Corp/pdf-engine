@@ -18,7 +18,6 @@ use axum::{
     response::IntoResponse,
 };
 use lopdf::{Document, LoadOptions, Object, Stream, dictionary};
-use metrics_exporter_prometheus::PrometheusHandle;
 use opendal::{Operator, services::S3};
 use pdf_engine::{
     assets::AssetPolicy,
@@ -246,8 +245,6 @@ pub struct TestApp {
 pub struct TestAppBuilder {
     renderer: Option<Arc<dyn InProcessRenderer>>,
     assets: AssetPolicy,
-    metrics: Option<PrometheusHandle>,
-    metrics_token: Option<String>,
     permits: usize,
     timeout: Duration,
     s3_mode: S3Mode,
@@ -260,8 +257,6 @@ impl TestApp {
         TestAppBuilder {
             renderer: None,
             assets: AssetPolicy::default(),
-            metrics: None,
-            metrics_token: None,
             permits: 4,
             timeout: Duration::from_secs(20),
             s3_mode: S3Mode::Ok,
@@ -343,13 +338,6 @@ impl TestAppBuilder {
         self
     }
 
-    /// Enable `/metrics` with the given recorder handle (and optional token).
-    pub fn metrics(mut self, handle: PrometheusHandle, token: Option<&str>) -> Self {
-        self.metrics = Some(handle);
-        self.metrics_token = token.map(String::from);
-        self
-    }
-
     /// Replace the renderer (default: the real Fulgur engine). It is still wrapped in a spy.
     pub fn renderer(mut self, r: Arc<dyn InProcessRenderer>) -> Self {
         self.renderer = Some(r);
@@ -367,7 +355,7 @@ impl TestAppBuilder {
         let endpoint = self.s3_endpoint.unwrap_or_else(|| s3.endpoint());
         let spy = Arc::new(Spy::new(self.renderer.unwrap_or_else(real_fulgur)));
         let state = AppState {
-            storage: s3_operator(&endpoint),
+            storage: Some(s3_operator(&endpoint)),
             storage_bucket: BUCKET.into(),
             render_permits: Arc::new(Semaphore::new(self.permits)),
             render_permit_count: self.permits,
@@ -375,8 +363,6 @@ impl TestAppBuilder {
             renderer: spy.clone(),
             render_timeout: self.timeout,
             assets: Arc::new(self.assets),
-            metrics: self.metrics,
-            metrics_token: self.metrics_token.map(|t| format!("Bearer {t}").into()),
         };
 
         let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

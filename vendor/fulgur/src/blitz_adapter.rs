@@ -316,11 +316,26 @@ fn shared_system_font_context() -> FontContext {
         .clone()
 }
 
+// pdf-engine patch: font files supplied by the host application, added to the system fonts.
+static EXTRA_FONTS: std::sync::RwLock<Vec<Arc<Vec<u8>>>> = std::sync::RwLock::new(Vec::new());
+
+/// pdf-engine patch: use these font files (TrueType/OpenType/collections) in addition to the
+/// system fonts for documents parsed from now on. Replaces any earlier set.
+pub fn set_extra_fonts(fonts: Vec<Vec<u8>>) {
+    *EXTRA_FONTS.write().unwrap_or_else(|e| e.into_inner()) =
+        fonts.into_iter().map(Arc::new).collect();
+    reload_system_fonts();
+}
+
 /// pdf-engine patch: a `FontContext` whose source cache already holds every discovered font
 /// file. Each document works on a clone, and a clone starts from the template's cache, so
 /// fonts are opened and memory-mapped once per process instead of once per render.
 fn new_preloaded_font_context() -> FontContext {
     let mut ctx = FontContext::new();
+    for data in EXTRA_FONTS.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        let blob: parley::fontique::Blob<u8> = (**data).clone().into();
+        ctx.collection.register_fonts(blob, None);
+    }
     let names: Vec<String> = ctx.collection.family_names().map(str::to_owned).collect();
     for name in names {
         if let Some(family) = ctx.collection.family_by_name(&name) {

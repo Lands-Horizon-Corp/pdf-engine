@@ -15,27 +15,14 @@ use lopdf::{
     Document, Object,
     encryption::{EncryptionState, EncryptionVersion, Permissions},
 };
-use minijinja::Environment;
-use std::{sync::LazyLock, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tracing::Instrument;
-
-static TEMPLATE_ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
-    let mut env = Environment::new();
-    env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
-    env
-});
 
 pub async fn render_template(
     template_str: String,
     data: serde_json::Value,
 ) -> Result<String, AppError> {
-    tokio::task::spawn_blocking(move || {
-        Ok(TEMPLATE_ENV.render_str(
-            &template_str,
-            minijinja::Value::from(minijinja::value::Serde(&data)),
-        )?)
-    })
-    .await?
+    tokio::task::spawn_blocking(move || crate::template::render(&template_str, data)).await?
 }
 
 /// Render a request to its final PDF bytes.
@@ -58,26 +45,27 @@ pub async fn render(req: PdfRequest, state: &AppState) -> Result<Bytes, AppError
         .await;
 
     let title = extract_title(&html);
-    let job = RenderJob {
+    let job = Arc::new(RenderJob {
         html,
         page,
         title,
         images,
-    };
-    // A corrupt image fails the whole render; retry once without images so a bad remote
-    // image never costs the document.
-    let retry = (!job.images.is_empty()).then(|| RenderJob {
-        images: Vec::new(),
-        ..job.clone()
     });
-    let pdf = match render_html(job, state)
+    // A corrupt image fails the whole render; retry once without images so a bad remote
+    // image never costs the document. The job is shared, not cloned up front, so the common
+    // path never copies the HTML.
+    let has_images = !job.images.is_empty();
+    let pdf = match render_shared(Arc::clone(&job), state)
         .instrument(tracing::info_span!("render"))
         .await
     {
-        Err(AppError::Render(e)) if retry.is_some() => {
+        Err(AppError::Render(e)) if has_images => {
             tracing::warn!(error = %e, "render failed with images; retrying without them");
             metrics::counter!("pdf_render_image_fallbacks_total").increment(1);
-            render_html(retry.unwrap(), state)
+            // The render thread has dropped its handle by now, so this moves the job out.
+            let mut job = Arc::try_unwrap(job).unwrap_or_else(|shared| (*shared).clone());
+            job.images.clear();
+            render_html(job, state)
                 .instrument(tracing::info_span!("render_without_images"))
                 .await?
         }
@@ -92,6 +80,10 @@ pub async fn render(req: PdfRequest, state: &AppState) -> Result<Bytes, AppError
 /// request has already timed out on keeps counting against concurrency until it really ends.
 /// A panic inside the renderer is contained to this request (requires `panic = "unwind"`).
 pub async fn render_html(job: RenderJob, state: &AppState) -> Result<Vec<u8>, AppError> {
+    render_shared(Arc::new(job), state).await
+}
+
+async fn render_shared(job: Arc<RenderJob>, state: &AppState) -> Result<Vec<u8>, AppError> {
     let permit = state
         .render_permits
         .clone()
@@ -103,6 +95,7 @@ pub async fn render_html(job: RenderJob, state: &AppState) -> Result<Vec<u8>, Ap
         let _permit = permit;
         let started = Instant::now();
         let result = renderer.render(&job);
+        drop(job);
         metrics::histogram!("pdf_render_seconds").record(started.elapsed().as_secs_f64());
         result
     })

@@ -382,10 +382,14 @@ impl TestAppBuilder {
         let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         std_listener.set_nonblocking(true).unwrap();
         let addr = std_listener.local_addr().unwrap();
-        let app = pdf_engine::app(state.clone());
-        spawn_detached(async move {
-            let listener = tokio::net::TcpListener::from_std(std_listener).unwrap();
-            axum::serve(listener, app).await.unwrap();
+        let server_state = state.clone();
+        std::thread::spawn(move || {
+            actix_web::rt::System::new()
+                .block_on(async move {
+                    std_listener.set_nonblocking(false).unwrap();
+                    pdf_engine::serve(std_listener, server_state).unwrap().await
+                })
+                .unwrap();
         });
 
         TestApp {

@@ -8,7 +8,7 @@
 # the production font set), for machines without Rust or with a different font setup.
 
 FUNCTIONAL_TESTS := happy_path sad_path poison_pill chaos integration_chaos race_conditions \
-                    zero_absence smoke compression css assets observability fonts_reload
+                    zero_absence smoke compression css assets observability fonts_reload languages
 
 # Parallel build jobs. Linking many test binaries at once is memory hungry; keep this low on
 # machines (or Docker VMs) with less than ~16 GB.

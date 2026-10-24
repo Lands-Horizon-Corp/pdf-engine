@@ -9,12 +9,35 @@
 
 use base64::Engine as _;
 use futures_util::future::join_all;
+use moka::future::Cache;
 use std::{
     env,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Duration,
 };
+
+/// Fetched remote images, shared by every request. Receipts repeat the same logo, so this
+/// skips DNS, the TLS handshake and the download for all but the first. Concurrent requests
+/// for one URL share a single fetch. Only validated successes are stored.
+/// `ASSET_CACHE_BYTES` (default 256 MiB, 0 disables) bounds it by image size;
+/// `ASSET_CACHE_TTL_SECS` (default 300) bounds staleness.
+static IMAGE_CACHE: LazyLock<Option<Cache<String, Arc<Vec<u8>>>>> = LazyLock::new(|| {
+    let num = |k: &str, d: u64| {
+        env::var(k)
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(d)
+    };
+    let bytes = num("ASSET_CACHE_BYTES", 256 * 1024 * 1024);
+    (bytes > 0).then(|| {
+        Cache::builder()
+            .max_capacity(bytes)
+            .weigher(|_, v: &Arc<Vec<u8>>| u32::try_from(v.len()).unwrap_or(u32::MAX))
+            .time_to_live(Duration::from_secs(num("ASSET_CACHE_TTL_SECS", 300)))
+            .build()
+    })
+});
 
 #[derive(Debug, Clone)]
 pub struct AssetPolicy {
@@ -101,11 +124,12 @@ pub async fn resolve_images(policy: &AssetPolicy, html: &str) -> Vec<(String, Ar
             }
         };
         metrics::counter!("pdf_images_total", "source" => kind, "outcome" => outcome).increment(1);
-        result.ok().map(|bytes| (src, Arc::new(bytes)))
+        result.ok().map(|bytes| (src, bytes))
     });
     join_all(fetches).await.into_iter().flatten().collect()
 }
 
+#[derive(Clone)]
 enum Skip {
     /// Not something we load (relative path, `file://`, non-image data URI).
     Ignored,
@@ -126,9 +150,9 @@ fn truncate(s: &str) -> String {
     s.chars().take(120).collect()
 }
 
-async fn load(policy: &AssetPolicy, src: &str) -> Result<Vec<u8>, Skip> {
+async fn load(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
     if let Some(rest) = src.strip_prefix("data:") {
-        return decode_data_uri(rest, policy.max_bytes);
+        return decode_data_uri(rest, policy.max_bytes).map(Arc::new);
     }
     let lower = src.to_ascii_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
@@ -146,13 +170,21 @@ fn decode_data_uri(rest: &str, max_bytes: usize) -> Result<Vec<u8>, Skip> {
         return Err(Skip::Blocked("data URI too large"));
     }
     let bytes = if meta.to_ascii_lowercase().ends_with(";base64") {
-        let compact: String = payload
-            .chars()
-            .filter(|c| !c.is_ascii_whitespace())
-            .collect();
-        base64::engine::general_purpose::STANDARD
-            .decode(compact)
-            .map_err(|e| Skip::Failed(format!("bad base64: {e}")))?
+        let decode = |input: &str| {
+            base64::engine::general_purpose::STANDARD
+                .decode(input)
+                .map_err(|e| Skip::Failed(format!("bad base64: {e}")))
+        };
+        // Whitespace is rare; only then pay for a cleaned copy.
+        if payload.bytes().any(|c| c.is_ascii_whitespace()) {
+            let compact: String = payload
+                .chars()
+                .filter(|c| !c.is_ascii_whitespace())
+                .collect();
+            decode(&compact)?
+        } else {
+            decode(payload)?
+        }
     } else {
         percent_decode(payload)
     };
@@ -162,7 +194,7 @@ fn decode_data_uri(rest: &str, max_bytes: usize) -> Result<Vec<u8>, Skip> {
     Ok(bytes)
 }
 
-async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Vec<u8>, Skip> {
+async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
     if policy.allowed_hosts.is_empty() {
         return Err(Skip::Blocked(
             "remote images disabled (ASSET_ALLOWED_HOSTS unset)",
@@ -182,6 +214,30 @@ async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Vec<u8>, Skip> {
         .port_or_known_default()
         .ok_or(Skip::Blocked("no port"))?;
 
+    // The scheme and host checks above run on every call; the cache only skips the network.
+    let Some(cache) = IMAGE_CACHE.as_ref() else {
+        return fetch_pinned(policy, url, host, port).await.map(Arc::new);
+    };
+    cache
+        .try_get_with(src.to_string(), async {
+            let bytes = fetch_pinned(policy, url, host, port).await?;
+            if is_supported_image(&bytes) {
+                Ok(Arc::new(bytes))
+            } else {
+                Err(Skip::Blocked("not a PNG, JPEG, GIF or SVG image"))
+            }
+        })
+        .await
+        .map_err(|e| (*e).clone())
+}
+
+/// DNS, address checks and the download itself, pinned to the addresses that were checked.
+async fn fetch_pinned(
+    policy: &AssetPolicy,
+    url: reqwest::Url,
+    host: String,
+    port: u16,
+) -> Result<Vec<u8>, Skip> {
     let lookup = tokio::time::timeout(
         policy.timeout,
         tokio::net::lookup_host((host.as_str(), port)),

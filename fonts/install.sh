@@ -28,6 +28,30 @@ for f in \
     $TTF/NotoColorEmoji.ttf; do
     if [ -f "$f" ]; then cp -L "$f" "$DEST/"; else echo "missing font: $f" >&2; missing=1; fi
 done
+# One Regular (required) and, where Noto has one, a Bold per script, so text in these languages
+# renders instead of showing empty boxes. Covers Indic (Devanagari, Bengali, Tamil, ...), South-East
+# Asian (Khmer, Lao, Myanmar, Javanese, ...), Caucasian, African (Ethiopic, N'Ko, Vai, Tifinagh,
+# Adlam, ...), Middle-Eastern, Mongolian, Cherokee, Canadian Aboriginal, Yi and more, plus
+# symbols and math. Latin, Greek and Cyrillic come from Noto Sans above.
+SCRIPTS="Adlam Armenian Balinese Bamum Batak Bengali Buginese Buhid CanadianAboriginal Chakma Cham
+    Cherokee Devanagari Ethiopic Georgian Grantha Gujarati Gurmukhi HanifiRohingya Hanunoo Javanese
+    Kaithi KayahLi Kannada Khmer Khojki Khudawadi Lao Lepcha Limbu Lisu Malayalam Mandaic Marchen
+    MasaramGondi GunjalaGondi Medefaidrin MeeteiMayek MendeKikakui Miao Modi Mongolian Mro Multani
+    Myanmar Newa NewTaiLue NKo OlChiki Oriya Osage PahawhHmong Rejang Samaritan Saurashtra Sharada
+    Siddham Sinhala SoraSompeng Soyombo Sundanese SylotiNagri Syriac Tagalog Tagbanwa TaiLe TaiTham
+    TaiViet Takri Tamil Telugu Thaana Tifinagh Tirhuta Vai Wancho WarangCiti Yi ZanabazarSquare
+    Symbols Symbols2 Math"
+for s in $SCRIPTS; do
+    f=$TTF/NotoSans$s-Regular.ttf
+    if [ -f "$f" ]; then cp -L "$f" "$DEST/"; else echo "missing font: $f" >&2; missing=1; fi
+    b=$TTF/NotoSans$s-Bold.ttf
+    if [ -f "$b" ]; then cp -L "$b" "$DEST/"; fi
+done
+# Tibetan, which Noto ships only as a serif design, and Urdu's Nastaliq style (use
+# `font-family: 'Noto Nastaliq Urdu'` for it; it is not picked automatically).
+for f in $TTF/NotoSerifTibetan-Regular.ttf $TTF/NotoNastaliqUrdu-Regular.ttf; do
+    if [ -f "$f" ]; then cp -L "$f" "$DEST/"; else echo "missing font: $f" >&2; missing=1; fi
+done
 [ "$missing" = 0 ] || exit 1
 if command -v fc-cache >/dev/null; then
     FONTCONFIG_FILE="$(dirname "$0")/fonts.conf" fc-cache -f

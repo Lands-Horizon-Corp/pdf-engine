@@ -1,4 +1,4 @@
-use pdf_engine::{app, config::AppState, fonts, pdf, telemetry};
+use pdf_engine::{config::AppState, fonts, pdf, serve, telemetry};
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -39,7 +39,7 @@ fn healthcheck() -> ! {
     std::process::exit(if ok { 0 } else { 1 });
 }
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() {
     dotenvy::dotenv().ok();
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
@@ -58,8 +58,6 @@ async fn main() {
     }
     fonts::watch_from_env(state.renderer.clone());
 
-    let app = app(state);
-
     let addr: SocketAddr = format!("0.0.0.0:{}", port())
         .parse()
         .expect("Invalid address");
@@ -69,6 +67,6 @@ async fn main() {
         addr
     );
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = std::net::TcpListener::bind(addr).unwrap();
+    serve(listener, state).unwrap().await.unwrap();
 }

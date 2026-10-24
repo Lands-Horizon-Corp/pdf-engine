@@ -109,6 +109,8 @@ Responses are gzip/brotli/zstd compressed (level 6) when the client asks.
 | `RENDER_TIMEOUT_SECS` | `45` | Per request; `408` when exceeded |
 | `ASSET_ALLOWED_HOSTS` | off | Hosts `<img>` may load from, e.g. `cdn.example.com,*.assets.io` |
 | `ASSET_MAX_BYTES` / `ASSET_TIMEOUT_MS` / `ASSET_MAX_IMAGES` | `5242880` / `5000` / `20` | Per-image limits |
+| `ASSET_CACHE_BYTES` / `ASSET_CACHE_TTL_SECS` | `268435456` / `300` | Shared cache of fetched remote images (`0` bytes disables) |
+| `TEMPLATE_MAX_OUTPUT_BYTES` / `TEMPLATE_FUEL` | `5368709120` / `50000000` | Cap on rendered HTML size and template execution budget |
 | `ASSET_ALLOW_HTTP` / `ASSET_ALLOW_PRIVATE_IPS` | `false` | Only for trusted internal networks |
 | `FONT_WATCH` / `FONT_WATCH_DIR` | `false` / `/usr/share/fonts/pdf-engine` | Reload fonts when the directory changes |
 | `METRICS_ENABLED` / `METRICS_TOKEN` | `false` / — | Enable `/metrics`, optionally protected |
@@ -123,12 +125,53 @@ Everything optional is off by default; set it in `.env` or the container environ
 `ASSET_ALLOWED_HOSTS`: no redirects, no private/loopback addresses (checked after DNS), images
 only, size and time limits. Blocked or broken images are skipped; the PDF still renders.
 
-## Fonts
+## Metrics
 
-The image ships 29 Noto fonts (Latin, Serif, Mono, CJK, Arabic, Hebrew, Thai, emoji) via
-[fonts/fonts.conf](fonts/fonts.conf). `sans-serif`/Arial → Noto Sans, `serif` → Noto Serif,
-`monospace` → Noto Sans Mono. To add one: copy it into `/usr/share/fonts/pdf-engine`, then
+Set `METRICS_ENABLED=true` to serve Prometheus metrics at `/metrics` (protect with `METRICS_TOKEN`).
+
+| Metric | Type | Labels |
+| --- | --- | --- |
+| `pdf_renders_total` | counter | `outcome` = `ok`/`error` |
+| `pdf_render_seconds` | summary | — |
+| `pdf_template_seconds` | summary | — |
+| `pdf_render_permits_in_use` / `pdf_render_permits_total` | gauge | — |
+| `pdf_s3_uploads_total` | counter | `outcome` = `ok`/`error` |
+| `pdf_s3_upload_seconds` | summary | — |
+| `pdf_images_total` | counter | `source`, `outcome` = `loaded`/`ignored`/`blocked`/`failed` |
+| `pdf_render_image_fallbacks_total` | counter | — |
+| `pdf_font_reloads_total` | counter | — |
+| `http_requests_total` | counter | `route`, `method`, `status` |
+| `http_request_duration_seconds` | summary | `route`, `method` |
+
+Durations are in seconds and exported as summaries (quantiles 0.5, 0.9, 0.99, plus `_sum` and
+`_count`), not histograms: there are no `_bucket` series, so `histogram_quantile()` won't work and
+quantiles can't be aggregated across replicas. No process CPU/memory metrics are emitted.
+
+## Fonts and languages
+
+The image ships about 150 Noto fonts via [fonts/fonts.conf](fonts/fonts.conf), so text in
+practically any living language renders instead of showing empty boxes:
+
+* **Latin, Greek, Cyrillic** (including Vietnamese and all European accents), plus a serif and a
+  monospace design
+* **Chinese (simplified and traditional), Japanese, Korean**
+* **Arabic, Urdu, Hebrew, Thaana, Syriac**, all right-to-left
+* **Indic:** Devanagari (Hindi, Marathi, Nepali), Bengali, Tamil, Telugu, Kannada, Malayalam,
+  Gujarati, Gurmukhi (Punjabi), Sinhala, Oriya, and more
+* **South-East Asian:** Thai, Lao, Khmer, Myanmar, Javanese, Balinese, Sundanese, and more
+* **Others:** Ethiopic, Georgian, Armenian, Tibetan, Mongolian, Cherokee, Canadian Aboriginal,
+  N'Ko, Tifinagh, Vai, Adlam, Yi, and more
+* **Color emoji, flags, symbols and math**
+
+`sans-serif`/Arial → Noto Sans, `serif` → Noto Serif, `monospace` → Noto Sans Mono. Characters
+a font lacks fall back to a font that has them. [tests/fixtures/languages.html](tests/fixtures/languages.html)
+shows about 30 scripts at once. To add a font: copy it into `/usr/share/fonts/pdf-engine`, then
 `POST /api/fonts/reload` (or run with `FONT_WATCH=true`).
+
+**Running outside Docker** (for example `cargo run` on macOS) uses that machine's own fonts,
+which can lack some scripts (on the Mac we tested, Chinese ideographs, ★ and ✓ showed as boxes).
+The Docker image is what production renders with, so judge language output there
+(`make docker-image`, or the published image).
 
 ## CSS
 

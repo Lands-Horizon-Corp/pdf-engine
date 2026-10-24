@@ -143,3 +143,69 @@ async fn single_side_border_color_is_not_black() {
         "a colored border was drawn black: {ops:?}"
     );
 }
+
+// ---- patched Taffy (vendor/taffy/PATCHES.md) ----
+
+/// X range (in PDF points) of every path segment drawn right after the fill color `color`.
+fn filled_x_range(pdf: &[u8], color: &str) -> (f32, f32) {
+    let doc = load_pdf(pdf);
+    let mut xs = Vec::new();
+    for &page in doc.get_pages().values() {
+        let content = String::from_utf8_lossy(&doc.get_page_content(page)).into_owned();
+        let mut painting = false;
+        for line in content.lines() {
+            if line.ends_with(" rg") {
+                painting = line == color;
+            } else if painting && (line.ends_with(" m") || line.ends_with(" l")) {
+                xs.push(line.split(' ').next().unwrap().parse::<f32>().unwrap());
+            }
+        }
+    }
+    assert!(!xs.is_empty(), "nothing was painted with {color}");
+    (
+        xs.iter().cloned().fold(f32::MAX, f32::min),
+        xs.iter().cloned().fold(f32::MIN, f32::max),
+    )
+}
+
+#[tokio::test]
+async fn full_width_table_fits_inside_a_padded_parent() {
+    let app = TestApp::builder().spawn().await;
+
+    // US Letter is 612pt wide; 60px (45pt) of padding on each side leaves x = 45..567.
+    // The table used to resolve `100%` against the padded outer width and ran 45pt too far.
+    for table_style in [
+        "width:100%",
+        "width:100%;table-layout:fixed",
+        "width:100%;max-width:100%",
+    ] {
+        let html = format!(
+            r#"<body style="margin:0"><div style="padding:0 60px"><table style="border-collapse:collapse;{table_style}">
+               <tr><td style="background:#112233">cell</td></tr></table></div></body>"#
+        );
+        let resp = app.to_bytes(form(&html)).await;
+        assert_eq!(resp.status(), 200);
+        let (left, right) =
+            filled_x_range(&resp.bytes().await.unwrap(), "0.06666667 0.13333334 0.2 rg");
+        assert!((left - 45.0).abs() < 0.5, "{table_style}: left edge {left}");
+        assert!(
+            (right - 567.0).abs() < 0.5,
+            "{table_style}: right edge {right}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn auto_width_table_still_shrinks_to_fit() {
+    let app = TestApp::builder().spawn().await;
+
+    let html = r#"<body style="margin:0"><div style="padding:0 60px"><table style="border-collapse:collapse">
+        <tr><td style="background:#112233">cell</td></tr></table></div></body>"#;
+    let resp = app.to_bytes(form(html)).await;
+    let (left, right) =
+        filled_x_range(&resp.bytes().await.unwrap(), "0.06666667 0.13333334 0.2 rg");
+    assert!(
+        right - left < 100.0,
+        "an auto-width table was stretched to {left}..{right}"
+    );
+}

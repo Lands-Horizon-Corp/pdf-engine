@@ -9,6 +9,8 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 1 | `src/blitz_adapter.rs` | Build the system font context once per process; `reload_system_fonts()` swaps it | Renders were rebuilding fonts from fontconfig every time (4–6× slower) |
 | 2 | `src/convert/style/mod.rs` | Convert colors to sRGB before reading components | `hsl()`/`hsla()` were drawn as garbage colors |
 | 3 | `src/convert/style/border.rs`, `src/draw_primitives.rs` | Per-side border colors | Every side used `border-top-color` |
+| 4 | `src/blitz_adapter.rs` | The shared font context starts with every font file already loaded | Each render re-opened and re-mapped the font files |
+| 5 | `src/convert/mod.rs` | Font file bytes are copied once per process | Each render copied every font it used (many MB for CJK fonts) |
 
 ## Upgrading fulgur
 

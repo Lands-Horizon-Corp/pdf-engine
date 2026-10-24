@@ -312,14 +312,31 @@ fn shared_system_font_context() -> FontContext {
     SHARED_SYSTEM_FONTS
         .write()
         .unwrap_or_else(|e| e.into_inner())
-        .get_or_insert_with(FontContext::new)
+        .get_or_insert_with(new_preloaded_font_context)
         .clone()
+}
+
+/// pdf-engine patch: a `FontContext` whose source cache already holds every discovered font
+/// file. Each document works on a clone, and a clone starts from the template's cache, so
+/// fonts are opened and memory-mapped once per process instead of once per render.
+fn new_preloaded_font_context() -> FontContext {
+    let mut ctx = FontContext::new();
+    let names: Vec<String> = ctx.collection.family_names().map(str::to_owned).collect();
+    for name in names {
+        if let Some(family) = ctx.collection.family_by_name(&name) {
+            for font in family.fonts() {
+                let _ = ctx.source_cache.get(font.source());
+            }
+        }
+    }
+    ctx
 }
 
 /// pdf-engine patch: rediscover system fonts (e.g. after fonts were added) and use them for
 /// documents parsed from now on. Documents already being rendered keep their fonts.
 pub fn reload_system_fonts() {
-    let fresh = FontContext::new();
+    let fresh = new_preloaded_font_context();
+    crate::convert::clear_font_bytes_cache();
     *SHARED_SYSTEM_FONTS.write().unwrap_or_else(|e| e.into_inner()) = Some(fresh);
 }
 

@@ -1,22 +1,30 @@
 use crate::{config::AppState, error::AppError};
-use axum::{
-    extract::{Request, State},
+use actix_web::{
+    body::{BoxBody, MessageBody},
+    dev::{ServiceRequest, ServiceResponse},
     http::header,
     middleware::Next,
-    response::Response,
+    web,
 };
 
 pub async fn auth_middleware(
-    State(state): State<AppState>,
-    req: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let auth_header = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok());
-    match auth_header {
-        Some(h) if h == &*state.expected_auth => Ok(next.run(req).await),
-        _ => Err(AppError::Unauthorized),
+    req: ServiceRequest,
+    next: Next<impl MessageBody + 'static>,
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
+    let authorized = match (
+        req.app_data::<web::Data<AppState>>(),
+        req.headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok()),
+    ) {
+        (Some(state), Some(h)) => h == &*state.expected_auth,
+        _ => false,
+    };
+    if authorized {
+        Ok(next.call(req).await?.map_into_boxed_body())
+    } else {
+        Ok(req
+            .error_response(AppError::Unauthorized)
+            .map_into_boxed_body())
     }
 }

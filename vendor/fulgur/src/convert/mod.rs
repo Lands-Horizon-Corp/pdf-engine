@@ -144,9 +144,41 @@ impl ConvertContext<'_> {
         Arc::clone(
             self.font_cache
                 .entry(key)
-                .or_insert_with(|| Arc::new(font.data.data().to_vec())),
+                .or_insert_with(|| shared_font_bytes(font)),
         )
     }
+}
+
+// pdf-engine patch (see PATCHES.md): font file bytes copied once per process, not per render.
+// Each render gets its own `Blob` handle over the shared mapped font, so the key is the
+// bytes' address and length. The entry keeps a handle alive, which keeps the mapping alive, so
+// the address cannot be reused for different data while the entry exists. Cleared when system
+// fonts are reloaded.
+struct SharedFontBytes {
+    _keep_alive: parley::fontique::Blob<u8>,
+    bytes: Arc<Vec<u8>>,
+}
+
+static FONT_BYTES: std::sync::LazyLock<std::sync::Mutex<HashMap<(usize, usize), SharedFontBytes>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn shared_font_bytes(font: &parley::FontData) -> Arc<Vec<u8>> {
+    let data = font.data.data();
+    let key = (data.as_ptr() as usize, data.len());
+    let mut cache = FONT_BYTES.lock().unwrap_or_else(|e| e.into_inner());
+    Arc::clone(
+        &cache
+            .entry(key)
+            .or_insert_with(|| SharedFontBytes {
+                _keep_alive: font.data.clone(),
+                bytes: Arc::new(data.to_vec()),
+            })
+            .bytes,
+    )
+}
+
+pub(crate) fn clear_font_bytes_cache() {
+    FONT_BYTES.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 /// Phase 4 (fulgur-9t3z) + PR 8i: convert a resolved Blitz document into a

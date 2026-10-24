@@ -1,12 +1,36 @@
 use crate::{config::AppState, error::AppError, models::PdfRequest, pdf, storage};
-use axum::{
-    Json,
-    body::Body,
-    extract::{Multipart, State},
-    http::{HeaderMap, HeaderValue, header},
-    response::IntoResponse,
-};
+use actix_multipart::{Field, Multipart};
+use actix_web::{HttpResponse, http::header, web};
+use futures_util::TryStreamExt;
 use tokio::time::timeout;
+
+/// Largest accepted multipart body (all fields together).
+pub const MAX_BODY_BYTES: usize = 25 * 1024 * 1024;
+
+/// All bytes of one field, counted against the shared body budget.
+async fn field_bytes(field: &mut Field, budget: &mut usize) -> Result<Vec<u8>, AppError> {
+    let mut out = Vec::new();
+    while let Some(chunk) = field
+        .try_next()
+        .await
+        .map_err(|_| AppError::InvalidField("malformed multipart body".into()))?
+    {
+        *budget = budget
+            .checked_sub(chunk.len())
+            .ok_or(AppError::PayloadTooLarge(MAX_BODY_BYTES))?;
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
+async fn field_text(field: &mut Field, budget: &mut usize) -> Result<Option<String>, AppError> {
+    Ok(String::from_utf8(field_bytes(field, budget).await?).ok())
+}
+
+/// JSON `data` field, parsed in place with SIMD. Invalid JSON becomes `null`, as before.
+fn parse_data(mut bytes: Vec<u8>) -> serde_json::Value {
+    simd_json::serde::from_slice(&mut bytes).unwrap_or(serde_json::Value::Null)
+}
 
 async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, AppError> {
     let mut template = None;
@@ -16,34 +40,41 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut orientation = "portrait".to_string();
     let mut filename = "document.pdf".to_string();
     let mut password = None;
+    let mut budget = MAX_BODY_BYTES;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
-        let name = field.name().unwrap_or_default().to_string();
-        match name.as_str() {
+    while let Ok(Some(mut field)) = multipart.try_next().await {
+        match field.name().unwrap_or_default() {
             "template" => {
                 template = Some(
-                    field
-                        .text()
-                        .await
-                        .map_err(|_| AppError::MissingField("template".into()))?,
+                    field_text(&mut field, &mut budget)
+                        .await?
+                        .ok_or_else(|| AppError::MissingField("template".into()))?,
                 )
             }
-            "data" => {
-                if let Ok(text) = field.text().await {
-                    data = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
-                }
+            "data" => data = parse_data(field_bytes(&mut field, &mut budget).await?),
+            "width" => width = field_text(&mut field, &mut budget).await?.unwrap_or(width),
+            "orientation" => {
+                orientation = field_text(&mut field, &mut budget)
+                    .await?
+                    .unwrap_or(orientation)
             }
-            "width" => width = field.text().await.unwrap_or(width),
-            "orientation" => orientation = field.text().await.unwrap_or(orientation),
-            "height" => height = field.text().await.unwrap_or(height),
-            "filename" => filename = field.text().await.unwrap_or(filename),
+            "height" => height = field_text(&mut field, &mut budget).await?.unwrap_or(height),
+            "filename" => {
+                filename = field_text(&mut field, &mut budget)
+                    .await?
+                    .unwrap_or(filename)
+            }
             "password" => {
-                let p = field.text().await.unwrap_or_default();
+                let p = field_text(&mut field, &mut budget)
+                    .await?
+                    .unwrap_or_default();
                 if !p.is_empty() {
                     password = Some(p);
                 }
             }
-            _ => {}
+            _ => {
+                field_bytes(&mut field, &mut budget).await?;
+            }
         }
     }
 
@@ -60,19 +91,19 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
 
 /// `inline; filename="..."` with quotes and control characters removed, so a hostile
 /// filename can neither inject headers nor make header construction fail.
-fn content_disposition(filename: &str) -> HeaderValue {
+fn content_disposition(filename: &str) -> header::HeaderValue {
     let safe: String = filename
         .chars()
         .filter(|c| !c.is_control() && *c != '"')
         .collect();
-    HeaderValue::from_str(&format!("inline; filename=\"{safe}\""))
-        .unwrap_or_else(|_| HeaderValue::from_static("inline; filename=\"document.pdf\""))
+    header::HeaderValue::from_str(&format!("inline; filename=\"{safe}\""))
+        .unwrap_or_else(|_| header::HeaderValue::from_static("inline; filename=\"document.pdf\""))
 }
 
 pub async fn handle_to_s3(
-    State(state): State<AppState>,
+    state: web::Data<AppState>,
     multipart: Multipart,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<HttpResponse, AppError> {
     let req = parse_pdf_multipart(multipart).await?;
     // The timestamp alone collides under concurrency, silently overwriting another PDF.
     let key = format!(
@@ -81,59 +112,52 @@ pub async fn handle_to_s3(
         uuid::Uuid::new_v4().simple()
     );
     let payload = storage::html_to_pdf_to_storage(req, key, &state).await?;
-    Ok(Json(payload))
+    Ok(HttpResponse::Ok().json(payload))
 }
 
 pub async fn handle_to_bytes(
-    State(state): State<AppState>,
+    state: web::Data<AppState>,
     multipart: Multipart,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<HttpResponse, AppError> {
     let req = parse_pdf_multipart(multipart).await?;
     let disposition = content_disposition(&req.filename);
     let pdf_bytes = timeout(state.render_timeout, pdf::render(req, &state))
         .await
         .map_err(|_| AppError::Timeout(state.render_timeout))??;
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/pdf"),
-    );
-    headers.insert(header::CONTENT_DISPOSITION, disposition);
-
-    Ok((headers, Body::from(pdf_bytes)))
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/pdf"))
+        .insert_header((header::CONTENT_DISPOSITION, disposition))
+        .body(pdf_bytes))
 }
 
 /// `GET /health`: liveness for load balancers and Docker. No authentication.
-pub async fn handle_health() -> impl IntoResponse {
-    Json(serde_json::json!({
+pub async fn handle_health() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
 
 /// `POST /api/fonts/reload`: rediscover fonts without restarting.
-pub async fn handle_fonts_reload(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn handle_fonts_reload(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
     let started = std::time::Instant::now();
     let renderer = state.renderer.clone();
     tokio::task::spawn_blocking(move || renderer.reload_fonts()).await?;
     let took_ms = started.elapsed().as_millis() as u64;
     tracing::info!(took_ms, "fonts reloaded");
     metrics::counter!("pdf_font_reloads_total").increment(1);
-    Ok(Json(
-        serde_json::json!({ "status": "reloaded", "took_ms": took_ms }),
-    ))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "reloaded", "took_ms": took_ms })))
 }
 
 /// `GET /metrics`: Prometheus text format. Registered only when metrics are enabled.
 pub async fn handle_metrics(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, AppError> {
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+) -> Result<HttpResponse, AppError> {
     if let Some(expected) = &state.metrics_token {
-        let given = headers
+        let given = req
+            .headers()
             .get(header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok());
         if given != Some(&**expected) {
@@ -152,13 +176,9 @@ pub async fn handle_metrics(
         .as_ref()
         .map(|h| h.render())
         .unwrap_or_default();
-    Ok((
-        [(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("text/plain; version=0.0.4"),
-        )],
-        body,
-    ))
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "text/plain; version=0.0.4"))
+        .body(body))
 }
 
 #[cfg(test)]

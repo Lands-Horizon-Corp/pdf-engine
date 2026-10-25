@@ -1,0 +1,75 @@
+{
+  "machine": {
+    "date": "2026-10-25",
+    "cpu": "Apple M4",
+    "cores": 10,
+    "platform": "darwin arm64",
+    "node": "v26.10.0"
+  },
+  "rows": [
+    {
+      "library": "pdf-engine (WebAssembly)",
+      "jsRaw": 15291,
+      "jsGzip": 5440,
+      "jsBrotli": 5194,
+      "dataRaw": 11627522,
+      "dataBrotli": 3316156
+    },
+    {
+      "library": "jsPDF",
+      "jsRaw": 1032195,
+      "jsGzip": 258536,
+      "jsBrotli": 233238,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "pdf-lib",
+      "jsRaw": 629322,
+      "jsGzip": 214777,
+      "jsBrotli": 174219,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "pdf-lib + fontkit (Unicode fonts)",
+      "jsRaw": 1527475,
+      "jsGzip": 569790,
+      "jsBrotli": 467302,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "pdfkit",
+      "jsRaw": 660531,
+      "jsGzip": 227914,
+      "jsBrotli": 210534,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "pdfmake",
+      "jsRaw": 1075351,
+      "jsGzip": 311130,
+      "jsBrotli": 283015,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "html2pdf.js",
+      "jsRaw": 1345500,
+      "jsGzip": 295216,
+      "jsBrotli": 262924,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    },
+    {
+      "library": "jspdf-html2canvas",
+      "jsRaw": 1279313,
+      "jsGzip": 313710,
+      "jsBrotli": 259959,
+      "dataRaw": 0,
+      "dataBrotli": 0
+    }
+  ]
+}

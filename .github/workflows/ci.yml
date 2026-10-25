@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The Rust engine and the HTTP and IPC modes.
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+        if: matrix.os == 'ubuntu-latest'
+      - run: cargo test --no-fail-fast
+
+  # The same checks inside the dev image, which has the production font set: this is what proves
+  # every script renders on Linux (tests/languages.rs only runs where those fonts are installed).
+  linux-fonts:
+    name: Linux with the production fonts (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make docker-test
+
+  # Windows: IPC mode and the Node client. New, so it may not pass yet; failures show up here
+  # without blocking merges. Remove `continue-on-error` once it is green.
+  windows:
+    name: Windows (IPC and Node client)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - run: cargo test --lib --test ipc --test error_codes --test node_contract
+      - run: node --test node/test
+
+  node-client:
+    name: Node client (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - run: node --test node/test
+
+  # The browser package, in every engine Playwright ships: Chromium (Chrome, Edge, Brave),
+  # Firefox, and WebKit (Safari), from plain JavaScript, React and Vue apps.
+  browsers:
+    name: "Browsers (${{ matrix.os }}: ${{ matrix.browsers }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, browsers: "chromium firefox webkit", projects: "--project=chromium --project=firefox --project=webkit" }
+          - { os: macos-latest, browsers: "chromium webkit", projects: "--project=chromium --project=webkit" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            wasm/rust -> target
+      - name: wasm-bindgen CLI (the version the crate locks)
+        run: |
+          v=$(grep -A1 'name = "wasm-bindgen"$' wasm/rust/Cargo.lock | grep version | head -1 | cut -d'"' -f2)
+          cargo install wasm-bindgen-cli --version "$v" --locked
+      - run: cargo build                      # the native server, for the "render on a server" check
+      - run: npm run build && npm test
+        working-directory: wasm
+      - run: npm install
+        working-directory: wasm/e2e
+      - run: npx playwright install --with-deps ${{ matrix.browsers }}
+        working-directory: wasm/e2e
+      - run: npx playwright test ${{ matrix.projects }}
+        working-directory: wasm/e2e

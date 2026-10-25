@@ -2,12 +2,14 @@
 #
 #   make test     functional test suites (fast, hermetic: no server, no network)
 #   make node     Node.js client tests (needs `cargo build` first)
+#   make bench    speed per document, then redraw the charts   (bench/README.md explains it all)
+#   make bench-scale   10,000 documents per library and scenario
 #
 # `make docker-test` runs the checks inside Dockerfile.dev (Rust toolchain plus the production
 # font set), for machines without Rust or with a different font setup.
 
 FUNCTIONAL_TESTS := happy_path sad_path poison_pill chaos integration_chaos race_conditions \
-                    zero_absence smoke compression css assets fonts_reload languages ipc error_codes node_contract
+                    zero_absence smoke compression css assets fonts_reload languages ipc error_codes node_contract cors
 
 # Parallel build jobs. Linking many test binaries at once is memory hungry; keep this low on
 # machines (or Docker VMs) with less than ~16 GB.
@@ -17,6 +19,14 @@ JOBS ?= 2
 ifneq ($(wildcard /usr/share/fonts/pdf-engine),)
 export FONTCONFIG_FILE ?= $(CURDIR)/fonts/fonts.conf
 endif
+
+# `make bench-scale` options: documents per run, seconds per run, and optionally which scenarios
+# (small,large,multitable) and libraries (ids in bench/libs.mjs), e.g.
+#   make bench-scale BENCH_COUNT=1000 BENCH_BUDGET=60 BENCH_LIBS=pdf-engine,puppeteer-shell
+BENCH_COUNT ?= 10000
+BENCH_BUDGET ?= 150
+BENCH_SCENARIOS ?= small,large,multitable
+BENCH_LIBS ?=
 
 # Release version comes from Cargo.toml; images go to $(IMAGE) for $(PLATFORMS).
 VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
@@ -33,6 +43,7 @@ DOCKER_RUN := docker run --rm $(shell [ -t 1 ] && echo -t) \
 
 .DEFAULT_GOAL := help
 .PHONY: help test test-unit fmt fmt-check check node \
+        bench-setup bench-check bench bench-scale bench-charts bench-stats \
         docker-dev-image docker-test docker-image \
         version release-image release push
 
@@ -57,6 +68,30 @@ check: fmt-check test ## Formatting check + functional tests (what CI should run
 
 node: ## Node.js client tests against the debug binary (run `cargo build` first)
 	PDF_ENGINE_BIN=$(CURDIR)/target/debug/pdf-engine node --test node/test
+
+# ---- benchmarks (bench/README.md) ------------------------------------------------------------
+
+bench-setup: ## Build what is measured and install the benchmark tools and browsers (once)
+	cargo build --release
+	cd wasm && npm run build
+	cd bench && npm install && npx playwright install chromium webkit firefox \
+		&& npx puppeteer browsers install chrome chrome-headless-shell && npm run build
+
+bench-check: ## Render one document of each kind with every library, to see they match
+	cd bench && npm run check
+
+bench: ## Speed per document in the browser and Node, then redraw the charts (about 5 minutes)
+	cd bench && npm run bench
+
+bench-scale: ## 10,000 documents per library and scenario (30-90 min); see BENCH_* above
+	cd bench && $(if $(shell command -v caffeinate),caffeinate -i )node scale.mjs --count $(BENCH_COUNT) --budget $(BENCH_BUDGET) \
+		--scenarios $(BENCH_SCENARIOS) $(if $(BENCH_LIBS),--libs $(BENCH_LIBS)) && node charts.mjs
+
+bench-charts: ## Redraw the README charts from bench/results
+	cd bench && npm run charts
+
+bench-stats: ## Live weekly downloads and last update of each package, from the npm registry
+	cd bench && npm run stats
 
 # ---- docker ---------------------------------------------------------------------------------
 

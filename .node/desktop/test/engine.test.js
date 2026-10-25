@@ -194,3 +194,15 @@ test('images: supplied as bytes, a data: URI or a file, and a folder of images',
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('partials and {% pagebreak %} reach the engine', async () => {
+  const pdf = new PDFEngine({ binary, partials: { header: '<h1>{{ title }}</h1>' } });
+  const pages = (b) => (b.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+  try {
+    assert.equal(pages(await pdf.generate({ template: '{% include "header" %}{% pagebreak %}<p>2</p>', data: { title: 'T' } })), 2);
+    assert.equal(pages(await pdf.generate({ template: '{% include "footer" %}', partials: { footer: '<p>f</p>' } })), 1);
+    await assert.rejects(pdf.generate({ template: '{% include "missing" %}' }), { code: 'TEMPLATE_ERROR' });
+  } finally {
+    await pdf.close();
+  }
+});

@@ -137,6 +137,7 @@ class PDFEngine {
         width,
         height,
         orientation,
+        partials: this.#partials(options),
         images: supplied.length ? supplied.map(({ src, bytes }) => ({ src, len: bytes.length })) : undefined,
       },
       this.#options.timeoutMs,
@@ -184,6 +185,7 @@ class PDFEngine {
         height,
         orientation,
         printers: this.#options.printers || [],
+        partials: this.#partials(options),
         images: supplied.length ? supplied.map(({ src, bytes }) => ({ src, len: bytes.length })) : undefined,
       },
       this.#options.timeoutMs,
@@ -195,6 +197,12 @@ class PDFEngine {
   /** The engine's process id while it runs (for monitoring, or to stop it from outside), else `null`. */
   get pid() {
     return this.#child?.pid ?? null;
+  }
+
+  /** The partial templates for one document: the constructor's, then this call's. */
+  #partials(options) {
+    const merged = { ...this.#options.partials, ...options.partials };
+    return Object.keys(merged).length ? merged : undefined;
   }
 
   /** Start the engine now instead of on the first `generate()`. Returns its version information. */

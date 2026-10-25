@@ -316,3 +316,39 @@ test('compression: fast stores streams, small is smaller, anything else is rejec
     pdf.close();
   }
 });
+
+const pageCount = (bytes) => (latin1(bytes).match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+
+test('partials: include, extends and import, from the constructor and per call', async () => {
+  const pdf = new PDFEngine({ partials: { header: '<h1>{{ title }}</h1>' } });
+  try {
+    assert.equal(pageCount(await pdf.generate({ template: '{% include "header" %}<p>x</p>', data: { title: 'T' } })), 1);
+    const layout = '<header>{% block head %}{% endblock %}</header>{% pagebreak %}<p>end</p>';
+    const extended = await pdf.generate({
+      template: '{% extends "layout" %}{% block head %}{{ title }}{% endblock %}',
+      data: { title: 'T' },
+      partials: { layout },
+    });
+    assert.equal(pageCount(extended), 2, 'the per-call partial and its pagebreak are used');
+    // The constructor's partial is still there on the next call, the per-call one is not.
+    await assert.rejects(pdf.generate({ template: '{% include "layout" %}' }), { code: 'TEMPLATE_ERROR' });
+    await assert.rejects(pdf.generate({ template: 'x', partials: { '../bad': 'x' } }), { code: 'INVALID_FIELD' });
+  } finally {
+    pdf.close();
+  }
+});
+
+test('{% pagebreak %} starts a new page, and <barcode> draws vector shapes', async () => {
+  const pdf = new PDFEngine();
+  try {
+    assert.equal(pageCount(await pdf.generate({ template: '<p>a</p><p>b</p>' })), 1);
+    assert.equal(pageCount(await pdf.generate({ template: '<p>a</p>{% pagebreak %}<p>b</p>' })), 2);
+    const plain = await pdf.generate({ template: '<p>x</p>' });
+    const qr = await pdf.generate({ template: '<p>x</p><barcode value="https://example.com/{{ id }}" width="120"/>', data: { id: 42 } });
+    assert.ok(qr.length > plain.length, 'the QR code adds drawing operations');
+    assert.doesNotMatch(latin1(qr), /\/Subtype\s*\/Image/, 'vector shapes, not a picture');
+    await assert.rejects(pdf.generate({ template: '<barcode value="12AB" type="ean13"/>' }), { code: 'INVALID_FIELD' });
+  } finally {
+    pdf.close();
+  }
+});

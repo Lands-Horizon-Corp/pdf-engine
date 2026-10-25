@@ -139,6 +139,8 @@ pub struct Request {
     height: Option<String>,
     orientation: Option<String>,
     password: Option<String>,
+    /// Named templates the template can `{% include %}` or `{% extends %}`.
+    partials: Option<std::collections::BTreeMap<String, String>>,
     paths: Option<Vec<String>>,
     /// Images the caller supplies, in body order: the `<img src>` value and the byte length.
     #[serde(default)]
@@ -242,6 +244,7 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
                 orientation: req.orientation.unwrap_or_else(|| "portrait".into()),
                 filename: String::new(),
                 password: req.password.filter(|p| !p.is_empty()),
+                partials: req.partials.unwrap_or_default().into_iter().collect(),
             };
             let supplied = split_images(&req.images, body)?;
             let pdf = timeout(
@@ -267,8 +270,16 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
                 .template
                 .ok_or_else(|| AppError::MissingField("template".into()))?;
             let supplied = split_images(&req.images, body)?;
-            let (commands, width, height) =
-                render_raster(state, template, req.data, req.height, &spec, supplied).await?;
+            let (commands, width, height) = render_raster(
+                state,
+                template,
+                req.data,
+                req.height,
+                req.partials.unwrap_or_default().into_iter().collect(),
+                &spec,
+                supplied,
+            )
+            .await?;
             Ok(ok_reply(
                 id,
                 "raster",
@@ -360,6 +371,7 @@ async fn render_raster(
     template: String,
     data: Value,
     height: Option<String>,
+    partials: Vec<(String, String)>,
     spec: &RasterSpec,
     supplied: Images,
 ) -> Result<(Vec<u8>, usize, usize), AppError> {
@@ -373,6 +385,7 @@ async fn render_raster(
         orientation: "portrait".into(),
         filename: String::new(),
         password: None,
+        partials,
     };
     let pdf = timeout(
         state.render_timeout,
@@ -447,6 +460,12 @@ pub async fn print_job(state: &AppState, req: Request, body: Vec<u8>) -> Result<
             orientation: req.orientation.clone().unwrap_or_else(|| "portrait".into()),
             filename: String::new(),
             password: None,
+            partials: req
+                .partials
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
         };
         let pdf = timeout(
             state.render_timeout,
@@ -470,6 +489,11 @@ pub async fn print_job(state: &AppState, req: Request, body: Vec<u8>) -> Result<
             template,
             req.data.clone(),
             req.height.clone(),
+            req.partials
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
             &spec,
             supplied,
         )

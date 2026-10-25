@@ -29,6 +29,7 @@ renders a receipt in about a millisecond. An array is shorthand for `{ fonts: [.
 | `compression` | `'fast' \| 'balanced' \| 'small'` | `fast` (default) stores streams: quickest, about 40 KB for a receipt. `small` is about 40% smaller and about 20% slower. |
 | `url`, `token` | `string \| string[]` | Your pdf-engine server(s) and bearer token(s). [Routing](#choosing-where-documents-are-made) |
 | `pick`, `autoMaxBytes`, `fallback` | | Where documents are made. [Routing](#choosing-where-documents-are-made) |
+| `partials` | `Record<string, string>` | Partial templates every document can include. |
 | `pruneData` | `boolean` (`true`) | Send only the `data` keys the template names. |
 | `onImageError` | `(src, reason) => void` | Called for an image that was skipped. Default: `console.warn`. |
 | `allowLocalFiles` | `boolean` (`false`) | Node only: let `<img src>` read local files. |
@@ -44,6 +45,7 @@ Make a PDF and return its bytes.
 | `template` | `string` (required) | HTML with `{{ }}` and `{% %}`. [Templates](templates.md) |
 | `data` | any JSON value | Values for the template. `generate<MyData>()` checks its shape. |
 | `password` | `string` | Encrypts the PDF (open and owner password). Empty or missing: not encrypted. |
+| `partials` | `Record<string, string>` | Named templates for `{% include %}`, `{% extends %}`, `{% import %}`; merged over the constructor's. [Partials](templates.md#partials-headers-footers-rows-and-layouts) |
 | `width`, `height` | `string` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px`. Default Letter. |
 | `orientation` | `'portrait' \| 'landscape'` | Landscape swaps width and height. |
 | `images` | `Record<string, bytes \| Blob \| File \| URL \| string>` | Images by the `src` value used in the template. [Images](templates.md#images) |

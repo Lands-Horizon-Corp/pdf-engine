@@ -218,7 +218,7 @@ export class PDFEngine {
       set_compression(COMPRESSION_LEVELS[compression]);
       activeCompression = compression;
     }
-    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation });
+    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation, partials: this.#partials(options) });
     try {
       // Images in data: URIs need nothing more. Any other <img src> (a URL, blob:, a name in
       // `images`) is fetched first, so a template without them keeps the one-call fast path.
@@ -267,13 +267,21 @@ export class PDFEngine {
   }
 
   /** Render on a deployed pdf-engine server (`POST {url}/api/to-bytes`). */
-  async #generateRemote(url, token, { template, data, password, width, height, orientation }) {
+  /** The partial templates for one document: the constructor's, then this call's. */
+  #partials(options) {
+    const merged = { ...this.#options.partials, ...options.partials };
+    return Object.keys(merged).length ? merged : undefined;
+  }
+
+  async #generateRemote(url, token, { template, data, password, width, height, orientation, partials }) {
     const form = new FormData();
     form.append('template', template ?? '');
     form.append('data', JSON.stringify(data === undefined ? {} : data));
     for (const [name, value] of Object.entries({ width, height, orientation, password })) {
       if (value) form.append(name, value);
     }
+    const allPartials = this.#partials({ partials });
+    if (allPartials) form.append('partials', JSON.stringify(allPartials));
     const headers = token ? { Authorization: /^Bearer /i.test(token) ? token : `Bearer ${token}` } : {};
     const endpoint = `${String(url).replace(/\/+$/, '')}/api/to-bytes`;
     let response;

@@ -32,13 +32,15 @@ static FUEL: LazyLock<u64> = LazyLock::new(|| {
         .unwrap_or(50_000_000)
 });
 
-static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
+fn new_env() -> Environment<'static> {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
     env.set_recursion_limit(64);
     env.set_fuel(Some(*FUEL));
     env
-});
+}
+
+static ENV: LazyLock<Environment<'static>> = LazyLock::new(new_env);
 
 /// A node inside a shared `serde_json::Value`, resolved lazily as the template walks it.
 ///
@@ -132,21 +134,122 @@ impl Write for CappedWriter {
 
 /// Render `template_str` against `data` on the current (blocking) thread.
 pub fn render(template_str: &str, data: serde_json::Value) -> Result<String, AppError> {
-    render_with_limit(template_str, data, *MAX_OUTPUT)
+    render_with(template_str, data, &[])
 }
 
+/// Most partials one render accepts, and their total size.
+const MAX_PARTIALS: usize = 100;
+const MAX_PARTIALS_BYTES: usize = 5 * 1024 * 1024;
+
+/// Like [`render`], with named partial templates the template can `{% include "name" %}`,
+/// `{% extends "name" %}` or `{% import "name" as x %}`.
+pub fn render_with(
+    template_str: &str,
+    data: serde_json::Value,
+    partials: &[(String, String)],
+) -> Result<String, AppError> {
+    render_inner(template_str, data, partials, *MAX_OUTPUT)
+}
+
+#[cfg(test)]
 fn render_with_limit(
     template_str: &str,
     data: serde_json::Value,
     limit: usize,
 ) -> Result<String, AppError> {
+    render_inner(template_str, data, &[], limit)
+}
+
+/// `{% pagebreak %}` starts a new page: it becomes an empty block that breaks the page after itself.
+fn expand_pagebreaks(src: &str) -> std::borrow::Cow<'_, str> {
+    const BREAK: &str = r#"<div style="page-break-after:always;break-after:page;height:0;margin:0;padding:0;border:0"></div>"#;
+    if !src.contains("pagebreak") {
+        return std::borrow::Cow::Borrowed(src);
+    }
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(open) = rest.find("{%") {
+        let Some(close) = rest[open..].find("%}").map(|i| open + i) else {
+            break;
+        };
+        let inner =
+            rest[open + 2..close].trim_matches(|c: char| c == '-' || c == '+' || c.is_whitespace());
+        out.push_str(&rest[..open]);
+        if inner == "pagebreak" {
+            out.push_str(BREAK);
+        } else {
+            out.push_str(&rest[open..close + 2]);
+        }
+        rest = &rest[close + 2..];
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
+fn check_partials(partials: &[(String, String)]) -> Result<(), AppError> {
+    if partials.len() > MAX_PARTIALS {
+        return Err(AppError::InvalidField(format!(
+            "partials: at most {MAX_PARTIALS} are allowed"
+        )));
+    }
+    let mut total = 0usize;
+    for (name, src) in partials {
+        let valid = !name.is_empty()
+            && name.len() <= 64
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_./-".contains(c))
+            && !name.starts_with(['.', '/']);
+        if !valid {
+            return Err(AppError::InvalidField(format!(
+                "partials: `{name}` is not a valid name (letters, digits, `_`, `-`, `.` and `/`, up to 64)"
+            )));
+        }
+        total = total.saturating_add(src.len());
+    }
+    if total > MAX_PARTIALS_BYTES {
+        return Err(AppError::PayloadTooLarge(MAX_PARTIALS_BYTES));
+    }
+    Ok(())
+}
+
+fn render_inner(
+    template_str: &str,
+    data: serde_json::Value,
+    partials: &[(String, String)],
+    limit: usize,
+) -> Result<String, AppError> {
     let root = Arc::new(data);
     let ctx = JsonNode::wrap(&root, &root);
-    let tmpl = ENV.template_from_str(template_str)?;
+    let source = expand_pagebreaks(template_str);
+    let html = if partials.is_empty() {
+        let tmpl = ENV.template_from_str(&source)?;
+        run(&tmpl, ctx, template_str.len(), limit)?
+    } else {
+        check_partials(partials)?;
+        let mut env = new_env();
+        for (name, src) in partials {
+            env.add_template_owned(name.clone(), expand_pagebreaks(src).into_owned())?;
+        }
+        let tmpl = env.template_from_str(&source)?;
+        run(&tmpl, ctx, template_str.len(), limit)?
+    };
+    // `<barcode>` tags become vector shapes after the values are in.
+    Ok(match crate::barcode::expand(&html)? {
+        std::borrow::Cow::Borrowed(_) => html,
+        std::borrow::Cow::Owned(expanded) => expanded,
+    })
+}
 
+fn run(
+    tmpl: &minijinja::Template<'_, '_>,
+    ctx: Value,
+    template_len: usize,
+    limit: usize,
+) -> Result<String, AppError> {
     let mut out = CappedWriter {
         // Output is usually a small multiple of the template; avoid early regrowth.
-        buf: Vec::with_capacity(template_str.len().saturating_mul(2).min(limit)),
+        buf: Vec::with_capacity(template_len.saturating_mul(2).min(limit)),
         limit,
         exceeded: false,
     };

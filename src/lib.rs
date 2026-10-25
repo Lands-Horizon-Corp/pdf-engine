@@ -3,6 +3,7 @@ use actix_web::{App, HttpServer, http::header, middleware::Compress, web};
 
 pub mod assets;
 pub mod auth;
+pub mod barcode;
 pub mod config;
 pub mod error;
 pub mod fonts;

@@ -40,6 +40,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut orientation = "portrait".to_string();
     let mut filename = "document.pdf".to_string();
     let mut password = None;
+    let mut partials = Vec::new();
     let mut budget = MAX_BODY_BYTES;
 
     while let Ok(Some(mut field)) = multipart.try_next().await {
@@ -52,6 +53,16 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
                 )
             }
             "data" => data = parse_data(field_bytes(&mut field, &mut budget).await?),
+            "partials" => {
+                let bytes = field_bytes(&mut field, &mut budget).await?;
+                let map: std::collections::BTreeMap<String, String> =
+                    serde_json::from_slice(&bytes).map_err(|_| {
+                        AppError::InvalidField(
+                            "partials must be a JSON object of name: template".into(),
+                        )
+                    })?;
+                partials = map.into_iter().collect();
+            }
             "width" => width = field_text(&mut field, &mut budget).await?.unwrap_or(width),
             "orientation" => {
                 orientation = field_text(&mut field, &mut budget)
@@ -86,6 +97,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
         orientation,
         filename,
         password,
+        partials,
     })
 }
 

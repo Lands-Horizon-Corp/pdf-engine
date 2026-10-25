@@ -84,23 +84,35 @@ No bundler? One `<script type="module">` is enough ([CDN guide](.public/docs/bro
 
 ## Why pdf-engine?
 
-Most ways to make a PDF from HTML either ship a whole browser (Puppeteer, 200 to 370 MB), turn the page into a
-picture (html2canvas-based libraries), or make you position every line in code. pdf-engine is a real layout engine
-that is small enough to run in a web page.
+Turning HTML into a PDF on the web has always meant picking your trade-off:
 
-| | pdf-engine | Puppeteer | jsPDF | pdf-lib | pdfkit | pdfmake | html2pdf.js |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Takes HTML and CSS | ✅ | ✅ | via a picture | ❌ | ❌ | ❌ | via a picture |
-| Text stays text (selectable, searchable) | ✅ | ✅ | code only | code only | code only | code only | ❌ |
-| Runs in the browser | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Runs on a server | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| No Chromium to ship | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Templates built in (loops, conditions) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| The usual way | What you give up |
+| --- | --- |
+| **A server with headless Chrome** (Puppeteer, Playwright) | A Node backend just to make PDFs, and 200 to 370 MB of Chromium to install, deploy and keep running |
+| **A screenshot in the browser** (html2pdf.js, jspdf-html2canvas: html2canvas + jsPDF) | The PDF is a picture of the page: text cannot be selected or searched, it blurs when zoomed, and it is slow (70 to 100 ms per page here) |
+| **Older engines** (html-pdf on PhantomJS, wkhtmltopdf) | Abandoned: PhantomJS development ended in 2018, `html-pdf` is deprecated on npm, the npm wrapper for `wkhtmltopdf` has not been updated since 2022 and the project is archived |
 
-<sub>What each does out of the box. The others are good at their own jobs: pdf-lib edits existing PDFs, pdfkit and
-pdfmake draw pages by hand, Puppeteer renders anything Chrome can. Speed is in [Benchmarks](#benchmarks); downloads and
-last-update dates in [How it compares](#how-it-compares-to-what-is-on-npm).</sub>
+pdf-engine is a real layout engine (Blitz, Stylo, Taffy, Parley and Krilla, in Rust) compiled to WebAssembly. It runs
+**inside the page**: no server, no Chromium, no PhantomJS, no round trip, works offline. The PDF has real vector
+text, in 1 to 2 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
+
+| HTML to PDF | pdf-engine | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Text stays text (selectable, searchable) | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
+| Runs in the browser, no server | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Nothing heavy to install (no Chromium, PhantomJS or binary) | ✅ | ❌ ~370 MB | ✅ | ✅ | ❌ PhantomJS | ❌ binary |
+| Maintained | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
+| Time for a receipt, in the browser<sup>1</sup> | **0.7 ms** | n/a | 85 ms | 71 ms | n/a | n/a |
+| Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+<sub>1. Chromium on an Apple M4, median after warm-up ([benchmarks](#benchmarks)). Puppeteer, html-pdf and wkhtmltopdf
+need a server, so a browser time does not apply: on a server a receipt takes 4.6 ms with Puppeteer (fastest mode)
+against 1.0 ms here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-engine does not run;
+see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
+
+Libraries that **draw pages in code** (pdf-lib, jsPDF, pdfkit, pdfmake) are a different kind of tool and are not
+in this table; they are in the [benchmarks](#benchmarks) too, including where they are faster.
 
 **What you get**
 
@@ -397,28 +409,40 @@ flowchart TD
 
 ## How it compares to what is on npm
 
-The packages that come up when you search npm for "pdf". Figures are live from the npm registry
+The packages that turn **HTML into a PDF**. Figures are live from the npm registry
 (`node .public/benchmark/npm-stats.mjs`, 2026-10-24).
 
 | Package | Weekly downloads | Updated | Runs in | How it makes the PDF | Takes HTML? |
 | --- | ---: | --- | --- | --- | --- |
 | [puppeteer-core](https://www.npmjs.com/package/puppeteer-core) / [puppeteer](https://www.npmjs.com/package/puppeteer) | 14,783,400 / 7,126,067 | 2 days ago | Node | Drives headless Chrome | HTML + full CSS and JS |
+| [html2pdf.js](https://www.npmjs.com/package/html2pdf.js) | 755,107 | 10 months ago | Browser | Draws the page to an image (html2canvas), then jsPDF | HTML + CSS |
+| [jspdf-html2canvas](https://www.npmjs.com/package/jspdf-html2canvas) | 18,764 | 3 months ago | Browser | jsPDF + html2canvas | HTML + CSS |
+| [html-pdf](https://www.npmjs.com/package/html-pdf) | 74,278 | **deprecated** on npm | Node | PhantomJS (discontinued in 2018) | HTML + CSS |
+| [wkhtmltopdf](https://www.npmjs.com/package/wkhtmltopdf) | 34,949 | 4 years ago (the binary is archived) | Node | Wraps the wkhtmltopdf binary | HTML + CSS |
+| [@adobe/pdfservices-node-sdk](https://www.npmjs.com/package/@adobe/pdfservices-node-sdk) | 27,968 | 24 days ago | Node | Adobe's hosted service (account and network) | Via the service |
+| **pdf-engine** | new | new | **Browser, Node, Electron, Tauri, HTTP** | **Rust renderer, compiled to WebAssembly or native** | **HTML + CSS (see [CSS](.public/docs/templates.md#css))** |
+
+<sub>Downloads show adoption, not quality: Puppeteer is established and widely used, and pdf-engine is new with no
+track record. They suit different jobs: Puppeteer renders anything Chrome can, including JavaScript, on a server;
+pdf-engine turns HTML templates into documents quickly, in the browser or a server.</sub>
+
+<details>
+<summary>Also measured: libraries that draw pages in code (not HTML to PDF)</summary>
+
+pdf-lib, jsPDF, pdfkit, pdfmake and @react-pdf/renderer build a PDF from drawing commands or their own components;
+you position the content yourself. They are very popular and good at that job (pdf-lib edits existing PDFs). They are
+in the [benchmark graphs](#benchmarks) because people choose them for the same documents, and with their built-in
+Latin-only font some are faster than pdf-engine per document in the browser.
+
+| Package | Weekly downloads | Updated | Runs in | How it makes the PDF | Takes HTML? |
+| --- | ---: | --- | --- | --- | --- |
 | [pdf-lib](https://www.npmjs.com/package/pdf-lib) | 12,610,613 | 4 years ago | Browser, Node | Create and edit PDFs in code | No |
 | [jspdf](https://www.npmjs.com/package/jspdf) | 9,890,457 | 7 months ago | Browser, Node | Drawing API in code | Via html2canvas (a picture) |
 | [pdfkit](https://www.npmjs.com/package/pdfkit) | 7,195,535 | 2 months ago | Node, browser | Drawing API in code | No |
 | [@react-pdf/renderer](https://www.npmjs.com/package/@react-pdf/renderer) | 4,144,759 | 2 months ago | React, Node | React components to PDF | Its own components |
 | [pdfmake](https://www.npmjs.com/package/pdfmake) | 1,792,584 | 7 days ago | Browser, Node | Document definitions in code | No |
-| [html2pdf.js](https://www.npmjs.com/package/html2pdf.js) | 755,107 | 10 months ago | Browser | Draws the page to an image (html2canvas), then jsPDF | HTML + CSS |
-| [html-pdf](https://www.npmjs.com/package/html-pdf) | 74,278 | 15 months ago | Node | PhantomJS | HTML + CSS |
-| [wkhtmltopdf](https://www.npmjs.com/package/wkhtmltopdf) | 34,949 | 4 years ago | Node | Wraps the wkhtmltopdf binary | HTML + CSS |
-| [@adobe/pdfservices-node-sdk](https://www.npmjs.com/package/@adobe/pdfservices-node-sdk) | 27,968 | 24 days ago | Node | Adobe's hosted service (account and network) | Via the service |
-| [jspdf-html2canvas](https://www.npmjs.com/package/jspdf-html2canvas) | 18,764 | 3 months ago | Browser | jsPDF + html2canvas | HTML + CSS |
-| **pdf-engine** | new | new | **Browser, Node, Electron, Tauri, HTTP** | **Rust renderer, compiled to WebAssembly or native** | **HTML + CSS (see [CSS](.public/docs/templates.md#css))** |
 
-<sub>Downloads show adoption, not quality: Puppeteer, pdf-lib, jsPDF and pdfkit are established and widely
-used, and pdf-engine is new with no track record. They suit different jobs: pdf-lib edits existing PDFs,
-pdfkit and pdfmake are the way to draw a page by hand, and Puppeteer renders anything Chrome can.
-pdf-engine is for turning HTML templates into documents quickly, in the browser or a server.</sub>
+</details>
 
 ---
 
@@ -534,8 +558,8 @@ Planned, not built yet:
 
 - [ ] Publish the Node/Electron package with the engine binary for every platform
 - [ ] Verify printing on physical receipt, label and office printers
-- [ ] Reusable template **partials**, `{% pagebreak %}`, and repeating `<thead>` on later pages
-- [ ] `<barcode>` and QR tags drawn as vector shapes
+- [x] Reusable template **partials**, `{% pagebreak %}`, and `<barcode>` / QR tags drawn as vector shapes
+- [ ] Repeating `<thead>` on later pages
 - [ ] A live layout preview with box outlines (`pdf.preview()`)
 - [ ] `@font-face`, `float` and `rowspan`
 - [ ] A Web Worker pool for the browser package, and React, Vue and Svelte wrapper components

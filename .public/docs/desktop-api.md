@@ -30,6 +30,7 @@ An array is shorthand for `{ fonts: [...] }`.
 | `imageDir` | `string` | A folder templates may load images from: `src="logo.png"` or a `file:` URL inside it. Nothing outside it is read. Off by default. |
 | `imageHosts` | `string[]` | Hosts `<img src="https://...">` may be fetched from (`cdn.example.com`, `*.example.com`). Off by default. |
 | `printers` | `{ id, name?, type? }[]` | Printers to offer besides the system's, such as network printers. [Printing](printing.md) |
+| `partials` | `Record<string, string>` | Partial templates every document can include. [Partials](templates.md#partials-headers-footers-rows-and-layouts) |
 | `env` | `Record<string, string>` | Extra environment for the engine (`RENDER_TIMEOUT_SECS`, `ASSET_ALLOWED_HOSTS`, ...). [Settings](http-api.md#settings) |
 | `onLog` | `(text) => void` | Receives the engine's log output (stderr). |
 
@@ -48,6 +49,7 @@ machine: `npm run build:native` in the package. [Packaging for Electron](sample-
 | `template` | `string` (required) | HTML with `{{ }}` and `{% %}`. [Templates](templates.md) |
 | `data` | any JSON value | Values for the template. `generate<MyData>()` checks its shape. |
 | `password` | `string` | Encrypts the PDF. |
+| `partials` | `Record<string, string>` | Named templates for `{% include %}` and `{% extends %}`, merged over the constructor's. |
 | `width`, `height` | `string` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px`. Default Letter. |
 | `orientation` | `'portrait' \| 'landscape'` | |
 | `images` | `Record<string, Buffer \| Uint8Array \| ArrayBuffer \| string>` | Images by their `src` name: bytes, a `data:` URI or a **file path** (read by your program, so `imageDir` does not limit it). Sent to the engine with the request. |

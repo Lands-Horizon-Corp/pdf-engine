@@ -6,6 +6,20 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+### Added
+
+- **Partials** (`partials` option, `partials` form field): named templates for `{% include %}`, `{% extends %}` and
+  `{% import %}`. **`{% pagebreak %}`** starts a new page. **`<barcode>`** draws QR codes and Code 128, Code 39, EAN-13
+  and EAN-8 barcodes as vector shapes (the tests decode a QR code back from the PDF).
+
+### Fixed
+
+- **Page numbers, headers and footers** (`@page` margin boxes) were never drawn: the engine forced a zero page margin
+  that switched them off. The default margin is now a zero-specificity CSS rule the template can override.
+- **No text in the browser** with `font-family: Arial, sans-serif`, `sans-serif`, `serif`, `monospace`, `system-ui`
+  or any list of names that are not installed: the browser build has only the fonts it is given, so those resolved to
+  no font. Generic families now use the supplied font, and a list with no generic family falls back to `sans-serif`.
+
 ## [1.2.0] - 2026-10-25
 
 ### Documentation

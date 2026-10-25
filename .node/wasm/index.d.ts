@@ -47,6 +47,8 @@ export class PDFEngineError extends Error {
 export type FontSource = string | URL | ArrayBuffer | Uint8Array | Blob;
 
 export interface PDFEngineOptions {
+  /** Partial templates every document can include (see `GenerateOptions.partials`). */
+  partials?: Record<string, string>;
   /**
    * Fonts to add (.ttf, .otf, .ttc). A browser has no system fonts, so any script other than
    * Latin, Cyrillic, Greek and Vietnamese needs one, for example a CJK or Arabic font.
@@ -83,6 +85,11 @@ export interface GenerateOptions<T = unknown> {
   data?: T;
   /** Encrypts the PDF (open and owner password). Empty or missing = not encrypted. */
   password?: string;
+  /**
+   * Named templates the template can `{% include "name" %}`, `{% extends "name" %}` or `{% import "name" as x %}`,
+   * for headers, footers, rows and layouts. Merged over the constructor's `partials`.
+   */
+  partials?: Record<string, string>;
   /** Page width, e.g. `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default `8.5in`). */
   width?: string;
   /** Page height (default `11in`). */

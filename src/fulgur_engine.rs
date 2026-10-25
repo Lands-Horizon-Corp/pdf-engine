@@ -5,7 +5,7 @@
 //! `.public/assets/fonts/fonts.conf`, a curated Noto set, rather than every installed font. Generic families
 //! (`sans-serif`, `serif`, `monospace`) resolve through fontconfig's usual aliases.
 
-use fulgur::{AssetBundle, Engine, Margin, PageSize};
+use fulgur::{AssetBundle, Engine, PageSize};
 use std::sync::Arc;
 
 /// Page size in millimetres.
@@ -88,8 +88,10 @@ pub trait InProcessRenderer: Send + Sync {
     fn set_extra_fonts(&self, _fonts: Vec<Vec<u8>>) {}
 }
 
-/// Default font stack, at zero specificity so any template `body { font-family }` wins.
-const BASE_CSS: &str = ":where(body) { font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }";
+/// Defaults a template can override: the font stack (at zero specificity, so any `body { font-family }` wins) and no
+/// page margin. The margin is set here, not on the engine, because a margin set on the engine would also switch off
+/// the template's own `@page` margins and margin boxes (page numbers, headers and footers).
+const BASE_CSS: &str = "@page { margin: 0; } :where(body) { font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }";
 
 pub struct FulgurEngine {
     assets: AssetBundle,
@@ -113,7 +115,6 @@ impl InProcessRenderer for FulgurEngine {
         }
         let mut builder = Engine::builder()
             .page_size(PageSize::custom(job.page.width, job.page.height))
-            .margin(Margin::uniform(0.0))
             .assets(assets)
             .system_fonts(true);
         if let Some(t) = &job.title {

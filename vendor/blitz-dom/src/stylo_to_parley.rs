@@ -130,7 +130,7 @@ pub(crate) fn style(
     let font_variations = self::font_variations(&font_styles.font_variation_settings);
 
     // Convert font family
-    let families: Vec<_> = font_styles
+    let mut families: Vec<_> = font_styles
         .font_family
         .families
         .list
@@ -158,6 +158,11 @@ pub(crate) fn style(
             }
         })
         .collect();
+    // pdf-engine patch (see PATCHES.md): a family list that names no generic family (`font-family: Comic Sans MS`)
+    // ends in the default sans-serif, as a browser does, instead of resolving to no font and drawing no text.
+    if !families.iter().any(|f| matches!(f, parley::FontFamily::Generic(_))) {
+        families.push(parley::FontFamily::Generic(parley::GenericFamily::SansSerif));
+    }
 
     // Wrapping and breaking
     let word_break = match itext_styles.word_break {

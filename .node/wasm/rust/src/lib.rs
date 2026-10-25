@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
+#[path = "../../../../src/barcode.rs"]
+mod barcode;
 #[path = "../../../../src/error.rs"]
 mod error;
 #[path = "../../../../src/fulgur_engine.rs"]
@@ -57,6 +59,9 @@ struct Request {
     height: Option<String>,
     orientation: Option<String>,
     password: Option<String>,
+    /// Named templates the template can `{% include %}` or `{% extends %}`.
+    #[serde(default)]
+    partials: std::collections::BTreeMap<String, String>,
 }
 
 /// Largest `data:` image accepted, in bytes (the native default).
@@ -173,7 +178,8 @@ impl Engine {
             req.orientation.as_deref().unwrap_or("portrait"),
         )?;
 
-        let html = template::render(&template, req.data)?;
+        let partials: Vec<(String, String)> = req.partials.into_iter().collect();
+        let html = template::render_with(&template, req.data, &partials)?;
         let images = data_uri_images(&html);
         self.finish(
             Prepared {
@@ -196,7 +202,8 @@ impl Engine {
             req.height.as_deref().unwrap_or("11in"),
             req.orientation.as_deref().unwrap_or("portrait"),
         )?;
-        let html = template::render(&template, req.data)?;
+        let partials: Vec<(String, String)> = req.partials.into_iter().collect();
+        let html = template::render_with(&template, req.data, &partials)?;
         let sources: Vec<String> = image_util::image_sources(&html)
             .into_iter()
             .filter(|s| !s.starts_with("data:"))

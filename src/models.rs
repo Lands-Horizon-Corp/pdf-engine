@@ -21,4 +21,6 @@ pub struct PdfRequest {
     pub orientation: String,
     pub filename: String,
     pub password: Option<String>,
+    /// Named templates the main template can `{% include %}` or `{% extends %}`.
+    pub partials: Vec<(String, String)>,
 }

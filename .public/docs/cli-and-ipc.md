@@ -48,10 +48,10 @@ and an `op`:
 
 | `op` | Request fields | Answer |
 | --- | --- | --- |
-| `render` (default) | `template`, `data`, `width`, `height`, `orientation`, `password`, `images` | Body: the PDF |
-| `raster` | `template`, `data`, `height`, `format` (`escpos` or `zpl`), `dots`, `dpi`, `cut`, `feed`, `dither`, `images` | Body: printer commands |
+| `render` (default) | `template`, `data`, `width`, `height`, `orientation`, `password`, `partials`, `images` | Body: the PDF |
+| `raster` | `template`, `data`, `height`, `partials`, `format` (`escpos` or `zpl`), `dots`, `dpi`, `cut`, `feed`, `dither`, `images` | Body: printer commands |
 | `printers` | `printers` (extra printers) | Header: `printers` (a list) |
-| `print` | `printerId`, `template`, `data`, `type`, `paper`, `language`, `cut`, `feed`, `dither`, `copies`, `width`, `height`, `orientation`, `printers`, `images` | Header: `printerId`, `type`, `language`, `bytes`, `copies` |
+| `print` | `printerId`, `template`, `data`, `type`, `paper`, `language`, `cut`, `feed`, `dither`, `copies`, `width`, `height`, `orientation`, `printers`, `partials`, `images` | Header: `printerId`, `type`, `language`, `bytes`, `copies` |
 | `ping` | | Header: `version`, `protocol` |
 | `load_fonts` | `paths` (font files or folders) | Header: `loaded` |
 | `reload_fonts` | | `{}` |

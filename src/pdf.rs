@@ -16,8 +16,12 @@ use std::sync::Arc;
 pub async fn render_template(
     template_str: String,
     data: serde_json::Value,
+    partials: Vec<(String, String)>,
 ) -> Result<String, AppError> {
-    tokio::task::spawn_blocking(move || crate::template::render(&template_str, data)).await?
+    tokio::task::spawn_blocking(move || {
+        crate::template::render_with(&template_str, data, &partials)
+    })
+    .await?
 }
 
 /// Render a request to its final PDF bytes.
@@ -33,7 +37,7 @@ pub async fn render_with_images(
     state: &AppState,
 ) -> Result<Bytes, AppError> {
     let page = PageMm::parse_request(&req.width, &req.height, &req.orientation)?;
-    let html = render_template(req.template, req.data).await?;
+    let html = render_template(req.template, req.data, req.partials).await?;
 
     let mut images = if supplied.is_empty() {
         assets::resolve_images(&state.assets, &html).await
@@ -146,6 +150,7 @@ mod tests {
         let out = render_template(
             "<p>{{ v }}</p>".into(),
             serde_json::json!({ "v": "<b>你</b>" }),
+            Vec::new(),
         )
         .await
         .unwrap();

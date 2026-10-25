@@ -336,6 +336,7 @@ fn new_preloaded_font_context() -> FontContext {
         let blob: parley::fontique::Blob<u8> = (**data).clone().into();
         ctx.collection.register_fonts(blob, None);
     }
+    map_empty_generic_families(&mut ctx);
     let names: Vec<String> = ctx.collection.family_names().map(str::to_owned).collect();
     for name in names {
         if let Some(family) = ctx.collection.family_by_name(&name) {
@@ -345,6 +346,26 @@ fn new_preloaded_font_context() -> FontContext {
         }
     }
     ctx
+}
+
+/// pdf-engine patch: where no font is installed for a generic family (`sans-serif`, `serif`, `monospace`,
+/// `system-ui`, ...), as in a browser build whose only fonts are the ones the page supplies, use the supplied
+/// font. Without this a template with `font-family: Arial, sans-serif` drew no text at all.
+fn map_empty_generic_families(ctx: &mut FontContext) {
+    use parley::fontique::GenericFamily::*;
+    let preferred = ctx.collection.family_id("Noto Sans");
+    let fallback = preferred.or_else(|| {
+        let first = ctx.collection.family_names().next().map(str::to_owned)?;
+        ctx.collection.family_id(&first)
+    });
+    let Some(id) = fallback else {
+        return;
+    };
+    for generic in [Serif, SansSerif, Monospace, Cursive, Fantasy, SystemUi, UiSerif, UiSansSerif, UiMonospace, UiRounded, FangSong] {
+        if ctx.collection.generic_families(generic).next().is_none() {
+            ctx.collection.append_generic_families(generic, std::iter::once(id));
+        }
+    }
 }
 
 /// pdf-engine patch: rediscover system fonts (e.g. after fonts were added) and use them for

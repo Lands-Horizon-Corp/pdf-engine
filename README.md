@@ -1,33 +1,126 @@
-# pdf-engine
+<p align="center"><img src=".public/assets/logo.svg" width="460" alt="pdf-engine: HTML in, PDF out, Rust inside" /></p>
 
-**HTML to real PDFs, from one Rust renderer.** Use it in the browser (WebAssembly), in Node, Electron
-and Tauri, or as an HTTP service. No headless Chrome.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/v/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=npm%20(browser)" alt="npm version" /></a>
+  <a href="https://hub.docker.com/r/zalven88/pdf-engine"><img src="https://img.shields.io/docker/v/zalven88/pdf-engine?style=flat-square&color=0db7ed&label=docker" alt="docker image" /></a>
+  <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/actions"><img src="https://img.shields.io/github/actions/workflow/status/Lands-Horizon-Corp/pdf-engine/ci.yml?branch=master&style=flat-square&label=CI" alt="CI status" /></a>
+  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS, Linux, Windows" />
+  <img src="https://img.shields.io/badge/browsers-Chromium%20%7C%20Firefox%20%7C%20WebKit-orange?style=flat-square" alt="browsers" />
+  <img src="https://img.shields.io/badge/engine-Rust%20%2B%20WebAssembly-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust and WebAssembly" />
+  <img src="https://img.shields.io/badge/TypeScript-types%20included-blue?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript types" />
+  <img src="https://img.shields.io/badge/no%20Chromium-needed-brightgreen?style=flat-square" alt="no Chromium needed" />
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
+</p>
 
-```ts
-const pdf = new PDFEngine();
-const bytes = await pdf.generate({ template: '<h1>Invoice {{ no }}</h1>', data: { no: '12345' } });
+<p align="center"><strong>Turn HTML templates into real PDFs, fast, anywhere.</strong></p>
+<p align="center">In the browser, in Electron and Tauri, on a server, or from the command line, with one Rust engine.<br/>
+Print receipts and labels straight to the printer. No headless Chrome. Vector text, not screenshots.</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> •
+  <a href="#why-pdf-engine">Why</a> •
+  <a href="#benchmarks">Benchmarks</a> •
+  <a href="#install">Install</a> •
+  <a href="#api-at-a-glance">API</a> •
+  <a href="#printing">Printing</a> •
+  <a href="#how-it-works">How it works</a> •
+  <a href="#documentation">Docs</a> •
+  <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/issues">Issues</a>
+</p>
+
+---
+
+## Quick start
+
+```bash
+npm install @lands-horizon-corp/pdf-engine-wasm
 ```
 
-## Why pdf-engine
+```ts
+import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
 
-- **Real PDFs, not screenshots.** Vector text you can select, search and copy, in tens of KB. Client-side
-  libraries built on html2canvas turn the page into an image first.
-- **No browser to ship.** No Chromium (216–371 MB) and no wkhtmltopdf binary.
-- **One engine everywhere.** Browser, desktop app and server give the same output, with the same API and
-  the same error codes.
-- **Templates built in.** `{{ value }}`, loops and HTML-escaping; no second library.
-- **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice, native or in the browser. Natively, 10,000
-  multi-table statements take 18 s: 3× faster than Puppeteer's fastest mode (57 s) and 2.4× faster than jsPDF or
-  pdfkit with their built-in fonts (about 44 s). In the browser, with the same Unicode font, it is 10–40× faster than
-  jsPDF, pdf-lib, pdfkit and pdfmake and about 50–100× faster than the html2canvas libraries. Where it does not win:
-  in the browser, jsPDF, pdfkit and pdf-lib with their built-in Latin-only font (no ₱, no non-Latin text) make a
-  document in 0.2–1.2 ms, against 0.7–1.5 ms here ([benchmarks](#benchmarks)).
-- **Small enough.** A 32 MB native binary, or 3.2 MB of WebAssembly (brotli).<sup>1</sup>
-- **Every language.** About 150 Noto fonts on the server cover practically every living script; in the
-  browser you add the font you need.
-- **Errors you can act on.** A stable `code`, the template `line` and a `hint`.
+const pdf = new PDFEngine();                       // create once, reuse
 
-<sub>1. Measured on an Apple Silicon Mac after warm-up, for receipt- and invoice-sized documents.</sub>
+// A template (HTML with placeholders) + data = a PDF
+const bytes = await pdf.generate({
+  template: `<h1>Invoice {{ no }}</h1>
+             <ul>{% for item in items %}<li>{{ item.name }}: ₱{{ item.price }}</li>{% endfor %}</ul>`,
+  data: { no: '12345', items: [{ name: 'Hosting', price: 1500 }, { name: 'Domain', price: 450 }] },
+});
+
+await pdf.download({ template, data }, 'invoice.pdf');   // save it
+await pdf.open({ template, data });                      // show it in a new tab
+await pdf.print({ template, data });                     // browser print dialog
+
+// Page setup, password, images
+await pdf.generate({ template, data, width: '210mm', height: '297mm', password: 'secret',
+                     images: { logo: fileInput.files[0] } });
+
+// Render on your own server, and fall back to the page when offline
+const hybrid = new PDFEngine({ url: ['https://pdf-1.example.com', 'https://pdf-2.example.com'], token: '…', pick: 'auto' });
+```
+
+On Electron or Node, the same call runs the native engine, and can print:
+
+```ts
+import { PDFEngine } from '@lands-horizon-corp/pdf-engine';
+
+const pdf = new PDFEngine();
+const bytes = await pdf.generate({ template, data });                       // a Buffer
+const printers = await pdf.printers();                                     // USB, network and system printers
+await pdf.print({ printerId: printers[0].id, paper: '58mm', template, data });   // ESC/POS to a receipt printer
+```
+
+No bundler? One `<script type="module">` is enough ([CDN guide](.public/docs/browser-api.md#bundlers-and-the-cdn)):
+
+```html
+<script type="module">
+  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1/index.js';
+  new PDFEngine().download({ template: '<h1>Hello {{ name }}</h1>', data: { name: 'world' } }, 'hello.pdf');
+</script>
+```
+
+---
+
+## Why pdf-engine?
+
+Most ways to make a PDF from HTML either ship a whole browser (Puppeteer, 200 to 370 MB), turn the page into a
+picture (html2canvas-based libraries), or make you position every line in code. pdf-engine is a real layout engine
+that is small enough to run in a web page.
+
+| | pdf-engine | Puppeteer | jsPDF | pdf-lib | pdfkit | pdfmake | html2pdf.js |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Takes HTML and CSS | ✅ | ✅ | via a picture | ❌ | ❌ | ❌ | via a picture |
+| Text stays text (selectable, searchable) | ✅ | ✅ | code only | code only | code only | code only | ❌ |
+| Runs in the browser | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Runs on a server | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| No Chromium to ship | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Templates built in (loops, conditions) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+<sub>What each does out of the box. The others are good at their own jobs: pdf-lib edits existing PDFs, pdfkit and
+pdfmake draw pages by hand, Puppeteer renders anything Chrome can. Speed is in [Benchmarks](#benchmarks); downloads and
+last-update dates in [How it compares](#how-it-compares-to-what-is-on-npm).</sub>
+
+**What you get**
+
+- 📄 **Real PDFs.** Vector text in tens of KB. Flexbox, grid, tables, gradients, transforms, SVG, CSS variables,
+  `calc()`, page breaks, multi-column, and `@page` margin boxes.
+- ⚡ **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice. [Numbers and graphs](#benchmarks), including where
+  it loses.
+- 🌍 **Every language.** About 150 Noto fonts on the server cover practically every living script (Chinese, Arabic,
+  Hindi, Thai, emoji, ...); in the browser you add the font you need.
+- 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros; HTML-escaped by default.
+- 🖼️ **Images.** PNG, JPEG, GIF and SVG from URLs, files, `data:` URIs or bytes. A bad image is skipped, never an error.
+- 🖨️ **Printing.** Receipts as ESC/POS, labels as ZPL, documents as PDF; through the system queue, a network socket or
+  USB. Electron, Node and Tauri.
+- 🔀 **Browser or server, your choice.** Several servers with failover, `pick: 'auto'` by size, and a fallback to
+  WebAssembly when offline.
+- 🔐 **Password encryption.** Set `password` and the PDF is encrypted.
+- 🧭 **Errors you can act on.** A stable `code`, the template `line` and a `hint`.
+- 🔒 **Safe by default.** Output and execution limits stop runaway templates; images load only from hosts you allow.
+
+---
 
 ## Benchmarks
 
@@ -156,148 +249,138 @@ Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-25.
 
 <!-- bench:end -->
 
+---
+
 ## Install
 
-| Where | Package | |
+| Package | For | Install |
 | --- | --- | --- |
-| **Browser**: React, Vue, Svelte, plain JS | [`@lands-horizon-corp/pdf-engine-wasm`](.node/wasm/README.md) | In-page WebAssembly, no server |
-| **Node, Electron, Tauri** | [`@lands-horizon-corp/pdf-engine`](.node/desktop/README.md) | Rust engine over stdin/stdout, no port |
-| **HTTP / Docker** | `zalven88/pdf-engine` | `POST /api/to-bytes` ([details](#http-and-docker)) |
+| [`@lands-horizon-corp/pdf-engine-wasm`](.node/wasm/README.md) | Web pages, React, Vue, Svelte, Next.js, Tauri frontends, plain HTML | `npm install @lands-horizon-corp/pdf-engine-wasm` |
+| [`@lands-horizon-corp/pdf-engine`](.node/desktop/README.md) | Electron, Node, desktop apps: PDFs and printing | `npm install @lands-horizon-corp/pdf-engine` (not published yet) |
+| [`zalven88/pdf-engine`](https://hub.docker.com/r/zalven88/pdf-engine) | A server your apps call over HTTP | `docker run -p 6767:6767 -e API_BEARER_TOKEN=secret zalven88/pdf-engine` |
+| `pdf-engine` binary | Command line, Tauri sidecar, other languages | `cargo build --release` |
 
-### React
+Pick your framework: [React](.public/docs/sample-react.md) · [Vue](.public/docs/sample-vue.md) ·
+[Svelte](.public/docs/sample-svelte.md) · [Next.js](.public/docs/sample-nextjs.md) ·
+[Electron](.public/docs/sample-electron.md) · [Tauri](.public/docs/sample-tauri.md) · [plain HTML](.public/docs/getting-started.md#in-a-web-page-no-build-step).
 
-```tsx
-import { useState } from 'react';
-import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
+With Vite, keep the browser package out of dependency pre-bundling (one line):
+`optimizeDeps: { exclude: ['@lands-horizon-corp/pdf-engine-wasm'] }`.
 
-const pdf = new PDFEngine();                         // one engine for the whole app
+---
 
-export function InvoiceButton({ invoice }) {
-  const [busy, setBusy] = useState(false);
+## API at a glance
 
-  async function download() {
-    setBusy(true);
-    try {
-      const bytes = await pdf.generate({ template: invoiceHtml, data: invoice });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-      link.download = 'invoice.pdf';
-      link.click();
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <button onClick={download} disabled={busy}>Download PDF</button>;
-}
-```
+**Browser package** ([full reference](.public/docs/browser-api.md))
 
-### Vue 3
+| Method | Does |
+| --- | --- |
+| `new PDFEngine(options?)` | Create once and reuse. Options: `fonts`, `url`, `token`, `pick`, `autoMaxBytes`, `fallback`, `compression`, `pruneData`, `onImageError`, ... |
+| `generate({ template, data, ... })` | Returns the PDF as a `Uint8Array`. Also `password`, `width`, `height`, `orientation`, `images` |
+| `download(options, filename)` | Makes the PDF and saves it |
+| `open(options)` | Shows the PDF in a new tab |
+| `print(options)` | Opens the browser's print dialog |
+| `ping()` | Loads the engine now, returns its version |
+| `loadFonts(fonts)` | Use these fonts from now on |
+| `close()` | Release memory |
 
-```vue
-<script setup>
-import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
+**Node and Electron package** ([full reference](.public/docs/desktop-api.md))
 
-const props = defineProps({ invoice: Object });
-const pdf = new PDFEngine();
+| Method | Does |
+| --- | --- |
+| `new PDFEngine(options?)` | Options: `fonts`, `binary`, `timeoutMs`, `imageDir`, `imageHosts`, `printers`, `env`, `onLog` |
+| `generate({ template, data, ... })` | Returns the PDF as a `Buffer` |
+| `printers()` | Lists the printers: system, network you name, and USB |
+| `print({ printerId, template, data, paper, ... })` | Renders and prints: ESC/POS, ZPL or PDF |
+| `ping()`, `loadFonts()`, `reloadFonts()`, `close()`, `pid` | Housekeeping |
 
-async function download() {
-  const bytes = await pdf.generate({ template: invoiceHtml, data: props.invoice });
-  window.open(URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })));
-}
-</script>
+**Server** ([HTTP reference](.public/docs/http-api.md)): `POST /api/to-bytes` (the PDF), `POST /api/to-s3` (upload, get a link),
+`POST /api/fonts/reload`, `GET /health`.
+**Command line** ([reference](.public/docs/cli-and-ipc.md)): `pdf-engine serve | ipc | printers | print | healthcheck`.
 
-<template><button @click="download">Download PDF</button></template>
-```
+Everything is typed (`generate<MyData>()` checks the shape of your data).
 
-Full documentation: [`.public/docs/`](.public/docs/README.md) (every function and option, templates, printing, errors).
-Step-by-step guides: [React](.public/docs/sample-react.md), [Vue](.public/docs/sample-vue.md),
-[Svelte](.public/docs/sample-svelte.md), [Next.js](.public/docs/sample-nextjs.md),
-[Electron](.public/docs/sample-electron.md), [Tauri](.public/docs/sample-tauri.md).
+---
 
-### Plain HTML, Vanilla JS, jQuery (no build step)
+## Printing
 
-```html
-<script type="module">
-  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1/index.js';
-  const pdf = new PDFEngine();
-  document.querySelector('#save').onclick = () =>      // or $('#save').on('click', ...)
-    pdf.download({ template: '<h1>Invoice {{ no }}</h1>', data: { no: '12345' } }, 'invoice.pdf');
-</script>
-```
-
-`download()`, `open()` and `print()` (the browser's print dialog) are on the browser package. More in the
-[browser package guide](.node/wasm/README.md#without-a-build-step-cdn).
-
-Svelte and plain JavaScript work the same way. With Vite, see the
-[two lines of config](.node/wasm/README.md#bundlers).
-
-### Fonts and your own server
+Receipt (thermal) printers get **ESC/POS**, label printers get **ZPL**, office printers get the **PDF**:
 
 ```ts
-// Other scripts: add the font (a browser has none). Latin, Cyrillic and Greek are built in.
-const pdf = new PDFEngine({ fonts: ['/fonts/NotoSansSC-Regular.otf'] });
+const pdf = new PDFEngine({ printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }] });
 
-// Or render on your deployed pdf-engine server (the Docker image) instead of in the page.
-// Nothing is downloaded to the browser, and every script and font on the server is available.
-const remote = new PDFEngine({ url: 'https://pdf.example.com', token: '…' });
-const bytes = await remote.generate({ template, data, password: '' });   // or generate({ ..., url })
-```
+await pdf.printers();
+// [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', default: false },
+//  { id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal', transport: 'net', ... },
+//  { id: 'usb://0483:5740', name: 'USB printer 0483:5740', type: 'thermal', transport: 'usb', ... }]
 
-`url` and `token` can be arrays (servers used in turn, a failing one skipped), and `pick: 'auto'` with
-`autoMaxBytes: '2mb'` renders small documents in the page, big ones on a server, and falls back to the page when
-offline ([details](.node/wasm/README.md#several-servers-and-the-page-as-a-fallback)).
-
-For `url`, set `CORS_ALLOWED_ORIGINS=https://your-app.com` on the server. A token in browser code is
-visible to users, so prefer a proxy or a short-lived token.
-
-### Images
-
-PNG, JPEG, GIF and SVG. An image with no size, or only a width, keeps its proportions.
-
-```ts
-// Browser: a URL, a File from <input type=file>, bytes, or a name you map yourself.
-await pdf.generate({
-  template: '<img src="https://cdn.example.com/logo.png" width="120"><img src="photo">',
-  images: { photo: fileInput.files[0] },       // Blob, File, bytes, URL or data: URI
+await pdf.print({
+  printerId: 'system://POS-58',
+  paper: '58mm',                                   // '58mm', '80mm' (default), '112mm', or dots
+  template: '<b>STORE</b>{% for i in items %}<div>{{ i.name }} ₱{{ i.price }}</div>{% endfor %}<b>TOTAL ₱{{ total }}</b>',
+  data: { items: [{ name: 'Sardines', price: 24.5 }], total: 24.5 },
 });
 ```
 
-URLs are fetched by the browser (so the image host must allow CORS); a `data:` URI needs nothing.
-An image that cannot be loaded is skipped and reported to `onImageError`, never an error.
+| Id | Reaches the printer through |
+| --- | --- |
+| `system://<name>` | The operating system's print queue (CUPS, Windows spooler): any printer with a driver, USB or network |
+| `net://host:9100` | A TCP socket straight to a network printer |
+| `usb://vendor:product` | The USB device directly, pure Rust, no libusb |
 
-### Node, Electron, Tauri
+The receipt is rendered like any other template (so ₱, Arabic and CSS all work), rasterised at 203 dpi, trimmed of
+blank paper, and sent with a cut. Tauri and scripts use the same thing from the command line:
+`pdf-engine print --request job.json`. [Printing guide](.public/docs/printing.md) · Not yet tried on physical printers:
+it is verified against fake network printers on Linux, macOS and Windows, and through the Windows print spooler.
 
-```ts
-import { PDFEngine } from '@lands-horizon-corp/pdf-engine';
+---
 
-const pdf = new PDFEngine({ fonts: ['/path/to/Inter.ttf'] });
-await fs.promises.writeFile('invoice.pdf', await pdf.generate({ template, data }));
+## How it works
 
-// Images: bytes or a file path per name, a folder templates may read, or hosts they may fetch.
-const withImages = new PDFEngine({ imageDir: './assets', imageHosts: ['cdn.example.com'] });
-await withImages.generate({
-  template: '<img src="logo.png"><img src="photo">',   // ./assets/logo.png, and the one below
-  images: { photo: await fs.promises.readFile('photo.jpg') },
-});
+```
+ template + data (JSON)
+        │  minijinja: values, loops, filters, HTML escaping, output and time limits
+        ▼
+ HTML ─▶ Blitz (HTML and DOM) ─▶ Stylo (CSS) ─▶ Taffy (flex, grid, table layout) ─▶ Parley (text shaping)
+        │
+        ▼
+ Fulgur (pagination) ─▶ Krilla (PDF writer, font subsetting) ─▶ PDF bytes (optional password)
+        │
+        ├──────────────┬────────────────────┬──────────────────────┬───────────────────────┐
+        ▼              ▼                    ▼                      ▼                       ▼
+  WebAssembly     Node / Electron      HTTP server            Command line            Printing
+  (in the page)   (stdin/stdout,       (Docker, actix-web,    (Tauri sidecar,         PDF ─▶ rasteriser ─▶
+                   no port)             S3 upload)             scripts)                ESC/POS or ZPL ─▶
+                                                                                       queue | TCP | USB
 ```
 
-### Printing (Electron, Tauri, Node)
+- **One engine, many doors.** The browser build compiles the same Rust source files as the server; templates, CSS and
+  error codes match everywhere.
+- **Fast on purpose.** Fonts and style data are shared across documents, memory is bounded, and the WebAssembly build
+  is tuned for speed. The patched dependencies are in `vendor/`, each with a `PATCHES.md` saying what and why.
+- **Safe on purpose.** No JavaScript runs in templates; output size and execution are capped; remote images load only
+  from hosts you allow; server error details stay in the log.
 
-```ts
-const printers = await pdf.printers();        // system printers, plus network ones you list
-await pdf.print({ printerId: printers[0].id, paper: '80mm', template, data });
-```
+---
 
-Receipt printers get ESC/POS, label printers ZPL, office printers the PDF, through the operating system's
-queue, a network socket (`net://host:9100`) or USB directly (`usb://vendor:product`). Electron and Node use it
-through the Node package; Tauri (or anything else) runs `pdf-engine print` as a sidecar
-([Tauri guide](.public/docs/sample-tauri.md#printing-receipt-label-and-office-printers)).
-Details in the [Node guide](.node/desktop/README.md#printing-electron-tauri-node). A web page cannot see printers; the
-browser package has `print()` for the browser's own print dialog.
+## Documentation
 
-All the packages share `generate({ template, data, password, width, height, orientation, images })`.
+| | |
+| --- | --- |
+| [Getting started](.public/docs/getting-started.md) | Your first PDF in a web page, React, Electron, a server or the command line |
+| [Templates and CSS](.public/docs/templates.md) | The template language, filters (and the ones that do not exist), page size, CSS support and gaps, images |
+| [Browser package](.public/docs/browser-api.md) | Every option and method, routing between servers and the page |
+| [Node and Electron package](.public/docs/desktop-api.md) | Every option and method, binary lookup, errors |
+| [Printing](.public/docs/printing.md) | Printers, ids, paper sizes, ESC/POS and ZPL, USB, Windows notes |
+| [HTTP server](.public/docs/http-api.md) | Endpoints, form fields, settings, S3, Docker |
+| [Command line and IPC](.public/docs/cli-and-ipc.md) | The commands and the wire protocol, to write a client in any language |
+| [Fonts and languages](.public/docs/fonts-and-languages.md) | Scripts covered, adding fonts |
+| [Errors](.public/docs/errors.md) | Every code and what to do about it |
+| Guides | [React](.public/docs/sample-react.md) · [Vue](.public/docs/sample-vue.md) · [Svelte](.public/docs/sample-svelte.md) · [Next.js](.public/docs/sample-nextjs.md) · [Electron](.public/docs/sample-electron.md) · [Tauri](.public/docs/sample-tauri.md) |
 
-## How it compares
+---
+
+## How it compares to what is on npm
 
 The packages that come up when you search npm for "pdf". Figures are live from the npm registry
 (`node .public/benchmark/npm-stats.mjs`, 2026-10-24).
@@ -315,212 +398,82 @@ The packages that come up when you search npm for "pdf". Figures are live from t
 | [wkhtmltopdf](https://www.npmjs.com/package/wkhtmltopdf) | 34,949 | 4 years ago | Node | Wraps the wkhtmltopdf binary | HTML + CSS |
 | [@adobe/pdfservices-node-sdk](https://www.npmjs.com/package/@adobe/pdfservices-node-sdk) | 27,968 | 24 days ago | Node | Adobe's hosted service (account and network) | Via the service |
 | [jspdf-html2canvas](https://www.npmjs.com/package/jspdf-html2canvas) | 18,764 | 3 months ago | Browser | jsPDF + html2canvas | HTML + CSS |
-| **pdf-engine** | new | new | **Browser, Node, Electron, Tauri, HTTP** | **Rust renderer, compiled to WebAssembly or native** | **HTML + CSS (see [CSS](#css))** |
+| **pdf-engine** | new | new | **Browser, Node, Electron, Tauri, HTTP** | **Rust renderer, compiled to WebAssembly or native** | **HTML + CSS (see [CSS](.public/docs/templates.md#css))** |
 
 <sub>Downloads show adoption, not quality: Puppeteer, pdf-lib, jsPDF and pdfkit are established and widely
 used, and pdf-engine is new with no track record. They suit different jobs: pdf-lib edits existing PDFs,
 pdfkit and pdfmake are the way to draw a page by hand, and Puppeteer renders anything Chrome can.
 pdf-engine is for turning HTML templates into documents quickly, in the browser or a server.</sub>
 
-## Compatibility
+---
+
+## Platform support
+
+What has actually been run (CI runs on every push):
 
 | | Status |
 | --- | --- |
-| macOS: native engine, Node client, browser package in Chromium and WebKit (Safari's engine), with plain JS, React and Vue | Tested |
-| Linux: native engine and fonts (Docker) | Tested |
-| Electron and Tauri apps on macOS, Linux and Windows | Planned |
-| Windows: native engine (IPC mode) | Not supported yet |
-| Browsers: Firefox (did not start on the test Mac; runs in CI), Brave and Edge (Chromium-based, not run separately), real Safari and mobile | Planned |
+| **Linux** (Ubuntu) | Rust tests, Node client, browser package in Chromium, Firefox and WebKit, and the Docker test image with the production fonts |
+| **macOS** | The same, plus the benchmarks |
+| **Windows** | Build, all Rust tests, Node client, browser package under Node, and printing to a virtual receipt printer through the real print spooler |
+| **Browsers** | Chromium and WebKit (Safari's engine) on macOS and Linux, Firefox on Linux. Edge and Brave are Chromium; real Safari and phones are not tested separately |
+| **React, Vue, plain JS** | In the browser tests. Svelte, Next.js, Electron and Tauri guides are written but not run in tests yet |
+| **Physical printers** | Not tried yet: checked against fake printers and a virtual one |
 
-## CSS
-
-Flexbox, grid, tables, gradients, transforms, shadows, SVG, CSS variables, `calc()`, page breaks and
-Unicode work. Known gaps:
-
-| Not supported | Use instead |
-| --- | --- |
-| `<thead>` repeating on later pages | Split long tables per page |
-| `background: url()`, `@font-face`, `@import` | `<img>`; the `fonts` option |
-| `float`, `z-index`, `rowspan` | Flexbox or grid; reorder; nested tables |
-| `@page { size }`, `@media print` | `width` / `height`; unconditional rules |
-| `-webkit-background-clip: text` | A solid text color |
-| Vertical padding on `display: inline-block` | `display: block` or flexbox |
-| JavaScript in templates | Compute values before calling `generate()` |
+---
 
 ## Errors
 
-Every failure has a stable `code`, a readable message, and where useful a `line` and `hint`
-(`MISSING_FIELD`, `INVALID_FIELD`, `TEMPLATE_ERROR`, `TEMPLATE_TOO_EXPENSIVE`, `FONT_ERROR`, `TIMEOUT`,
-`RENDER_FAILED`, ...). The full typed list is in [`.node/desktop/index.d.ts`](.node/desktop/index.d.ts).
+Every failure has a stable `code`, a readable message, and where it helps a `hint` and the template `line`:
 
 ```json
-{ "error": "Template rendering failed: syntax error ... (in <string>:2)", "code": "TEMPLATE_ERROR",
-  "status": 400, "line": 2, "hint": "Check the template syntax: {{ value }}, {% for x in list %}...{% endfor %}." }
+{ "error": "Template rendering failed: syntax error (in <string>:3)", "code": "TEMPLATE_ERROR", "status": 400, "line": 3,
+  "hint": "Check the template syntax: {{ value }}, {% for x in list %}...{% endfor %}." }
 ```
+
+```ts
+try { await pdf.generate({ template, data }); }
+catch (e) { if (e instanceof PDFEngineError && e.code === 'TEMPLATE_ERROR') showError(e.line, e.hint); }
+```
+
+All codes, with what to do: [Errors](.public/docs/errors.md).
+
+---
 
 ## HTTP and Docker
 
 <details>
-<summary>Run, API and configuration</summary>
-
-### Run
+<summary>Run it, with or without storage</summary>
 
 ```bash
-docker run -d -p 6767:6767 \
-  -e API_BEARER_TOKEN=secret \
-  -e STORAGE_URL=http://minio:9000 -e STORAGE_BUCKET=pdfs \
-  -e STORAGE_ACCESS_KEY=... -e STORAGE_SECRET_KEY=... \
-  zalven88/pdf-engine:1.1.0
-```
+docker run -d -p 6767:6767 -e API_BEARER_TOKEN=secret zalven88/pdf-engine
 
-`STORAGE_*` is only needed for `/api/to-s3`; without it that endpoint answers
-`STORAGE_NOT_CONFIGURED`. Inside Docker Compose, use the service name (e.g. `http://minio:9000`),
-not `localhost`.
-
-#### Docker Compose (no setup needed)
-
-Save as `compose.yaml` and run `docker compose up -d`. It starts pdf-engine with its own
-S3-compatible storage ([RustFS](https://github.com/rustfs/rustfs)) and creates the bucket.
-
-```yaml
-services:
-  pdf-engine:
-    image: zalven88/pdf-engine:1.1.0
-    ports:
-      - "6767:6767"
-    environment:
-      API_BEARER_TOKEN: change-me
-      STORAGE_URL: http://storage:9000
-      STORAGE_BUCKET: pdfs
-      STORAGE_ACCESS_KEY: pdf-engine
-      STORAGE_SECRET_KEY: pdf-engine-secret
-    depends_on:
-      storage-setup:
-        condition: service_completed_successfully
-
-  storage:
-    image: rustfs/rustfs
-    environment:
-      RUSTFS_ACCESS_KEY: pdf-engine
-      RUSTFS_SECRET_KEY: pdf-engine-secret
-    volumes:
-      - storage-data:/data
-
-  storage-setup: # creates the bucket, then exits
-    image: amazon/aws-cli
-    depends_on:
-      - storage
-    environment:
-      AWS_ACCESS_KEY_ID: pdf-engine
-      AWS_SECRET_ACCESS_KEY: pdf-engine-secret
-      AWS_DEFAULT_REGION: us-east-1
-    entrypoint: >
-      sh -c "until aws --endpoint-url http://storage:9000 s3api head-bucket --bucket pdfs 2>/dev/null ||
-                   aws --endpoint-url http://storage:9000 s3 mb s3://pdfs; do sleep 1; done"
-
-volumes:
-  storage-data:
-```
-
-Change `API_BEARER_TOKEN` and the storage keys before exposing it. To use AWS S3 or your own
-storage instead, drop `storage`/`storage-setup` and point `STORAGE_*` at it. Presigned URLs
-from `/api/to-s3` use `STORAGE_URL`, so they only resolve inside the Compose network unless
-storage is reachable at that address.
-
-### API
-
-| Endpoint | Auth | Does |
-| --- | --- | --- |
-| `POST /api/to-bytes` | Bearer | Returns the PDF |
-| `POST /api/to-s3` | Bearer | Uploads, returns JSON with a presigned URL |
-| `POST /api/fonts/reload` | Bearer | Reloads fonts without a restart |
-| `GET /health` | — | `{"status":"ok","version":"…"}` |
-
-Form fields (`multipart/form-data`):
-
-| Field | Default | |
-| --- | --- | --- |
-| `template` | required | HTML/Minijinja template |
-| `data` | `null` | JSON for the template |
-| `width` / `height` | `8.5in` / `11in` | Length in `in`, `mm`, `cm`, `pt`, `pc`, `px` |
-| `orientation` | `portrait` | or `landscape` |
-| `filename` | `document.pdf` | `/api/to-bytes` download name |
-| `password` | — | Encrypts the PDF |
-
-```bash
 curl -H "Authorization: Bearer secret" \
   --form-string 'template=<h1>Invoice {{ no }}</h1>' -F 'data={"no": 42}' \
   http://localhost:6767/api/to-bytes -o invoice.pdf
 ```
 
-Responses are gzip/brotli/zstd compressed when the client asks.
+To use `POST /api/to-s3`, add `-e STORAGE_URL=... -e STORAGE_BUCKET=... -e STORAGE_ACCESS_KEY=... -e STORAGE_SECRET_KEY=...`
+(any S3-compatible store). The repository's `docker-compose.yml` starts the server with its own storage
+([RustFS](https://github.com/rustfs/rustfs)): `docker compose up`.
 
-### Configuration
-
-| Variable | Default | |
-| --- | --- | --- |
-| `API_BEARER_TOKEN` | required (HTTP) | API token |
-| `STORAGE_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` | optional | S3 / MinIO, for `/api/to-s3` |
-| `STORAGE_REGION` | `us-east-1` | |
-| `API_PORT` | `6767` | |
-| `API_HOST` | `0.0.0.0` | Address to listen on; `127.0.0.1` for a desktop sidecar that only the app should reach |
-| `RENDER_TIMEOUT_SECS` | `45` | Per request; `408` when exceeded |
-| `CORS_ALLOWED_ORIGINS` | none | Browser origins allowed to call the API, comma separated (`*` = any) |
-| `ASSET_ALLOWED_HOSTS` | off | Hosts `<img>` may load from, e.g. `cdn.example.com,*.assets.io` |
-| `ASSET_MAX_BYTES` / `ASSET_TIMEOUT_MS` / `ASSET_MAX_IMAGES` | `5242880` / `5000` / `20` | Per-image limits |
-| `ASSET_CACHE_BYTES` / `ASSET_CACHE_TTL_SECS` | `268435456` / `300` | Shared cache of fetched remote images (`0` bytes disables) |
-| `TEMPLATE_MAX_OUTPUT_BYTES` / `TEMPLATE_FUEL` | `5368709120` / `50000000` | Cap on rendered HTML size and template execution budget |
-| `ASSET_ALLOW_HTTP` / `ASSET_ALLOW_PRIVATE_IPS` | `false` | Only for trusted internal networks |
-| `FONT_WATCH` / `FONT_WATCH_DIR` | `false` / `/usr/share/fonts/pdf-engine` | Reload fonts when the directory changes |
-| `IPC_MAX_REQUEST_BYTES` / `IPC_MAX_IN_FLIGHT` | `268435456` / 4 per core | IPC mode: largest request, and requests held at once |
-| `RUST_LOG` | `info` | Log level (stderr) |
-
-Everything optional is off by default; set it in `.env` or the container environment.
-
-### Images
-
-`<img src="data:image/...">` always works. Remote `https://` images load only from
-`ASSET_ALLOWED_HOSTS`: no redirects, no private/loopback addresses (checked after DNS), images
-only, size and time limits. Blocked or broken images are skipped; the PDF still renders.
-`ASSET_LOCAL_DIR` also lets templates read files inside that folder; the IPC mode sets it from
-`imageDir`. Leave it off on a server that renders other people's templates.
-
-### Fonts and languages
-
-The image ships about 150 Noto fonts via [.public/assets/fonts/fonts.conf](.public/assets/fonts/fonts.conf), so text in
-practically any living language renders instead of showing empty boxes:
-
-- **Latin, Greek, Cyrillic** (including Vietnamese and all European accents), plus a serif and a
-  monospace design
-- **Chinese (simplified and traditional), Japanese, Korean**
-- **Arabic, Urdu, Hebrew, Thaana, Syriac**, all right-to-left
-- **Indic:** Devanagari (Hindi, Marathi, Nepali), Bengali, Tamil, Telugu, Kannada, Malayalam,
-  Gujarati, Gurmukhi (Punjabi), Sinhala, Oriya, and more
-- **South-East Asian:** Thai, Lao, Khmer, Myanmar, Javanese, Balinese, Sundanese, and more
-- **Others:** Ethiopic, Georgian, Armenian, Tibetan, Mongolian, Cherokee, Canadian Aboriginal,
-  N'Ko, Tifinagh, Vai, Adlam, Yi, and more
-- **Color emoji, flags, symbols and math**
-
-`sans-serif`/Arial → Noto Sans, `serif` → Noto Serif, `monospace` → Noto Sans Mono. Characters
-a font lacks fall back to a font that has them; `tests/languages.rs` covers about 30 scripts. To add a font: copy it into `/usr/share/fonts/pdf-engine`, then
-`POST /api/fonts/reload` (or run with `FONT_WATCH=true`).
-
-**Running outside Docker** (for example `cargo run` on macOS) uses that machine's own fonts,
-which can lack some scripts (on the Mac we tested, Chinese ideographs, ★ and ✓ showed as boxes).
-The Docker image is what production renders with, so judge language output there
-(`make docker-image`, or the published image).
+Settings, endpoints and form fields: [HTTP server](.public/docs/http-api.md). Set `CORS_ALLOWED_ORIGINS` to call it
+from a browser, and change `API_BEARER_TOKEN` before exposing it.
 
 </details>
+
+---
 
 ## Development
 
 <details>
-<summary>Build, test and release</summary>
+<summary>Build, test, layout and release</summary>
 
 ```bash
 make test       # functional test suites
-make check      # fmt + tests (CI)
-make node       # Node.js client tests (cargo build first)
+make check      # fmt + tests (what CI runs)
+make node       # Node client tests (cargo build first)
+make bench      # speed per document, then redraw the charts
 make help       # everything else
 ```
 
@@ -535,19 +488,56 @@ The engine is Rust and lives at the top level; everything else is in dot folders
 | `src/`, `tests/`, `vendor/` | The Rust engine, its tests, and the patched dependencies (each with a `PATCHES.md`) |
 | `.node/wasm/` | The browser package (WebAssembly), its Rust crate and browser tests |
 | `.node/desktop/` | The Node, Electron and Tauri package: IPC client, printing |
-| `.public/assets/` | Fonts shared by the Docker image and the browser package |
+| `.public/assets/` | Fonts shared by the Docker image and the browser package, and the logo |
+| `.public/docs/` | The documentation and framework guides |
 | `.public/benchmark/` | The benchmarks, charts and results ([guide](.public/benchmark/README.md)) |
 | `.public/scripts/` | Release, push and Windows test scripts |
 
 ### Release
 
-Bump `version` in `Cargo.toml`, add a [CHANGELOG.md](CHANGELOG.md) entry, commit, then
-`make release`. It tags `vX.Y.Z` and pushes `zalven88/pdf-engine:X.Y.Z`, `X.Y`, `X` and
-`latest` for amd64 and arm64 (built one after the other; also `X.Y.Z-amd64` / `-arm64`).
+[PUBLISHING.md](PUBLISHING.md) is the checklist. In short: bump the version in `Cargo.toml` and the two
+`package.json` files, add a [CHANGELOG.md](CHANGELOG.md) entry, commit, then push a tag `vX.Y.Z`. GitHub builds and
+tests the browser package, publishes it to npm, and pushes the Docker image (amd64 and arm64).
 
 </details>
 
+---
+
+## Contributing
+
+1. Fork the repo and create a branch.
+2. Make your change with tests (`make check` must pass).
+3. Open a pull request. CI runs Linux, macOS, Windows and the browsers.
+
+Bugs and ideas: [Issues](https://github.com/Lands-Horizon-Corp/pdf-engine/issues).
+
+---
+
+## Roadmap
+
+Planned, not built yet:
+
+- [ ] Publish the Node/Electron package with the engine binary for every platform
+- [ ] Verify printing on physical receipt, label and office printers
+- [ ] Reusable template **partials**, `{% pagebreak %}`, and repeating `<thead>` on later pages
+- [ ] `<barcode>` and QR tags drawn as vector shapes
+- [ ] A live layout preview with box outlines (`pdf.preview()`)
+- [ ] `@font-face`, `float` and `rowspan`
+- [ ] A Web Worker pool for the browser package, and React, Vue and Svelte wrapper components
+
+---
+
+## Keywords
+
+`pdf` `html-to-pdf` `pdf-generator` `invoice` `receipt` `thermal-printer` `escpos` `zpl` `label-printer` `wasm`
+`webassembly` `rust` `electron` `tauri` `react` `vue` `svelte` `nextjs` `templates` `puppeteer-alternative`
+`html2pdf-alternative` `jspdf-alternative` `no-chromium` `docker` `offline`
+
+---
+
 ## License
 
-MIT. Rendering by [Fulgur](https://github.com/fulgur-rs/fulgur) (MIT/Apache-2.0); fonts by
-[Noto](https://fonts.google.com/noto) (OFL).
+[MIT](./LICENSE). Rendering by [Fulgur](https://github.com/fulgur-rs/fulgur) (MIT/Apache-2.0) on Blitz, Stylo,
+Taffy, Parley and Krilla; fonts by [Noto](https://fonts.google.com/noto) (OFL).
+
+<p align="center">Made by <a href="https://github.com/Lands-Horizon-Corp">Lands Horizon</a></p>

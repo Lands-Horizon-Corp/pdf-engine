@@ -192,6 +192,11 @@ class PDFEngine {
     return { printerId: header.printerId, type: header.type, language: header.language, bytes: header.bytes, copies: header.copies };
   }
 
+  /** The engine's process id while it runs (for monitoring, or to stop it from outside), else `null`. */
+  get pid() {
+    return this.#child?.pid ?? null;
+  }
+
   /** Start the engine now instead of on the first `generate()`. Returns its version information. */
   async ping() {
     await this.#ensureStarted();

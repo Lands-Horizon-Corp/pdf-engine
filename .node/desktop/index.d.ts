@@ -164,6 +164,9 @@ export class PDFEngine {
   /** Render HTML to a PDF. The engine starts on first use. */
   generate<T = unknown>(options: GenerateOptions<T>): Promise<Buffer>;
 
+  /** The engine's process id while it runs, else `null`. */
+  readonly pid: number | null;
+
   /** Start the engine now and report its version. */
   ping(): Promise<PingResult>;
 

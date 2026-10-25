@@ -6,6 +6,8 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-25
+
 ### Documentation
 
 - A full documentation set in `.public/docs/`: getting started, templates and CSS (with the filters that exist and the ones

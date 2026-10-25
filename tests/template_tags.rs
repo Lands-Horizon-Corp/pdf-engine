@@ -185,5 +185,8 @@ async fn page_headers_and_numbers_are_drawn() {
     // depends on the platform's fonts, so only compare with the page that has the body alone.
     let counts = text_ops_per_page(&numbered);
     assert_eq!(counts.len(), 2);
-    assert!(counts.iter().all(|&n| n >= 3), "header and footer missing: {counts:?}");
+    assert!(
+        counts.iter().all(|&n| n >= 3),
+        "header and footer missing: {counts:?}"
+    );
 }

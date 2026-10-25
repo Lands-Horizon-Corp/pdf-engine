@@ -39,12 +39,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: make docker-test
 
-  # Windows: the engine, IPC mode (it takes over the real stdout handle), the Node client, the browser
+  # Windows (green since it was added; it now blocks merges like the others): the engine, IPC mode (it takes over the real stdout handle), the Node client, the browser
   # package under Node, and printing to a virtual receipt printer through the real Windows spooler.
   windows:
     name: Windows
     runs-on: windows-latest
-    continue-on-error: true   # until this job has been green once; then remove this line
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

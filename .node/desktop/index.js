@@ -300,8 +300,8 @@ class PDFEngine {
     if (this.#closed && this.#pending.size === 0) return;
     const detail = this.#fatal
       ? this.#fatal.error
-      : this.#stderrTail.trim() || `exit code ${code ?? signal}`;
-    this.#failAll(clientError('ENGINE_EXITED', `pdf-engine stopped unexpectedly: ${detail}`));
+      : this.#stderrTail.trim() || 'no output';
+    this.#failAll(clientError('ENGINE_EXITED', `pdf-engine stopped unexpectedly (exit code ${code ?? signal}): ${detail}`));
   }
 
   #failAll(error) {

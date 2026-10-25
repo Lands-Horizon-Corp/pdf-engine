@@ -2,7 +2,7 @@
 //!
 //! Fonts come from fontconfig. The vendored Fulgur (see `vendor/fulgur/PATCHES.md`) builds the
 //! font collection once per process; the Docker image points `FONTCONFIG_FILE` at
-//! `fonts/fonts.conf`, a curated Noto set, rather than every installed font. Generic families
+//! `.public/assets/fonts/fonts.conf`, a curated Noto set, rather than every installed font. Generic families
 //! (`sans-serif`, `serif`, `monospace`) resolve through fontconfig's usual aliases.
 
 use fulgur::{AssetBundle, Engine, Margin, PageSize};

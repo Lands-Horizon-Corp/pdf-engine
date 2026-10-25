@@ -28,11 +28,6 @@ impl Bitmap {
     }
 }
 
-/// Printable width in dots for a width in millimetres at `dpi`, rounded down to whole bytes.
-pub fn dots_for_mm(mm: f32, dpi: f32) -> usize {
-    ((mm / 25.4 * dpi) as usize / 8 * 8).max(8)
-}
-
 /// Rasterise a PDF to `dots` wide, all its pages stacked, and trim the blank paper at the bottom.
 /// `dither` spreads grey (photos) into dots; text and lines look best without it.
 pub fn pdf_to_bitmap(pdf: &[u8], dots: usize, dither: bool) -> Result<Bitmap, AppError> {
@@ -181,13 +176,6 @@ mod tests {
                 .flat_map(|r| r.bytes().map(|c| u8::from(c == b'#')))
                 .collect(),
         }
-    }
-
-    #[test]
-    fn dots_are_whole_bytes() {
-        assert_eq!(dots_for_mm(72.0, 203.0), 576);
-        assert_eq!(dots_for_mm(48.0, 203.0), 376);
-        assert_eq!(dots_for_mm(1.0, 203.0), 8);
     }
 
     #[test]

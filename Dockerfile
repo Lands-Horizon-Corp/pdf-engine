@@ -36,7 +36,6 @@ ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY benches ./benches
 COPY vendor ./vendor
 
 # Cache ids use Railway's required `s/<service-id>-` prefix (the pdf-engine service); plain
@@ -53,7 +52,7 @@ RUN --mount=type=cache,id=s/2a5a12ab-f2f3-4ee6-aa09-299b013929fd-/usr/local/carg
     && cp "target/$target/release/pdf-engine" /pdf-engine
 
 # ==========================================
-# Stage 2: Collect the curated font set (fonts/install.sh) from the Noto packages
+# Stage 2: Collect the curated font set (.public/scripts/install-fonts.sh) from the Noto packages
 # ==========================================
 FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -62,8 +61,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-mono \
     fonts-noto-cjk \
     fonts-noto-color-emoji
-COPY fonts /etc/pdf-engine
-RUN /etc/pdf-engine/install.sh
+COPY .public/assets/fonts/fonts.conf .public/scripts/install-fonts.sh /etc/pdf-engine/
+RUN /etc/pdf-engine/install-fonts.sh
 
 # ==========================================
 # Stage 3: Runtime
@@ -81,7 +80,7 @@ LABEL org.opencontainers.image.title="pdf-engine" \
 WORKDIR /app
 
 # Fulgur renders in-process; the image only needs fontconfig (loaded at runtime via dlopen, so
-# `ldd` won't show it) and the curated fonts that fonts/fonts.conf exposes.
+# `ldd` won't show it) and the curated fonts that .public/assets/fonts/fonts.conf exposes.
 # `upgrade` pulls security fixes published since the base image was cut.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
@@ -90,7 +89,7 @@ RUN apt-get update && apt-get upgrade -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY fonts /etc/pdf-engine
+COPY .public/assets/fonts/fonts.conf .public/scripts/install-fonts.sh /etc/pdf-engine/
 COPY --from=fonts /usr/share/fonts/pdf-engine /usr/share/fonts/pdf-engine
 RUN FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf fc-cache -f
 ENV FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf

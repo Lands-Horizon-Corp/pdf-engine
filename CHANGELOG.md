@@ -40,14 +40,14 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 - **IPC mode** for Node.js and Electron: `pdf-engine ipc` serves render requests over
   stdin/stdout (no HTTP server, no port, no token, no storage settings). PDFs come back as raw
   bytes. Protocol: `src/ipc.rs`.
-- **Browser package** in `wasm/` (`@lands-horizon-corp/pdf-engine-wasm`): the same renderer compiled to
+- **Browser package** in `.node/wasm/` (`@lands-horizon-corp/pdf-engine-wasm`): the same renderer compiled to
   WebAssembly for React, Vue, Svelte and plain JS. No server; bundled Latin fonts, add others with `fonts`.
 - `url` option in the browser package: render on a deployed server instead of in the page. The HTTP
   server answers browsers with `CORS_ALLOWED_ORIGINS` (default off).
-- `bench/`: benchmarks against html2pdf.js, jspdf-html2canvas and headless Chromium; browser matrix
-  tests (Chromium, WebKit, Firefox in CI) with plain JS, React and Vue in `wasm/e2e/`.
-- **Node.js client** in `node/`: `new PDFEngine({ fonts })` and `generate({ template, data,
-  password, ... })`, with TypeScript types. See `node/README.md`. Published as
+- `.public/benchmark/`: benchmarks against html2pdf.js, jspdf-html2canvas and headless Chromium; browser matrix
+  tests (Chromium, WebKit, Firefox in CI) with plain JS, React and Vue in `.node/wasm/e2e/`.
+- **Node.js client** in `.node/desktop/`: `new PDFEngine({ fonts })` and `generate({ template, data,
+  password, ... })`, with TypeScript types. See `.node/desktop/README.md`. Published as
   `@lands-horizon-corp/pdf-engine`.
 - Every error now has a stable `code` (`TEMPLATE_ERROR`, `MISSING_FIELD`, ...), plus `status`,
   `hint` and, for templates, the `line`. The HTTP `error` field keeps its message.

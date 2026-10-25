@@ -1,0 +1,47 @@
+[package]
+name = "pdf-engine-wasm"
+version = "1.1.1"
+edition = "2024"
+description = "pdf-engine for the browser: the same renderer, compiled to WebAssembly"
+license = "MIT"
+publish = false
+
+# A standalone crate, not part of the native package: it reuses the engine's pure source files
+# by path (see src/lib.rs) and is built with `npm run build` in .node/wasm/.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fulgur = "0.40.0"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+krilla = { version = "0.7", default-features = false }
+console_error_panic_hook = "0.1"
+minijinja = { version = "3.0", features = ["serde", "fuel"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0.21"
+tracing = "0.1"
+base64 = "0.23"
+lopdf = "0.46"
+md5 = "0.8.1"
+
+# The same patched crates as the native build (vendor/*/PATCHES.md).
+[patch.crates-io]
+fulgur = { path = "../../../vendor/fulgur" }
+stylo = { path = "../../../vendor/stylo" }
+fontique = { path = "../../../vendor/fontique" }
+taffy = { path = "../../../vendor/taffy" }
+# Patched krilla: adjustable zlib level. See vendor/krilla/PATCHES.md.
+krilla = { path = "../../../vendor/krilla" }
+# Patched blitz-dom: one user-agent stylesheet parse per thread. See vendor/blitz-dom/PATCHES.md.
+blitz-dom = { path = "../../../vendor/blitz-dom" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

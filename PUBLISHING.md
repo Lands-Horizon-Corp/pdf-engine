@@ -6,15 +6,15 @@ it on the CDNs (jsDelivr, unpkg), with fresh benchmarks. Do the steps in order; 
 
 Not covered: the Node package (`@lands-horizon-corp/pdf-engine`) is **not published yet**. It needs the
 native binary built for each platform first (macOS, Linux, Windows; x64 and arm64). Do not run
-`npm publish` in `node/` until that exists.
+`npm publish` in `.node/desktop/` until that exists.
 
 ## 0. Once
 
 - An npm account that belongs to the `@lands-horizon-corp` organisation, with 2FA on.
 - `npm login` and `npm whoami` show that account.
 - Rust with the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` at the version in
-  `wasm/rust/Cargo.lock`, and (optional, for speed) `wasm-opt` from binaryen. `wasm/README.md` has the commands.
-- Playwright browsers for the checks: `cd wasm/e2e && npx playwright install chromium webkit firefox`.
+  `.node/wasm/rust/Cargo.lock`, and (optional, for speed) `wasm-opt` from binaryen. `.node/wasm/README.md` has the commands.
+- Playwright browsers for the checks: `cd .node/wasm/e2e && npx playwright install chromium webkit firefox`.
 
 ## 1. The version
 
@@ -23,14 +23,14 @@ The version is in four places and they should match (the engine reports the one 
 | File | Field |
 | --- | --- |
 | `Cargo.toml` | `version` |
-| `wasm/rust/Cargo.toml` | `version` |
-| `wasm/package.json` | `version` |
-| `node/package.json` | `version` |
+| `.node/wasm/rust/Cargo.toml` | `version` |
+| `.node/wasm/package.json` | `version` |
+| `.node/desktop/package.json` | `version` |
 
 Follow [Semantic Versioning](https://semver.org/): new features = minor, fixes = patch. Then move the
 `[Unreleased]` entries of `CHANGELOG.md` under the new version and date.
 
-The links in the docs that pin a version (`@1`, `@1.1.1` in `wasm/README.md`, `README.md`) should point at the
+The links in the docs that pin a version (`@1`, `@1.1.1` in `.node/wasm/README.md`, `README.md`) should point at the
 release you are about to make.
 
 ## 2. Tests
@@ -40,8 +40,8 @@ All of these must pass. They take a few minutes.
 ```sh
 cargo clippy --all-targets                       # no warnings in src/ and tests/
 cargo test                                       # the engine, IPC, errors, CORS, languages, images
-cd wasm && npm run build && npm test             # the browser package (builds the .wasm first)
-cd ../node && node --test                        # the Node client (needs `cargo build` first)
+cd .node/wasm && npm run build && npm test             # the browser package (builds the .wasm first)
+cd ../desktop && node --test                        # the Node client (needs `cargo build` first)
 cd ../wasm/e2e && npm install && npx playwright test    # Chromium, WebKit, Firefox: plain JS, React, Vue
 npm run test:cdn                                 # a plain HTML page importing the package like a CDN does
 ```
@@ -68,7 +68,7 @@ content, the cut, and ₱ and non-Latin text printing correctly.
 ## 3. What goes into the package
 
 ```sh
-cd wasm && npm pack --dry-run
+cd .node/wasm && npm pack --dry-run
 ```
 
 Expected: `index.js`, `routing.js`, `index.d.ts`, `dist/pdf_engine_wasm.js`, `dist/pdf_engine_wasm_bg.wasm`,
@@ -78,17 +78,17 @@ Expected: `index.js`, `routing.js`, `index.d.ts`, `dist/pdf_engine_wasm.js`, `di
 
 ## 4. Benchmarks
 
-The README charts and tables come from `bench/results/*.json`. Refresh them on the release commit, with
+The README charts and tables come from `.public/benchmark/results/*.json`. Refresh them on the release commit, with
 nothing else running (close Chrome and other heavy programs, plug in the laptop). See
-[`bench/README.md`](bench/README.md) for what each one measures.
+[`.public/benchmark/README.md`](.public/benchmark/README.md) for what each one measures.
 
 ```sh
-cargo build --release && (cd wasm && npm run build)     # the code being measured
+cargo build --release && (cd .node/wasm && npm run build)     # the code being measured
 make bench-setup                                         # once: tools and browsers
 make bench-check                                         # every library makes the same document
 make bench                                               # per document: Chromium, WebKit, Node (about 10 min)
 caffeinate -i make bench-scale                           # 10,000 documents each (about an hour; macOS)
-make bench-charts                                        # redraws bench/charts and the README tables
+make bench-charts                                        # redraws .public/benchmark/charts and the README tables
 ```
 
 Then read the results before trusting them:
@@ -97,14 +97,14 @@ Then read the results before trusting them:
 - In the README tables, any library that did not finish is marked **projected**.
 - Losses are shown as they are: the built-in-font libraries are faster per document, and the README says so.
   Do not edit a number by hand; if the README text claims something the charts no longer show, change the text.
-- `git diff --stat bench/results README.md bench/charts` should show only the numbers and charts changing.
+- `git diff --stat .public/benchmark/results README.md .public/benchmark/charts` should show only the numbers and charts changing.
 
 ## 5. Publish to npm
 
 First as a pre-release tag, so nobody gets it by accident:
 
 ```sh
-cd wasm
+cd .node/wasm
 npm run build                       # prepublishOnly also runs build and tests
 npm publish --tag next              # asks for your 2FA code
 ```

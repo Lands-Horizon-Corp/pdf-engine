@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Default directory the curated font set lives in (see `fonts/install.sh`).
+/// Default directory the curated font set lives in (see `.public/scripts/install-fonts.sh`).
 pub const DEFAULT_FONT_DIR: &str = "/usr/share/fonts/pdf-engine";
 
 /// Watch `dir` and call `reload_fonts` after changes settle for `debounce`. Runs on its own

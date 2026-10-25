@@ -55,18 +55,18 @@ jobs:
         with:
           workspaces: |
             . -> target
-            wasm/rust -> target
+            .node/wasm/rust -> target
       - run: cargo build
       - run: cargo test --no-fail-fast
       - run: node --test
-        working-directory: node
+        working-directory: .node/desktop
       - name: Printing to a virtual receipt printer
-        run: powershell -ExecutionPolicy Bypass -File scripts\windows-printer-test.ps1
+        run: powershell -ExecutionPolicy Bypass -File .public\scripts\windows-printer-test.ps1
       - name: Browser package under Node (needs the wasm build)
         run: |
-          $v = (Select-String -Path wasm/rust/Cargo.lock -Pattern 'name = "wasm-bindgen"' -Context 0,1).Context.PostContext[0] -replace '.*"(.+)".*','$1'
+          $v = (Select-String -Path .node/wasm/rust/Cargo.lock -Pattern 'name = "wasm-bindgen"' -Context 0,1).Context.PostContext[0] -replace '.*"(.+)".*','$1'
           cargo install wasm-bindgen-cli --version $v --locked
-          cd wasm
+          cd .node/wasm
           npm run build
           npm test
 
@@ -86,7 +86,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build
       - run: node --test
-        working-directory: node
+        working-directory: .node/desktop
 
   # The browser package, in every engine Playwright ships: Chromium (Chrome, Edge, Brave),
   # Firefox, and WebKit (Safari), from plain JavaScript, React and Vue apps.
@@ -109,19 +109,19 @@ jobs:
         with:
           workspaces: |
             . -> target
-            wasm/rust -> target
+            .node/wasm/rust -> target
       - name: wasm-bindgen CLI (the version the crate locks)
         run: |
-          v=$(grep -A1 'name = "wasm-bindgen"$' wasm/rust/Cargo.lock | grep version | head -1 | cut -d'"' -f2)
+          v=$(grep -A1 'name = "wasm-bindgen"$' .node/wasm/rust/Cargo.lock | grep version | head -1 | cut -d'"' -f2)
           cargo install wasm-bindgen-cli --version "$v" --locked
       - run: cargo build                      # the native server, for the "render on a server" check
       - run: npm run build && npm test
-        working-directory: wasm
+        working-directory: .node/wasm
       - run: npm install
-        working-directory: wasm/e2e
+        working-directory: .node/wasm/e2e
       - run: npx playwright install --with-deps ${{ matrix.browsers }}
-        working-directory: wasm/e2e
+        working-directory: .node/wasm/e2e
       - run: npx playwright test ${{ matrix.projects }}
-        working-directory: wasm/e2e
+        working-directory: .node/wasm/e2e
       - run: npm run test:cdn                  # plain HTML page, no build step
-        working-directory: wasm/e2e
+        working-directory: .node/wasm/e2e

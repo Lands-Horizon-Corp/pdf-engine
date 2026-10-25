@@ -2,7 +2,7 @@
 #
 #   make test     functional test suites (fast, hermetic: no server, no network)
 #   make node     Node.js client tests (needs `cargo build` first)
-#   make bench    speed per document, then redraw the charts   (bench/README.md explains it all)
+#   make bench    speed per document, then redraw the charts   (.public/benchmark/README.md explains it all)
 #   make bench-scale   10,000 documents per library and scenario
 #
 # `make docker-test` runs the checks inside Dockerfile.dev (Rust toolchain plus the production
@@ -15,13 +15,13 @@ FUNCTIONAL_TESTS := happy_path sad_path poison_pill chaos integration_chaos race
 # machines (or Docker VMs) with less than ~16 GB.
 JOBS ?= 2
 
-# Use the production font set when it's installed (fonts/install.sh), like the Docker image.
+# Use the production font set when it's installed (.public/scripts/install-fonts.sh), like the Docker image.
 ifneq ($(wildcard /usr/share/fonts/pdf-engine),)
-export FONTCONFIG_FILE ?= $(CURDIR)/fonts/fonts.conf
+export FONTCONFIG_FILE ?= $(CURDIR)/.public/assets/fonts/fonts.conf
 endif
 
 # `make bench-scale` options: documents per run, seconds per run, and optionally which scenarios
-# (small,large,multitable) and libraries (ids in bench/libs.mjs), e.g.
+# (small,large,multitable) and libraries (ids in .public/benchmark/libs.mjs), e.g.
 #   make bench-scale BENCH_COUNT=1000 BENCH_BUDGET=60 BENCH_LIBS=pdf-engine,puppeteer-shell
 BENCH_COUNT ?= 10000
 BENCH_BUDGET ?= 150
@@ -67,31 +67,31 @@ fmt-check: ## Fail if the code isn't formatted
 check: fmt-check test ## Formatting check + functional tests (what CI should run)
 
 node: ## Node.js client tests against the debug binary (run `cargo build` first)
-	cd node && PDF_ENGINE_BIN=$(CURDIR)/target/debug/pdf-engine node --test
+	cd .node/desktop && PDF_ENGINE_BIN=$(CURDIR)/target/debug/pdf-engine node --test
 
-# ---- benchmarks (bench/README.md) ------------------------------------------------------------
+# ---- benchmarks (.public/benchmark/README.md) ------------------------------------------------------------
 
 bench-setup: ## Build what is measured and install the benchmark tools and browsers (once)
 	cargo build --release
-	cd wasm && npm run build
-	cd bench && npm install && npx playwright install chromium webkit firefox \
+	cd .node/wasm && npm run build
+	cd .public/benchmark && npm install && npx playwright install chromium webkit firefox \
 		&& npx puppeteer browsers install chrome chrome-headless-shell && npm run build
 
 bench-check: ## Render one document of each kind with every library, to see they match
-	cd bench && npm run check
+	cd .public/benchmark && npm run check
 
 bench: ## Speed per document in the browser and Node, then redraw the charts (about 5 minutes)
-	cd bench && npm run bench
+	cd .public/benchmark && npm run bench
 
 bench-scale: ## 10,000 documents per library and scenario (30-90 min); see BENCH_* above
-	cd bench && $(if $(shell command -v caffeinate),caffeinate -i )node scale.mjs --count $(BENCH_COUNT) --budget $(BENCH_BUDGET) \
+	cd .public/benchmark && $(if $(shell command -v caffeinate),caffeinate -i )node scale.mjs --count $(BENCH_COUNT) --budget $(BENCH_BUDGET) \
 		--scenarios $(BENCH_SCENARIOS) $(if $(BENCH_LIBS),--libs $(BENCH_LIBS)) && node charts.mjs
 
-bench-charts: ## Redraw the README charts from bench/results
-	cd bench && npm run charts
+bench-charts: ## Redraw the README charts from .public/benchmark/results
+	cd .public/benchmark && npm run charts
 
 bench-stats: ## Live weekly downloads and last update of each package, from the npm registry
-	cd bench && npm run stats
+	cd .public/benchmark && npm run stats
 
 # ---- docker ---------------------------------------------------------------------------------
 
@@ -110,7 +110,7 @@ version: ## Print the version from Cargo.toml
 	@echo $(VERSION)
 
 release-image: ## Push the multi-arch image: $(IMAGE):<version>, :<major.minor>, :<major>, :latest
-	scripts/release-image.sh $(IMAGE) $(VERSION) $(PLATFORMS) \
+	.public/scripts/release-image.sh $(IMAGE) $(VERSION) $(PLATFORMS) \
 		$(VERSION) \
 		$(word 1,$(subst ., ,$(VERSION))).$(word 2,$(subst ., ,$(VERSION))) \
 		$(word 1,$(subst ., ,$(VERSION))) \
@@ -124,4 +124,4 @@ release: ## Tag v<version> in git, push the tag, and push the image (bump Cargo.
 	$(MAKE) release-image
 
 push: ## Bump to VERSION, commit everything with MESSAGE, push, and release: make push VERSION=1.2.3 MESSAGE="..."
-	scripts/push.sh --version="$(VERSION)" --message="$(MESSAGE)"
+	.public/scripts/push.sh --version="$(VERSION)" --message="$(MESSAGE)"

@@ -1,7 +1,7 @@
 //! Multi-language text: each script below must be drawn with a font that has it, not with empty
 //! boxes.
 //!
-//! Needs the curated font set (`fonts/install.sh`, used by the Docker images and `make docker-test`).
+//! Needs the curated font set (`.public/scripts/install-fonts.sh`, used by the Docker images and `make docker-test`).
 //! Elsewhere, such as on macOS, the system fonts are used and some scripts are missing, so the test
 //! skips itself when `FONTCONFIG_FILE` is not set.
 

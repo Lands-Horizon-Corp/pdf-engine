@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && rustup component add rustfmt
 
-COPY fonts /etc/pdf-engine
-RUN /etc/pdf-engine/install.sh
+COPY .public/assets/fonts/fonts.conf .public/scripts/install-fonts.sh /etc/pdf-engine/
+RUN /etc/pdf-engine/install-fonts.sh
 ENV FONTCONFIG_FILE=/etc/pdf-engine/fonts.conf
 
 WORKDIR /app

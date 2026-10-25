@@ -22,7 +22,7 @@
 //! font files or folders added to the system fonts, replacing any earlier set) and
 //! `reload_fonts`. Request bodies are unused.
 //!
-//! The Node.js client in `node/` speaks this protocol; `PROTOCOL_VERSION` changes whenever it does.
+//! The Node.js client in `.node/desktop/` speaks this protocol; `PROTOCOL_VERSION` changes whenever it does.
 //!
 //! Response header, then the PDF as body:
 //!

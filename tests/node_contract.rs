@@ -1,11 +1,11 @@
-//! The Rust engine and its JavaScript packages (`node/` over IPC, `wasm/` in the browser) must
+//! The Rust engine and its JavaScript packages (`.node/desktop/` over IPC, `.node/wasm/` in the browser) must
 //! agree. These checks fail the build when one side changes without the other.
 
 use pdf_engine::{error::AppError, ipc::PROTOCOL_VERSION};
 use std::{collections::BTreeSet, fs};
 
 fn node_file(name: &str) -> String {
-    package_file("node", name)
+    package_file(".node/desktop", name)
 }
 
 fn package_file(package: &str, name: &str) -> String {
@@ -13,13 +13,13 @@ fn package_file(package: &str, name: &str) -> String {
 }
 
 /// The JavaScript packages that report the engine's errors, and the file that produces their own.
-const PACKAGES: [(&str, &str); 2] = [("node", "index.js"), ("wasm", "index.js")];
+const PACKAGES: [(&str, &str); 2] = [(".node/desktop", "index.js"), (".node/wasm", "index.js")];
 
 /// The quoted names in `export type <name> = 'A' | 'B' ...;`.
 fn union_members(source: &str, name: &str) -> BTreeSet<String> {
     let start = source
         .find(&format!("export type {name} ="))
-        .unwrap_or_else(|| panic!("node/index.d.ts has no `export type {name}`"));
+        .unwrap_or_else(|| panic!(".node/desktop/index.d.ts has no `export type {name}`"));
     let body = &source[start..start + source[start..].find(';').unwrap()];
     body.split('\'')
         .skip(1)
@@ -66,17 +66,17 @@ fn protocol_versions_match() {
     let js = node_file("index.js");
     assert!(
         js.contains(&format!("const PROTOCOL_VERSION = {PROTOCOL_VERSION};")),
-        "node/index.js PROTOCOL_VERSION differs from src/ipc.rs ({PROTOCOL_VERSION})"
+        ".node/desktop/index.js PROTOCOL_VERSION differs from src/ipc.rs ({PROTOCOL_VERSION})"
     );
     assert!(
         node_file("index.d.ts").contains(&format!("PROTOCOL_VERSION: {PROTOCOL_VERSION};")),
-        "node/index.d.ts PROTOCOL_VERSION differs from src/ipc.rs ({PROTOCOL_VERSION})"
+        ".node/desktop/index.d.ts PROTOCOL_VERSION differs from src/ipc.rs ({PROTOCOL_VERSION})"
     );
 }
 
 #[test]
 fn package_versions_match_cargo() {
-    for package in ["node", "wasm"] {
+    for package in [".node/desktop", ".node/wasm"] {
         let json: serde_json::Value =
             serde_json::from_str(&package_file(package, "package.json")).unwrap();
         assert_eq!(
@@ -85,10 +85,10 @@ fn package_versions_match_cargo() {
             "{package}/package.json and Cargo.toml versions differ"
         );
     }
-    let wasm_crate = package_file("wasm", "rust/Cargo.toml");
+    let wasm_crate = package_file(".node/wasm", "rust/Cargo.toml");
     assert!(
         wasm_crate.contains(&format!("version = \"{}\"", env!("CARGO_PKG_VERSION"))),
-        "wasm/rust/Cargo.toml version differs from Cargo.toml"
+        ".node/wasm/rust/Cargo.toml version differs from Cargo.toml"
     );
 }
 

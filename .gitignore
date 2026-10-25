@@ -24,20 +24,21 @@ target
 
 *.pdf
 # Built Node.js client binaries
-node/bin/
+.node/desktop/bin/
 
 # WebAssembly package build output
-wasm/dist/
-wasm/rust/target/
-wasm/*.tgz
+.node/wasm/dist/
+.node/wasm/fonts/
+.node/wasm/rust/target/
+.node/wasm/*.tgz
 
 # Local sample apps
 sample/
 node_modules/
-wasm/e2e/dist/
+.node/wasm/e2e/dist/
 test-results/
 playwright-report/
 
 # Benchmark output (the PDFs each library made; results/ and charts/ are committed)
-bench/out/
-bench/browser/dist/
+.public/benchmark/out/
+.public/benchmark/browser/dist/

@@ -58,7 +58,7 @@ pub enum AppError {
 }
 
 impl AppError {
-    /// Every code the engine can send. `node/index.d.ts` must list exactly these (a test checks).
+    /// Every code the engine can send. `.node/desktop/index.d.ts` must list exactly these (a test checks).
     pub const CODES: &'static [&'static str] = &[
         "UNAUTHORIZED",
         "MISSING_FIELD",

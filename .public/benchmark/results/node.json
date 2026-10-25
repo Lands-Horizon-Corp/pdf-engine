@@ -1,0 +1,280 @@
+{
+  "machine": {
+    "date": "2026-10-25",
+    "cpu": "Apple M4",
+    "cores": 10,
+    "platform": "darwin arm64",
+    "node": "v26.10.0"
+  },
+  "footprint": {
+    "pdf-engine": 24.657821655273438,
+    "Puppeteer (default)": 370.984375,
+    "Puppeteer (headless shell)": 203.4921875
+  },
+  "rows": [
+    {
+      "doc": "receipt",
+      "library": "pdf-engine",
+      "kind": "HTML to PDF",
+      "coldMs": 48.45275000000015,
+      "medianMs": 0.9512500000000728,
+      "p95Ms": 1.1524160000001302,
+      "perSecond": 5106.9751705251,
+      "kb": 38.599609375,
+      "chars": 388
+    },
+    {
+      "doc": "receipt",
+      "library": "Puppeteer (headless shell)",
+      "kind": "HTML to PDF",
+      "coldMs": 106.58691699999963,
+      "medianMs": 4.5960830000003625,
+      "p95Ms": 5.493332999999893,
+      "perSecond": 329.9918070768482,
+      "kb": 82.4482421875,
+      "chars": 387
+    },
+    {
+      "doc": "receipt",
+      "library": "Puppeteer (default)",
+      "kind": "HTML to PDF",
+      "coldMs": 360.5841250000003,
+      "medianMs": 32.053499999999985,
+      "p95Ms": 33.35383300000012,
+      "perSecond": 115.18242323132448,
+      "kb": 82.65625,
+      "chars": 387
+    },
+    {
+      "doc": "receipt",
+      "library": "pdfkit (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 21.988124999999854,
+      "medianMs": 19.988415999998324,
+      "p95Ms": 20.883208999999624,
+      "perSecond": 50.79938816363467,
+      "kb": 16.63671875,
+      "chars": 389
+    },
+    {
+      "doc": "receipt",
+      "library": "pdfkit (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 0.9662080000016431,
+      "medianMs": 0.8325420000001031,
+      "p95Ms": 0.9083329999994021,
+      "perSecond": 2140.631459522668,
+      "kb": 2.0869140625,
+      "chars": 440
+    },
+    {
+      "doc": "receipt",
+      "library": "pdfmake (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 21.717790999999124,
+      "medianMs": 20.6507500000007,
+      "p95Ms": 21.150292000000263,
+      "perSecond": 48.28120130388213,
+      "kb": 17.5966796875,
+      "chars": 387
+    },
+    {
+      "doc": "receipt",
+      "library": "pdfmake (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 1.8024589999986347,
+      "medianMs": 1.5308750000003783,
+      "p95Ms": 1.6606670000001031,
+      "perSecond": 959.3146640690767,
+      "kb": 2.8408203125,
+      "chars": 438
+    },
+    {
+      "doc": "receipt",
+      "library": "pdf-lib (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 24.81891700000051,
+      "medianMs": 22.338125000002037,
+      "p95Ms": 23.235333999997238,
+      "perSecond": 45.327726552229045,
+      "kb": 15.7294921875,
+      "chars": 389
+    },
+    {
+      "doc": "receipt",
+      "library": "pdf-lib (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 0.7345829999976559,
+      "medianMs": 0.5236249999979918,
+      "p95Ms": 0.7149580000004789,
+      "perSecond": 1869.2389413277695,
+      "kb": 2.2578125,
+      "chars": 440
+    },
+    {
+      "doc": "receipt",
+      "library": "jsPDF (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 16.964915999997174,
+      "medianMs": 15.473999999998341,
+      "p95Ms": 16.218791999999667,
+      "perSecond": 66.19351907707635,
+      "kb": 66.77734375,
+      "chars": 389
+    },
+    {
+      "doc": "receipt",
+      "library": "jsPDF (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 0.6795830000010028,
+      "medianMs": 0.63629199999923,
+      "p95Ms": 0.6807920000028389,
+      "perSecond": 2302.0368053327147,
+      "kb": 3.6796875,
+      "chars": 440
+    },
+    {
+      "doc": "receipt",
+      "library": "@react-pdf/renderer",
+      "kind": "PDF from code",
+      "coldMs": 11.209084000001894,
+      "medianMs": 8.181666999997105,
+      "p95Ms": 10.830041999997775,
+      "perSecond": 134.06674037179337,
+      "kb": 17.4521484375,
+      "chars": 367
+    },
+    {
+      "doc": "invoice",
+      "library": "pdf-engine",
+      "kind": "HTML to PDF",
+      "coldMs": 50.60375000000204,
+      "medianMs": 1.62724999999773,
+      "p95Ms": 1.8890830000018468,
+      "perSecond": 2637.272801997449,
+      "kb": 40.3310546875,
+      "chars": 1151
+    },
+    {
+      "doc": "invoice",
+      "library": "Puppeteer (headless shell)",
+      "kind": "HTML to PDF",
+      "coldMs": 108.23479199999929,
+      "medianMs": 6.224999999998545,
+      "p95Ms": 6.86804100000154,
+      "perSecond": 286.2992935864677,
+      "kb": 111.4599609375,
+      "chars": 1150
+    },
+    {
+      "doc": "invoice",
+      "library": "Puppeteer (default)",
+      "kind": "HTML to PDF",
+      "coldMs": 370.72991600000023,
+      "medianMs": 34.27812499999709,
+      "p95Ms": 34.84799999999814,
+      "perSecond": 107.6427470567643,
+      "kb": 111.66796875,
+      "chars": 1150
+    },
+    {
+      "doc": "invoice",
+      "library": "pdfkit (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 21.888584000000264,
+      "medianMs": 20.66220899999462,
+      "p95Ms": 21.247208000000683,
+      "perSecond": 48.49013586101795,
+      "kb": 17.4013671875,
+      "chars": 1152
+    },
+    {
+      "doc": "invoice",
+      "library": "pdfkit (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 1.4769579999992857,
+      "medianMs": 1.402750000001106,
+      "p95Ms": 1.62275000000227,
+      "perSecond": 719.5205474831723,
+      "kb": 2.861328125,
+      "chars": 1335
+    },
+    {
+      "doc": "invoice",
+      "library": "pdfmake (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 22.51445799999783,
+      "medianMs": 22.318207999996957,
+      "p95Ms": 23.26887500000157,
+      "perSecond": 44.32441351894061,
+      "kb": 18.984375,
+      "chars": 1150
+    },
+    {
+      "doc": "invoice",
+      "library": "pdfmake (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 4.295500000000175,
+      "medianMs": 2.677457999998296,
+      "p95Ms": 4.7179160000014235,
+      "perSecond": 361.1887894758091,
+      "kb": 4.642578125,
+      "chars": 1333
+    },
+    {
+      "doc": "invoice",
+      "library": "pdf-lib (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 27.335666999999376,
+      "medianMs": 27.054457999998704,
+      "p95Ms": 27.733875000005355,
+      "perSecond": 37.43150531664236,
+      "kb": 17.912109375,
+      "chars": 1152
+    },
+    {
+      "doc": "invoice",
+      "library": "pdf-lib (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 1.2910829999964335,
+      "medianMs": 1.2110830000019632,
+      "p95Ms": 2.1274590000030003,
+      "perSecond": 776.0431596403309,
+      "kb": 4.4033203125,
+      "chars": 1335
+    },
+    {
+      "doc": "invoice",
+      "library": "jsPDF (Noto Sans)",
+      "kind": "PDF from code",
+      "coldMs": 15.98370900000009,
+      "medianMs": 15.032082999998238,
+      "p95Ms": 15.661417000002984,
+      "perSecond": 67.0994797380777,
+      "kb": 67.560546875,
+      "chars": 1152
+    },
+    {
+      "doc": "invoice",
+      "library": "jsPDF (built-in font)",
+      "kind": "PDF from code",
+      "coldMs": 0.9120419999962905,
+      "medianMs": 0.807583000001614,
+      "p95Ms": 1.5814170000012382,
+      "perSecond": 1178.0971176257465,
+      "kb": 4.4248046875,
+      "chars": 1335
+    },
+    {
+      "doc": "invoice",
+      "library": "@react-pdf/renderer",
+      "kind": "PDF from code",
+      "coldMs": 19.40700000000652,
+      "medianMs": 18.8826659999977,
+      "p95Ms": 20.71495899999718,
+      "perSecond": 64.79096520053287,
+      "kb": 18.8193359375,
+      "chars": 1130
+    }
+  ]
+}

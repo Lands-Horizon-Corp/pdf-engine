@@ -337,21 +337,36 @@ it is verified against fake network printers on Linux, macOS and Windows, and th
 
 ## How it works
 
-```
- template + data (JSON)
-        │  minijinja: values, loops, filters, HTML escaping, output and time limits
-        ▼
- HTML ─▶ Blitz (HTML and DOM) ─▶ Stylo (CSS) ─▶ Taffy (flex, grid, table layout) ─▶ Parley (text shaping)
-        │
-        ▼
- Fulgur (pagination) ─▶ Krilla (PDF writer, font subsetting) ─▶ PDF bytes (optional password)
-        │
-        ├──────────────┬────────────────────┬──────────────────────┬───────────────────────┐
-        ▼              ▼                    ▼                      ▼                       ▼
-  WebAssembly     Node / Electron      HTTP server            Command line            Printing
-  (in the page)   (stdin/stdout,       (Docker, actix-web,    (Tauri sidecar,         PDF ─▶ rasteriser ─▶
-                   no port)             S3 upload)             scripts)                ESC/POS or ZPL ─▶
-                                                                                       queue | TCP | USB
+```mermaid
+flowchart TD
+    START["template + data (JSON)"]
+    TPL["minijinja<br/>values, loops, filters, HTML escaping,<br/>output and time limits"]
+    START --> TPL --> HTML["HTML"]
+
+    subgraph ENGINE["The engine (Rust)"]
+        direction TD
+        BLITZ["Blitz<br/>HTML and DOM"] --> STYLO["Stylo<br/>CSS"]
+        STYLO --> TAFFY["Taffy<br/>flex, grid and table layout"]
+        TAFFY --> PARLEY["Parley<br/>text shaping"]
+        PARLEY --> FULGUR["Fulgur<br/>pagination"]
+        FULGUR --> KRILLA["Krilla<br/>PDF writer, font subsetting"]
+    end
+
+    HTML --> BLITZ
+    KRILLA --> PDF["PDF bytes<br/>(optional password)"]
+
+    PDF --> WASM["WebAssembly<br/>in the page"]
+    PDF --> NODE["Node and Electron<br/>stdin and stdout, no port"]
+    PDF --> HTTP["HTTP server<br/>Docker, actix-web, S3 upload"]
+    PDF --> CLI["Command line<br/>Tauri sidecar, scripts"]
+    PDF --> PRINT["Printing"]
+
+    PRINT --> RASTER["Rasteriser<br/>203 dpi, trimmed of blank paper"]
+    RASTER --> CMD["ESC/POS or ZPL"]
+    CMD --> SYSTEM["System print queue"]
+    CMD --> TCP["TCP socket, port 9100"]
+    CMD --> USB["USB device"]
+    PDF -. "office printers get the PDF itself" .-> SYSTEM
 ```
 
 - **One engine, many doors.** The browser build compiles the same Rust source files as the server; templates, CSS and

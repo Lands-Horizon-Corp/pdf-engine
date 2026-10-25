@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build:native": "node scripts/build-native.js",
-    "test": "node --test test"
+    "test": "node --test"
   },
   "publishConfig": {
     "access": "public"

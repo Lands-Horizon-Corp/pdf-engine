@@ -41,7 +41,7 @@ All of these must pass. They take a few minutes.
 cargo clippy --all-targets                       # no warnings in src/ and tests/
 cargo test                                       # the engine, IPC, errors, CORS, languages, images
 cd wasm && npm run build && npm test             # the browser package (builds the .wasm first)
-cd ../node && node --test test                   # the Node client (needs `cargo build` first)
+cd ../node && node --test                        # the Node client (needs `cargo build` first)
 cd ../wasm/e2e && npm install && npx playwright test    # Chromium, WebKit, Firefox: plain JS, React, Vue
 npm run test:cdn                                 # a plain HTML page importing the package like a CDN does
 ```

@@ -149,9 +149,9 @@ test('the engine restarts after it dies', async () => {
   try {
     await pdf.ping();
     // Kill the child behind the client's back.
-    const { execSync } = require('node:child_process');
-    if (process.platform === 'win32') execSync('taskkill /F /IM pdf-engine.exe /T', { stdio: 'ignore' });
-    else execSync(`pkill -f "${binary} ipc" || true`);
+    const { spawnSync } = require('node:child_process');
+    if (process.platform === 'win32') spawnSync('taskkill', ['/F', '/IM', 'pdf-engine.exe', '/T'], { stdio: 'ignore' });
+    else spawnSync('pkill', ['-f', `${binary} ipc`], { stdio: 'ignore' }); // no shell: it would match itself
     await new Promise((r) => setTimeout(r, 300));
     assert.ok(isPdf(await pdf.generate({ template: '<p>again</p>' })));
   } finally {

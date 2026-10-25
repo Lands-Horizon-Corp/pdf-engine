@@ -67,7 +67,7 @@ fmt-check: ## Fail if the code isn't formatted
 check: fmt-check test ## Formatting check + functional tests (what CI should run)
 
 node: ## Node.js client tests against the debug binary (run `cargo build` first)
-	PDF_ENGINE_BIN=$(CURDIR)/target/debug/pdf-engine node --test node/test
+	cd node && PDF_ENGINE_BIN=$(CURDIR)/target/debug/pdf-engine node --test
 
 # ---- benchmarks (bench/README.md) ------------------------------------------------------------
 

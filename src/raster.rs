@@ -178,7 +178,7 @@ mod tests {
             height: rows.len(),
             dots: rows
                 .iter()
-                .flat_map(|r| r.bytes().map(|c| u8::from(c == '#')))
+                .flat_map(|r| r.bytes().map(|c| u8::from(c == b'#')))
                 .collect(),
         }
     }

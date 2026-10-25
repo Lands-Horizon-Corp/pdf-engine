@@ -58,7 +58,8 @@ jobs:
             wasm/rust -> target
       - run: cargo build
       - run: cargo test --no-fail-fast
-      - run: node --test node/test
+      - run: node --test
+        working-directory: node
       - name: Printing to a virtual receipt printer
         run: powershell -ExecutionPolicy Bypass -File scripts\windows-printer-test.ps1
       - name: Browser package under Node (needs the wasm build)
@@ -84,7 +85,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build
-      - run: node --test node/test
+      - run: node --test
+        working-directory: node
 
   # The browser package, in every engine Playwright ships: Chromium (Chrome, Edge, Brave),
   # Firefox, and WebKit (Safari), from plain JavaScript, React and Vue apps.

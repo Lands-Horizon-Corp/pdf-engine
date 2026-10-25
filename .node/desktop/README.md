@@ -41,7 +41,7 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `orientation` | `portrait` (default) or `landscape`. |
 | `images` | Images for `<img src="name">`, by name: a Buffer/Uint8Array, a `data:` URI or a file path. Skipped, not an error, if unusable. |
 
-Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`.
+Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`, `printers()`, `print()` and `pid`. Full reference: [`.public/docs/desktop-api.md`](../../.public/docs/desktop-api.md).
 
 ## Printing (Electron, Tauri, Node)
 
@@ -106,7 +106,7 @@ try {
 
 Codes: `MISSING_FIELD`, `INVALID_FIELD`, `TEMPLATE_ERROR`, `TEMPLATE_OUTPUT_TOO_LARGE`,
 `TEMPLATE_TOO_EXPENSIVE`, `FONT_ERROR`, `RENDER_FAILED`, `PDF_PROCESSING_FAILED`, `TIMEOUT`,
-`INTERNAL_ERROR`, `IPC_PROTOCOL_ERROR`, and from the client `BINARY_NOT_FOUND`, `ENGINE_EXITED`,
+`INTERNAL_ERROR`, `IPC_PROTOCOL_ERROR`, `PRINT_FAILED`, `PRINTER_UNREACHABLE`, and from the client `BINARY_NOT_FOUND`, `ENGINE_EXITED`,
 `ENGINE_CLOSED`, `CLIENT_TIMEOUT`, `PROTOCOL_MISMATCH`. The full list is typed in `index.d.ts`.
 
 ## Install the binary
@@ -116,8 +116,8 @@ npm run build:native            # builds the Rust engine, copies it to bin/<plat
 npm run build:native -- --debug # faster to compile
 ```
 
-Or point at a binary with `new PDFEngine({ binary })` or `PDF_ENGINE_BIN`. macOS and Linux only for
-now (the IPC mode redirects file descriptors; Windows is not supported yet).
+Or point at a binary with `new PDFEngine({ binary })` or `PDF_ENGINE_BIN`. It runs on macOS, Linux and Windows (CI
+tests all three, including printing to a Windows print queue).
 
 ## Electron
 

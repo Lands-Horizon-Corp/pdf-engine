@@ -1,0 +1,98 @@
+name: Release
+
+# Publishes the browser package to npm and the server image to Docker Hub when a version tag is pushed:
+#
+#   git tag v1.2.0 && git push origin v1.2.0
+#
+# A plain version (v1.2.0) becomes npm's `latest`; one with a suffix (v1.2.0-rc.1) is published as `next`.
+# Add these repository secrets first (Settings > Secrets and variables > Actions):
+#   NPM_TOKEN            an npm "Automation" token of an account in the @lands-horizon-corp organisation
+#   DOCKERHUB_USERNAME   the Docker Hub account that owns the image
+#   DOCKERHUB_TOKEN     a Docker Hub access token with write permission
+# The Node/Electron package (@lands-horizon-corp/pdf-engine) is not published here: it needs the engine built
+# for every platform first (see PUBLISHING.md).
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  IMAGE: zalven88/pdf-engine
+
+jobs:
+  npm-wasm:
+    name: npm (@lands-horizon-corp/pdf-engine-wasm)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag must match the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./.node/wasm/package.json').version")
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "tag=$tag package=$pkg cargo=$cargo"
+          [ "$tag" = "$pkg" ] && [ "$tag" = "$cargo" ] || { echo "::error::tag, .node/wasm/package.json and Cargo.toml must all be $tag"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            .node/wasm/rust -> target
+      - name: wasm-bindgen CLI (the version the crate locks) and wasm-opt
+        run: |
+          v=$(grep -A1 'name = "wasm-bindgen"$' .node/wasm/rust/Cargo.lock | grep version | head -1 | cut -d'"' -f2)
+          cargo install wasm-bindgen-cli --version "$v" --locked
+          sudo apt-get update && sudo apt-get install -y binaryen
+      - run: cargo build   # the native server, for the "render on a server" tests
+      - run: npm run build
+        working-directory: .node/wasm
+      - run: npm test
+        working-directory: .node/wasm
+      - name: Publish
+        working-directory: .node/wasm
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-*) npm publish --access public --provenance --tag next ;;
+            *)   npm publish --access public --provenance ;;
+          esac
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # 1.2.3 -> 1.2.3, 1.2, 1 and latest (a suffix such as -rc.1 gets only its own tag)
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          flavor: latest=auto
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -23,7 +23,7 @@ const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
 window.open(url);                                  // or <iframe src={url}> or <a href={url} download>
 ```
 
-No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
+Every option, method and error is in the [reference](../../.public/docs/browser-api.md). No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
 
 The Node.js/Electron package ([`@lands-horizon-corp/pdf-engine`](../desktop/README.md)) has the same API, so
 code moves between them.

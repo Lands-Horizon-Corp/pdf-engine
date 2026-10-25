@@ -99,7 +99,22 @@ Then read the results before trusting them:
   Do not edit a number by hand; if the README text claims something the charts no longer show, change the text.
 - `git diff --stat .public/benchmark/results README.md .public/benchmark/charts` should show only the numbers and charts changing.
 
-## 5. Publish to npm
+## 4b. The quick way: let GitHub publish it
+
+`.github/workflows/release.yml` builds, tests and publishes the browser package to npm **and** the Docker image
+to Docker Hub (amd64 and arm64) when you push a version tag. Once, add three repository secrets (Settings >
+Secrets and variables > Actions): `NPM_TOKEN` (an npm Automation token for an account in the
+`@lands-horizon-corp` organisation), `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Then, after steps 1 to 4:
+
+```sh
+git tag v<version> && git push origin v<version>
+```
+
+A plain version becomes npm's `latest`; a suffix (`v1.2.0-rc.1`) is published as `next`. The job stops if the tag,
+`.node/wasm/package.json` and `Cargo.toml` disagree. Watch it under the repository's Actions tab, then do step 6
+(check it from the CDN). The manual way is steps 5 and 8.
+
+## 5. Publish to npm (by hand)
 
 First as a pre-release tag, so nobody gets it by accident:
 

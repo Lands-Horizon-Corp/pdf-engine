@@ -19,8 +19,10 @@
 //! ```
 //!
 //! Other ops: `ping` (reports `version` and `protocol`), `load_fonts` (`{ "paths": [...] }`:
-//! font files or folders added to the system fonts, replacing any earlier set) and
-//! `reload_fonts`. Request bodies are unused.
+//! font files or folders added to the system fonts, replacing any earlier set), `reload_fonts`,
+//! `raster` (a receipt or label as ESC/POS or ZPL bytes), `printers` (list printers) and `print`
+//! (render and send to a printer). A request's body carries the images it supplies, back to back
+//! (`images: [{ "src": "logo", "len": 123 }]` in the header); other ops have none.
 //!
 //! The Node.js client in `.node/desktop/` speaks this protocol; `PROTOCOL_VERSION` changes whenever it does.
 //!

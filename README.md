@@ -207,6 +207,7 @@ async function download() {
 <template><button @click="download">Download PDF</button></template>
 ```
 
+Full documentation: [`.public/docs/`](.public/docs/README.md) (every function and option, templates, printing, errors).
 Step-by-step guides: [React](.public/docs/sample-react.md), [Vue](.public/docs/sample-vue.md),
 [Svelte](.public/docs/sample-svelte.md), [Next.js](.public/docs/sample-nextjs.md),
 [Electron](.public/docs/sample-electron.md), [Tauri](.public/docs/sample-tauri.md).

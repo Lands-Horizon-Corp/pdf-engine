@@ -6,6 +6,12 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+### Documentation
+
+- A full documentation set in `.public/docs/`: getting started, templates and CSS (with the filters that exist and the ones
+  that do not), the browser and Node/Electron references, printing, the HTTP server, the command line and IPC protocol,
+  fonts and languages, errors, and guides for React, Vue, Svelte, Next.js, Electron and Tauri.
+
 ### Performance
 
 - **Memory leak fixed.** A font file that reached a render through a fresh handle (for example a font

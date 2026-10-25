@@ -9,6 +9,7 @@
  * `generate()` runs on the calling thread (a few milliseconds for a receipt). Call it from a Web
  * Worker if you render large documents.
  */
+import { ServerPool, choose, isRetryable, pruneData, requestBytes, serversOf } from './routing.js';
 import init, { Engine, set_compression, version as engineVersion } from './dist/pdf_engine_wasm.js';
 
 const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined';
@@ -95,6 +96,13 @@ async function loadImage(src, images, fetchImpl, allowLocalFiles) {
   return bytes;
 }
 
+function browserBlobUrl(bytes) {
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+    throw clientError('NOT_IN_BROWSER', 'download(), open() and print() need a browser page. Use generate() and save the bytes yourself.');
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+}
+
 let wasmReady = null;
 let wasmKey = null;
 
@@ -169,9 +177,38 @@ export class PDFEngine {
     if (!options || typeof options !== 'object') {
       throw clientError('MISSING_FIELD', 'generate() needs an options object with a `template`.');
     }
+    const servers = serversOf({ url: options.url ?? this.#options.url, token: options.token ?? this.#options.token });
+    // Only the keys the template uses are sent on (to the renderer or over the network).
+    if (options.pruneData ?? this.#options.pruneData ?? true) options = { ...options, data: pruneData(options.template, options.data) };
+    // With servers and no `pick`, documents go to the server (as before); `pick: 'auto'` also keeps working offline.
+    const pick = options.pick ?? this.#options.pick ?? (servers.length ? 'server' : 'browser');
+    const where = choose({
+      pick,
+      autoMaxBytes: options.autoMaxBytes ?? this.#options.autoMaxBytes,
+      hasServers: servers.length > 0,
+      online: typeof navigator === 'undefined' || navigator.onLine !== false,
+      size: () => requestBytes(options),
+    });
+    if (where === 'browser') return this.#generateLocal(options);
+    try {
+      return await this.#pool(servers).run((server) => this.#generateRemote(server.url, server.token, options));
+    } catch (e) {
+      // Unreachable or overloaded servers: with `pick: 'auto'` (or `fallback: true`) the page renders it.
+      if (!(options.fallback ?? this.#options.fallback ?? pick === 'auto') || !isRetryable(e)) throw e;
+      return this.#generateLocal(options);
+    }
+  }
+
+  #pools = new Map();
+
+  #pool(servers) {
+    const key = JSON.stringify(servers);
+    if (!this.#pools.has(key)) this.#pools.set(key, new ServerPool(servers));
+    return this.#pools.get(key);
+  }
+
+  async #generateLocal(options) {
     const { template, data, password, width, height, orientation } = options;
-    const url = options.url ?? this.#options.url;
-    if (url) return this.#generateRemote(url, options.token ?? this.#options.token, options);
     await this.#start();
     this.#applyFonts();
     const compression = options.compression ?? this.#options.compression ?? 'fast';
@@ -254,6 +291,45 @@ export class PDFEngine {
       throw new PDFEngineError({ code: 'INTERNAL_ERROR', message: `The server answered ${response.status} ${response.statusText}.`, status: response.status });
     }
     return new Uint8Array(await response.arrayBuffer());
+  }
+
+  /** Render, then save the PDF through the browser's download (a link with `download`). Browser only. */
+  async download(options, filename = 'document.pdf') {
+    const url = browserBlobUrl(await this.generate(options));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  /** Render, then show the PDF in a new tab. Browser only. Resolves with the opened window (or null if blocked). */
+  async open(options) {
+    const url = browserBlobUrl(await this.generate(options));
+    const win = window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return win;
+  }
+
+  /** Render, then open the browser's print dialog for it. Browser only. Printing on thermal or label printers is in the Node package. */
+  async print(options) {
+    const url = browserBlobUrl(await this.generate(options));
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    frame.src = url;
+    await new Promise((ok, fail) => {
+      frame.onload = ok;
+      frame.onerror = () => fail(clientError('PRINT_FAILED', 'The browser could not load the PDF for printing.'));
+      document.body.appendChild(frame);
+    });
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setTimeout(() => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    }, 120_000);
   }
 
   /** Load the engine now instead of on the first `generate()`. Returns the engine version. */

@@ -207,6 +207,20 @@ async function download() {
 <template><button @click="download">Download PDF</button></template>
 ```
 
+### Plain HTML, Vanilla JS, jQuery (no build step)
+
+```html
+<script type="module">
+  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1/index.js';
+  const pdf = new PDFEngine();
+  document.querySelector('#save').onclick = () =>      // or $('#save').on('click', ...)
+    pdf.download({ template: '<h1>Invoice {{ no }}</h1>', data: { no: '12345' } }, 'invoice.pdf');
+</script>
+```
+
+`download()`, `open()` and `print()` (the browser's print dialog) are on the browser package. More in the
+[browser package guide](wasm/README.md#without-a-build-step-cdn).
+
 Svelte and plain JavaScript work the same way. With Vite, see the
 [two lines of config](wasm/README.md#bundlers).
 
@@ -221,6 +235,10 @@ const pdf = new PDFEngine({ fonts: ['/fonts/NotoSansSC-Regular.otf'] });
 const remote = new PDFEngine({ url: 'https://pdf.example.com', token: '…' });
 const bytes = await remote.generate({ template, data, password: '' });   // or generate({ ..., url })
 ```
+
+`url` and `token` can be arrays (servers used in turn, a failing one skipped), and `pick: 'auto'` with
+`autoMaxBytes: '2mb'` renders small documents in the page, big ones on a server, and falls back to the page when
+offline ([details](wasm/README.md#several-servers-and-the-page-as-a-fallback)).
 
 For `url`, set `CORS_ALLOWED_ORIGINS=https://your-app.com` on the server. A token in browser code is
 visible to users, so prefer a proxy or a short-lived token.
@@ -255,6 +273,18 @@ await withImages.generate({
   images: { photo: await fs.promises.readFile('photo.jpg') },
 });
 ```
+
+### Printing (Electron, Tauri, Node)
+
+```ts
+const printers = await pdf.printers();        // system printers, plus network ones you list
+await pdf.print({ printerId: printers[0].id, paper: '80mm', template, data });
+```
+
+Receipt printers get ESC/POS, label printers ZPL, office printers the PDF, through the operating system's
+queue, a network socket (`net://host:9100`) or USB directly (`usb://vendor:product`, optional `usb` package).
+Details in the [Node guide](node/README.md#printing-electron-tauri-node). A web page cannot see printers; the
+browser package has `print()` for the browser's own print dialog.
 
 All the packages share `generate({ template, data, password, width, height, orientation, images })`.
 

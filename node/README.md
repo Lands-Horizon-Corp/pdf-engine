@@ -43,6 +43,49 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 
 Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`.
 
+## Printing (Electron, Tauri, Node)
+
+Find printers and print straight to them: receipt (thermal) printers, label printers and office printers.
+
+```js
+const pdf = new PDFEngine({
+  printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }],   // network printers: list them
+});
+
+const printers = await pdf.printers();
+// [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', default: false },
+//  { id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal', ... },
+//  { id: 'system://HP_LaserJet_P1102', type: 'document', ... }]
+
+await pdf.print({
+  printerId: 'system://POS-58',
+  paper: '58mm',                                   // '58mm', '80mm' (default), '112mm', or dots
+  template: '<b>STORE</b>{% for i in items %}<div>{{ i.name }} ₱{{ i.price }}</div>{% endfor %}<b>TOTAL ₱{{ total }}</b>',
+  data: { items: [{ name: 'Sardines', price: 24.5 }], total: 24.5 },
+});
+```
+
+- **What each printer is sent.** `thermal`: the receipt as a picture in ESC/POS commands (so any CSS, font or
+  script prints, including ₱ and non-Latin text), then a feed and a paper cut. `label`: the same picture as a
+  ZPL graphic. `document`: the PDF. The type is guessed from the printer's name; set `type` to override it.
+- **How it reaches the printer.** `system://<name>` goes through the operating system's queue (CUPS `lp` on
+  macOS and Linux, the Windows spooler), so any printer with its driver installed works, USB and Bluetooth
+  ones included. `net://host[:port]` writes straight to a network printer on port 9100.
+- **Options.** `cut`, `feed` (blank lines before the cut), `dither` (for photos and logos), `copies`,
+  `language` (`escpos` or `zpl`), and everything `generate()` takes except `password`.
+- **USB.** The simple way is the operating-system queue: add the printer (the "Generic / Text Only" driver on
+  Windows, a raw queue on macOS and Linux) and use its `system://` id. To talk to the USB device directly, by
+  vendor and product id (`usb://0483:5740`), install the optional [`usb`](https://www.npmjs.com/package/usb)
+  package (`npm install usb`); `printers()` then lists receipt and label printers it finds. Windows needs a
+  WinUSB driver for that device (Zadig), which stops it appearing as a normal printer; Linux needs permission
+  on the device (a udev rule). Direct USB is for receipt and label printers; PDFs go through `system://`.
+- **Not a web feature.** A web page cannot see printers; the browser package's `print()` opens the browser's
+  print dialog instead.
+
+Printing needs the operating system's tools to be present (`lp` and `lpstat` on macOS and Linux, PowerShell
+on Windows). Errors are `PRINTER_UNREACHABLE` (a network printer did not answer) and `PRINT_FAILED` (the
+queue refused the job); both carry the system's message.
+
 ## Errors
 
 Every failure is a `PDFEngineError` with a stable `code` to branch on, a readable `message`, and

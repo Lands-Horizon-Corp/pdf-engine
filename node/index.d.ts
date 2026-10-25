@@ -24,7 +24,9 @@ export type ClientErrorCode =
   | 'ENGINE_EXITED'
   | 'ENGINE_CLOSED'
   | 'CLIENT_TIMEOUT'
-  | 'PROTOCOL_MISMATCH';
+  | 'PROTOCOL_MISMATCH'
+  | 'PRINTER_UNREACHABLE'
+  | 'PRINT_FAILED';
 
 /** Wire protocol version; the client refuses an engine that reports a different one. */
 export const PROTOCOL_VERSION: 1;
@@ -67,17 +69,19 @@ export interface PDFEngineOptions {
   imageDir?: string;
   /** Hosts `<img src="https://...">` may be fetched from (`cdn.example.com`, `*.example.com`). Off by default. */
   imageHosts?: string[];
+  /** Printers to offer besides the system's, e.g. network printers: `{ id: 'net://192.168.1.150:9100', name: 'Kitchen', type: 'thermal' }`. */
+  printers?: Array<{ id: string; name?: string; type?: PrinterType }>;
   /** Extra environment variables for the engine (e.g. `ASSET_ALLOWED_HOSTS`, `RENDER_TIMEOUT_SECS`). */
   env?: Record<string, string>;
   /** Receives the engine's log output (stderr). */
   onLog?: (text: string) => void;
 }
 
-export interface GenerateOptions {
+export interface GenerateOptions<T = unknown> {
   /** HTML with `{{ value }}` / `{% for x in list %}` placeholders (minijinja, auto-escaped). */
   template: string;
-  /** Values for the placeholders. */
-  data?: unknown;
+  /** Values for the placeholders. Pass your own interface as `generate<MyData>()` to get it checked. */
+  data?: T;
   /** Encrypts the PDF (open and owner password). Empty or missing = not encrypted. */
   password?: string;
   /** Page width, e.g. `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default `8.5in`). */
@@ -101,11 +105,64 @@ export interface PingResult {
   protocol: number;
 }
 
+export type PrinterType = 'thermal' | 'label' | 'document';
+
+export interface Printer {
+  /** Pass this as `printerId`: `system://<queue name>`, `net://<host>:<port>` or `usb://<vendor>:<product>`. */
+  id: string;
+  name: string;
+  /** `thermal` = receipt roll (ESC/POS), `label` = label/barcode (ZPL), `document` = office printer (PDF). Guessed from the name; override it in `print()`. */
+  type: PrinterType;
+  status: 'ready' | 'busy' | 'offline' | 'unknown';
+  transport: 'system' | 'net' | 'usb';
+  default: boolean;
+  /** Where the system says it is connected (`usb://...`, `socket://...`, a Windows port). */
+  uri?: string;
+}
+
+export interface PrintOptions<T = unknown> extends GenerateOptions<T> {
+  /** From `printers()`, or `net://host[:9100]` for a network printer. */
+  printerId: string;
+  /** Force the kind of output: a receipt printer is sent ESC/POS, a label printer ZPL, an office printer the PDF. */
+  type?: PrinterType;
+  /** Roll width for `thermal`/`label`: `'58mm'`, `'80mm'` (default) or `'112mm'`, or the printable width in dots (203 dpi). */
+  paper?: '58mm' | '80mm' | '112mm' | number;
+  /** Raster command language; default `escpos` for `thermal`, `zpl` for `label`. */
+  language?: 'escpos' | 'zpl';
+  /** Cut the paper after printing (ESC/POS; default `true`). */
+  cut?: boolean;
+  /** Blank lines to feed before the cut (ESC/POS; default 3). */
+  feed?: number;
+  /** Spread greys into dots, for photos and logos (default `false`; text is sharper without it). */
+  dither?: boolean;
+  /** Copies (1 to 100). */
+  copies?: number;
+}
+
+export interface PrintResult {
+  printerId: string;
+  type: PrinterType;
+  /** What was sent: `escpos`, `zpl` or `pdf`. */
+  language: 'escpos' | 'zpl' | 'pdf';
+  bytes: number;
+  copies: number;
+}
+
 export class PDFEngine {
   constructor(options?: PDFEngineOptions | string[]);
 
+  /**
+   * The printers this computer can print to: those the operating system lists plus the `printers` you passed
+   * to the constructor, plus USB receipt and label printers seen directly when the optional `usb` package is
+   * installed. Network printers cannot be discovered, so list them in the constructor.
+   */
+  printers(): Promise<Printer[]>;
+
+  /** Render the template and print it on `printerId`. */
+  print<T = unknown>(options: PrintOptions<T>): Promise<PrintResult>;
+
   /** Render HTML to a PDF. The engine starts on first use. */
-  generate(options: GenerateOptions): Promise<Buffer>;
+  generate<T = unknown>(options: GenerateOptions<T>): Promise<Buffer>;
 
   /** Start the engine now and report its version. */
   ping(): Promise<PingResult>;

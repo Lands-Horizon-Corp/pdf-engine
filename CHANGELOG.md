@@ -21,6 +21,17 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Added
 
+- **Printing from the Node package** (Electron, Tauri, Node): `printers()` lists the operating system's
+  printers (plus network printers you pass in), and `print()` sends a receipt as ESC/POS, a label as ZPL or a
+  document as PDF, through the system queue or straight to a network printer. New IPC op `raster` renders a
+  template to printer commands (pure Rust rasteriser, no new system libraries). USB printers can also be
+  used directly by vendor and product id (`usb://0483:5740`) with the optional `usb` package. Not yet tried on physical
+  printers; see `PUBLISHING.md`.
+- **Browser package: several servers and smart routing.** `url` and `token` accept arrays (round robin; a
+  server that is down or overloaded is skipped), `pick: 'server' | 'browser' | 'auto'` with `autoMaxBytes`,
+  and a fallback to WebAssembly when offline. Only the `data` keys a template names are sent (`pruneData`).
+- `download()`, `open()` and `print()` (browser print dialog) on the browser package, and a documented
+  no-build-step CDN setup for plain HTML, Vanilla JS and jQuery. `generate<T>()` types the data.
 - **Images everywhere.** Browser package: `<img src>` can be a URL, `blob:`, `data:` or a name from the new
   `images` option (Blob, File, bytes), loaded before rendering; failures are skipped and reported to
   `onImageError`. Node client: `images` (bytes, `data:` URI or file path, sent in the request frame),

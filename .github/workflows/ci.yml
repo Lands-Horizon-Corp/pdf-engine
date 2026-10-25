@@ -39,19 +39,35 @@ jobs:
       - uses: actions/checkout@v4
       - run: make docker-test
 
-  # Windows: IPC mode and the Node client. New, so it may not pass yet; failures show up here
-  # without blocking merges. Remove `continue-on-error` once it is green.
+  # Windows: the engine, IPC mode (it takes over the real stdout handle), the Node client, the browser
+  # package under Node, and printing to a virtual receipt printer through the real Windows spooler.
   windows:
-    name: Windows (IPC and Node client)
+    name: Windows
     runs-on: windows-latest
-    continue-on-error: true
+    continue-on-error: true   # until this job has been green once; then remove this line
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            wasm/rust -> target
       - run: cargo build
-      - run: cargo test --lib --test ipc --test error_codes --test node_contract
+      - run: cargo test --no-fail-fast
       - run: node --test node/test
+      - name: Printing to a virtual receipt printer
+        run: powershell -ExecutionPolicy Bypass -File scripts\windows-printer-test.ps1
+      - name: Browser package under Node (needs the wasm build)
+        run: |
+          $v = (Select-String -Path wasm/rust/Cargo.lock -Pattern 'name = "wasm-bindgen"' -Context 0,1).Context.PostContext[0] -replace '.*"(.+)".*','$1'
+          cargo install wasm-bindgen-cli --version $v --locked
+          cd wasm
+          npm run build
+          npm test
 
   node-client:
     name: Node client (${{ matrix.os }}, Node ${{ matrix.node }})
@@ -104,4 +120,6 @@ jobs:
       - run: npx playwright install --with-deps ${{ matrix.browsers }}
         working-directory: wasm/e2e
       - run: npx playwright test ${{ matrix.projects }}
+        working-directory: wasm/e2e
+      - run: npm run test:cdn                  # plain HTML page, no build step
         working-directory: wasm/e2e

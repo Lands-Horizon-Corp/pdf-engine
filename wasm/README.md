@@ -23,6 +23,8 @@ const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
 window.open(url);                                  // or <iframe src={url}> or <a href={url} download>
 ```
 
+No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
+
 The Node.js/Electron package ([`@lands-horizon-corp/pdf-engine`](../node/README.md)) has the same API, so
 code moves between them.
 
@@ -47,6 +49,51 @@ await pdf.generate({
 - With `url` (rendering on a server), the server loads images by its own rules (`ASSET_ALLOWED_HOSTS`); inline
   them as `data:` URIs to be sure.
 
+## Download, open, print
+
+In a browser page, three helpers take the same options as `generate()`:
+
+```js
+await pdf.download({ template, data }, 'invoice.pdf');   // saves the file
+await pdf.open({ template, data });                      // shows it in a new tab
+await pdf.print({ template, data });                     // opens the browser's print dialog
+```
+
+`print()` goes through the browser's own print dialog, so the user picks the printer. Listing printers and
+printing straight to thermal or label printers needs the operating system, so it belongs to the Node package
+(Electron, Tauri), not to a web page.
+
+## Without a build step (CDN)
+
+A plain HTML page, Vanilla JavaScript or jQuery, needs no Vite, Webpack or Node. Import the package file from
+a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script type="module">`:
+
+```html
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<button id="pdf">Download PDF</button>
+
+<script type="module">
+  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1/index.js';
+
+  const pdf = new PDFEngine();                    // the module and its fonts load next to index.js
+
+  $('#pdf').on('click', async () => {             // jQuery, or document.querySelector(...).addEventListener
+    await pdf.download({
+      template: `<h1>Invoice {{ no }}</h1>
+                 <ul>{% for item in items %}<li>{{ item.name }}: ₱{{ item.price }}</li>{% endfor %}</ul>`,
+      data: { no: '12345', items: [{ name: 'Hosting', price: 1500 }, { name: 'Domain', price: 450 }] },
+    }, 'invoice.pdf');
+  });
+</script>
+```
+
+- Pin a version (`@1.1.1`) so the files and the module always match. Module scripts run after the page has
+  parsed, so there is nothing to wait for; use `await pdf.ping()` to load the engine ahead of the first click.
+- The template language is `{{ value }}` and `{% for %}` / `{% if %}` (not Handlebars `{{#each}}`).
+- Open the page from a web server (`http://` or `https://`), not as a `file://` file: browsers do not load
+  modules or WebAssembly from `file:`.
+- The CDN must send `Access-Control-Allow-Origin` (jsDelivr and unpkg do) and `application/wasm` for the `.wasm`.
+
 ## Options
 
 | `new PDFEngine({ ... })` | |
@@ -56,7 +103,9 @@ await pdf.generate({
 | `defaultFonts` | Load the bundled Noto Sans Regular and Bold (default `true`). |
 | `wasm` | Where the `.wasm` file is, if your bundler does not find it (see below). |
 | `fetch` | A custom `fetch` for fonts, the wasm file and server requests. |
-| `url`, `token` | Render on a deployed pdf-engine server instead of in the page (see below). |
+| `url`, `token` | One server, or arrays of servers and tokens, instead of rendering in the page (see below). |
+| `pick`, `autoMaxBytes`, `fallback` | Where documents are rendered when there is a `url`: see below. |
+| `pruneData` | Send only the `data` keys the template names (default `true`). |
 
 | `generate({ ... })` | |
 | --- | --- |
@@ -79,7 +128,30 @@ const bytes = await pdf.generate({ template, data });          // same call, sam
 await pdf.generate({ template, data, url: 'https://other' });  // or choose per document
 ```
 
-Set `CORS_ALLOWED_ORIGINS=https://your-app.com` on the server. Anything in browser code is visible to
+### Several servers, and the page as a fallback
+
+```ts
+const pdf = new PDFEngine({
+  url: ['https://pdf-1.example.com', 'https://pdf-2.example.com'],   // used in turn
+  token: ['token-1', 'token-2'],                                     // or one token for all
+});
+
+await pdf.generate({
+  template, data,
+  pick: 'auto',            // 'server' | 'browser' | 'auto'
+  autoMaxBytes: '2mb',     // auto: over this size (template + data) goes to a server, the rest renders in the page
+});
+```
+
+- With a `url` and no `pick`, every document goes to a server. Without a `url`, to the page.
+- A server that is unreachable or answers 429, 502, 503 or 504 is skipped for 30 seconds and the next one is
+  tried. Template errors and other 4xx answers are not retried: they would fail everywhere.
+- With `pick: 'auto'`, a page that is offline or whose servers all fail renders the document itself. Add
+  `fallback: true` to get that for `pick: 'server'` too.
+- Only the `data` keys the template names are sent (`pruneData: false` turns that off), so a large object you did
+  not use stays out of the renderer and off the network.
+
+Set `CORS_ALLOWED_ORIGINS=https://your-app.com` on each server. Anything in browser code is visible to
 users, so prefer a same-origin proxy or a short-lived token over the real `API_BEARER_TOKEN`.
 
 ## Fonts and languages

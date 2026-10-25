@@ -33,6 +33,7 @@ actix-web = "4.18.1"
 actix-multipart = "0.8.5"
 simd-json = "0.18.1"
 actix-cors = "0.7.2"
+hayro = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
 # IPC mode takes over the real stdout handle (src/ipc.rs).

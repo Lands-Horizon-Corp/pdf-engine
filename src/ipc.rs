@@ -39,7 +39,7 @@
 //! Closing stdin finishes the in-flight requests and exits. Only frames go to stdout; logs go
 //! to stderr.
 
-use crate::{config::AppState, error::AppError, models::PdfRequest, pdf};
+use crate::{config::AppState, error::AppError, models::PdfRequest, pdf, raster};
 use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -141,6 +141,16 @@ struct Request {
     /// Images the caller supplies, in body order: the `<img src>` value and the byte length.
     #[serde(default)]
     images: Vec<SuppliedImage>,
+    /// `raster` op: `escpos` (receipt printers) or `zpl` (label printers).
+    format: Option<String>,
+    /// `raster` op: printable width in dots (default 576, an 80 mm roll at 203 dpi).
+    dots: Option<usize>,
+    dpi: Option<f32>,
+    /// `raster` op, ESC/POS: cut after printing (default true) and blank lines to feed first (default 3).
+    cut: Option<bool>,
+    feed: Option<u8>,
+    /// `raster` op: spread grey into dots (photos); off by default, text is sharper without it.
+    dither: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -220,6 +230,63 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
                 pdf,
             ))
         }
+        "raster" => {
+            let format = req
+                .format
+                .as_deref()
+                .unwrap_or("escpos")
+                .to_ascii_lowercase();
+            if format != "escpos" && format != "zpl" {
+                return Err(AppError::InvalidField(format!(
+                    "format: `{format}` is not supported (expected escpos or zpl)"
+                )));
+            }
+            let dpi = req
+                .dpi
+                .filter(|d| (72.0..=1200.0).contains(d))
+                .unwrap_or(203.0);
+            let dots = req.dots.filter(|d| (8..=4096).contains(d)).unwrap_or(576);
+            let width_mm = dots as f32 / dpi * 25.4;
+            let pdf_req = PdfRequest {
+                template: req
+                    .template
+                    .ok_or_else(|| AppError::MissingField("template".into()))?,
+                data: req.data,
+                width: format!("{width_mm:.3}mm"),
+                // Tall enough for a long receipt; the blank paper below the content is trimmed.
+                height: req.height.unwrap_or_else(|| "2000mm".into()),
+                orientation: "portrait".into(),
+                filename: String::new(),
+                password: None,
+            };
+            let supplied = split_images(&req.images, body)?;
+            let pdf = timeout(
+                state.render_timeout,
+                pdf::render_with_images(pdf_req, supplied, state),
+            )
+            .await
+            .map_err(|_| AppError::Timeout(state.render_timeout))??;
+            let (dither, cut, feed) = (
+                req.dither.unwrap_or(false),
+                req.cut.unwrap_or(true),
+                req.feed.unwrap_or(3),
+            );
+            let bitmap =
+                tokio::task::spawn_blocking(move || raster::pdf_to_bitmap(&pdf, dots, dither))
+                    .await??;
+            let (width, height) = (bitmap.width, bitmap.height);
+            let commands = if format == "zpl" {
+                raster::encode_zpl(&bitmap)
+            } else {
+                raster::encode_escpos(&bitmap, feed, cut)
+            };
+            Ok(ok_reply(
+                id,
+                "raster",
+                json!({ "contentType": "application/octet-stream", "format": format, "bytes": commands.len(), "width": width, "height": height }),
+                Bytes::from(commands),
+            ))
+        }
         "ping" => Ok(ok_reply(
             id,
             "ping",
@@ -247,7 +314,7 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
             Ok(ok_reply(id, "reload_fonts", json!({}), Bytes::new()))
         }
         other => Err(AppError::InvalidField(format!(
-            "unknown op `{other}` (expected render, ping, load_fonts or reload_fonts)"
+            "unknown op `{other}` (expected render, raster, ping, load_fonts or reload_fonts)"
         ))),
     }
 }

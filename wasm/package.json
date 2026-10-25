@@ -5,6 +5,8 @@
   "type": "module",
   "main": "index.js",
   "module": "index.js",
+  "jsdelivr": "index.js",
+  "unpkg": "index.js",
   "types": "index.d.ts",
   "exports": {
     ".": {
@@ -20,6 +22,7 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "routing.js",
     "dist/pdf_engine_wasm.js",
     "dist/pdf_engine_wasm_bg.wasm",
     "fonts",

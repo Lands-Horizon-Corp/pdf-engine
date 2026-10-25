@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "test": "playwright test",
-    "browsers": "playwright install --with-deps chromium firefox webkit"
+    "browsers": "playwright install --with-deps chromium firefox webkit",
+    "test:cdn": "node cdn.mjs"
   },
   "dependencies": {
     "@lands-horizon-corp/pdf-engine-wasm": "file:..",

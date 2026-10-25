@@ -18,7 +18,7 @@ export type ErrorCode =
   | 'INTERNAL_ERROR';
 
 /** Error codes produced by this package, not the engine. */
-export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED' | 'SERVER_UNREACHABLE';
+export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED' | 'SERVER_UNREACHABLE' | 'NOT_IN_BROWSER' | 'PRINT_FAILED';
 
 export interface PDFEngineErrorInit {
   code: ErrorCode | ClientErrorCode;
@@ -69,14 +69,16 @@ export interface PDFEngineOptions {
   /** Default for `GenerateOptions.allowLocalFiles` (Node only). */
   allowLocalFiles?: boolean;
   /** The server's `API_BEARER_TOKEN`. Anything in browser code is visible to users: prefer a proxy or a short-lived token. */
-  token?: string;
+  token?: string | string[];
 }
 
-export interface GenerateOptions {
+export type Pick = 'server' | 'browser' | 'auto';
+
+export interface GenerateOptions<T = unknown> {
   /** HTML with `{{ value }}` / `{% for x in list %}` placeholders (minijinja, auto-escaped). */
   template: string;
-  /** Values for the placeholders. */
-  data?: unknown;
+  /** Values for the placeholders. Pass your own interface as `generate<MyData>()` to get it checked. */
+  data?: T;
   /** Encrypts the PDF (open and owner password). Empty or missing = not encrypted. */
   password?: string;
   /** Page width, e.g. `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default `8.5in`). */
@@ -101,17 +103,45 @@ export interface GenerateOptions {
   onImageError?: (src: string, reason: string) => void;
   /** Node only: let `<img src>` read local files and `file:` URLs. Off by default. */
   allowLocalFiles?: boolean;
-  /** Render on this server for this document only (overrides the constructor's `url`). */
-  url?: string;
-  /** Bearer token for `url` (overrides the constructor's `token`). */
-  token?: string;
+  /**
+   * pdf-engine servers (the Docker image) for this document, overriding the constructor's `url`. Give
+   * several to spread the load: they are used in turn, and one that is down or overloaded is skipped.
+   */
+  url?: string | string[];
+  /** Bearer token: one for every server, or an array that lines up with `url` (overrides the constructor's `token`). */
+  token?: string | string[];
+  /**
+   * Where to render. `'server'` (default when there is a `url`), `'browser'` (WebAssembly in this page; the
+   * default without a `url`), or `'auto'`: small documents in the page, documents over `autoMaxBytes` on the
+   * server, and the page again when the servers cannot be reached or the browser is offline.
+   */
+  pick?: Pick;
+  /** With `pick: 'auto'`: the template plus data size, in bytes or like `'2mb'`, above which the server is used. */
+  autoMaxBytes?: number | string;
+  /** Render in the page when every server fails (a network or overload error). On by default only for `pick: 'auto'`. */
+  fallback?: boolean;
+  /**
+   * Send only the `data` keys the template names (on by default), which keeps big payloads and secrets
+   * you did not mean to use out of the renderer and off the network. Templates that look keys up
+   * dynamically (`self`, `include`) always get everything.
+   */
+  pruneData?: boolean;
 }
 
 export class PDFEngine {
   constructor(options?: PDFEngineOptions | FontSource[]);
 
   /** Render HTML to a PDF. The engine loads on first use. */
-  generate(options: GenerateOptions): Promise<Uint8Array>;
+  generate<T = unknown>(options: GenerateOptions<T>): Promise<Uint8Array>;
+
+  /** Render, then save the PDF through the browser's download. Browser only. */
+  download<T = unknown>(options: GenerateOptions<T>, filename?: string): Promise<void>;
+
+  /** Render, then show the PDF in a new tab. Browser only. Resolves with the new window, or null if it was blocked. */
+  open<T = unknown>(options: GenerateOptions<T>): Promise<Window | null>;
+
+  /** Render, then open the browser's print dialog for it. Browser only. */
+  print<T = unknown>(options: GenerateOptions<T>): Promise<void>;
 
   /** Load the engine now and report its version. */
   ping(): Promise<{ version: string }>;

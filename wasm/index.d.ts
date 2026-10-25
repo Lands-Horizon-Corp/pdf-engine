@@ -18,7 +18,7 @@ export type ErrorCode =
   | 'INTERNAL_ERROR';
 
 /** Error codes produced by this package, not the engine. */
-export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED';
+export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED' | 'SERVER_UNREACHABLE';
 
 export interface PDFEngineErrorInit {
   code: ErrorCode | ClientErrorCode;
@@ -54,8 +54,22 @@ export interface PDFEngineOptions {
   defaultFonts?: boolean;
   /** Where to load the `.wasm` file from, if your bundler does not find it automatically. */
   wasm?: string | URL | ArrayBuffer | Uint8Array;
-  /** `fetch` used for fonts and the wasm file (default: the global one). */
+  /** `fetch` used for fonts, the wasm file and server requests (default: the global one). */
   fetch?: typeof fetch;
+  /**
+   * A deployed pdf-engine server (for example `https://pdf.example.com`). When set, documents are
+   * rendered there instead of in the page, and no WebAssembly is loaded. The server must allow your
+   * origin (`CORS_ALLOWED_ORIGINS`).
+   */
+  url?: string;
+  /** Default for `GenerateOptions.compression`. */
+  compression?: 'fast' | 'balanced' | 'small';
+  /** Default for `GenerateOptions.onImageError`. */
+  onImageError?: (src: string, reason: string) => void;
+  /** Default for `GenerateOptions.allowLocalFiles` (Node only). */
+  allowLocalFiles?: boolean;
+  /** The server's `API_BEARER_TOKEN`. Anything in browser code is visible to users: prefer a proxy or a short-lived token. */
+  token?: string;
 }
 
 export interface GenerateOptions {
@@ -71,6 +85,26 @@ export interface GenerateOptions {
   height?: string;
   /** `landscape` swaps width and height (default `portrait`). */
   orientation?: 'portrait' | 'landscape';
+  /**
+   * Images for `<img src="name">` tags, by the exact `src` value: bytes, a Blob or File, a URL,
+   * or a `data:` URI. Any other `src` (https URL, `blob:`, a relative URL) is fetched as is.
+   * `data:` URIs inside the template work without this. An image that cannot be loaded is skipped
+   * (see `onImageError`), never fails the document.
+   */
+  images?: Record<string, Uint8Array | ArrayBuffer | Blob | string | URL>;
+  /**
+   * How hard to compress the PDF. `fast` (default) stores streams uncompressed: the quickest, and a receipt is
+   * about 40 KB instead of 24 KB. `balanced` is light compression, `small` the smallest file and about 20% slower.
+   */
+  compression?: 'fast' | 'balanced' | 'small';
+  /** Called for each image that was skipped, with its `src` and the reason. Default: `console.warn`. */
+  onImageError?: (src: string, reason: string) => void;
+  /** Node only: let `<img src>` read local files and `file:` URLs. Off by default. */
+  allowLocalFiles?: boolean;
+  /** Render on this server for this document only (overrides the constructor's `url`). */
+  url?: string;
+  /** Bearer token for `url` (overrides the constructor's `token`). */
+  token?: string;
 }
 
 export class PDFEngine {

@@ -249,6 +249,25 @@ async fn data_uri_images_render_without_any_network() {
 }
 
 #[tokio::test]
+async fn images_without_a_height_are_still_drawn() {
+    let app = TestApp::builder().spawn().await;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(TINY_PNG);
+    for attrs in [
+        "",
+        r#"width="40""#,
+        r#"style="width:40px""#,
+        r#"style="height:40px""#,
+    ] {
+        let pdf = render(
+            &app,
+            &format!(r#"<img {attrs} src="data:image/png;base64,{b64}">"#),
+        )
+        .await;
+        assert!(has_image(&load_pdf(&pdf)), "<img {attrs}> was not drawn");
+    }
+}
+
+#[tokio::test]
 async fn local_files_are_never_loaded() {
     let dir = tempfile::tempdir().unwrap();
     let png = write_file(dir.path(), "canary.png", TINY_PNG);

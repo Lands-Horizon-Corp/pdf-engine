@@ -9,7 +9,7 @@
  * `generate()` runs on the calling thread (a few milliseconds for a receipt). Call it from a Web
  * Worker if you render large documents.
  */
-import init, { Engine, version as engineVersion } from './dist/pdf_engine_wasm.js';
+import init, { Engine, set_compression, version as engineVersion } from './dist/pdf_engine_wasm.js';
 
 const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined';
 
@@ -39,30 +39,60 @@ const nodeImport = (name) => import(/* webpackIgnore: true */ /* @vite-ignore */
 const bytesCache = new Map();
 
 /** Font or wasm bytes from a URL, a file path (Node), a Blob, or bytes already in memory. */
-async function loadBytes(source, fetchImpl) {
+async function loadBytes(source, fetchImpl, cache = true) {
   if (source instanceof Uint8Array) return source;
   if (source instanceof ArrayBuffer) return new Uint8Array(source);
   if (ArrayBuffer.isView(source)) return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
   if (typeof Blob !== 'undefined' && source instanceof Blob) return new Uint8Array(await source.arrayBuffer());
 
   const key = String(source);
+  if (!cache) return fetchBytes(source, key, fetchImpl);
   if (!bytesCache.has(key)) {
-    bytesCache.set(
-      key,
-      (async () => {
-        if (isNode && (source instanceof URL ? source.protocol === 'file:' : !/^[a-z][a-z0-9+.-]*:/i.test(key) || key.startsWith('file:'))) {
-          const { readFile } = await nodeImport('node:fs/promises');
-          const { fileURLToPath } = await nodeImport('node:url');
-          return new Uint8Array(await readFile(source instanceof URL || key.startsWith('file:') ? fileURLToPath(source) : key));
-        }
-        const response = await (fetchImpl || fetch)(source);
-        if (!response.ok) throw new Error(`${response.status} ${response.statusText} for ${key}`);
-        return new Uint8Array(await response.arrayBuffer());
-      })(),
-    );
+    bytesCache.set(key, fetchBytes(source, key, fetchImpl));
     bytesCache.get(key).catch(() => bytesCache.delete(key));
   }
   return bytesCache.get(key);
+}
+
+async function fetchBytes(source, key, fetchImpl) {
+  if (isNode && (source instanceof URL ? source.protocol === 'file:' : !/^[a-z][a-z0-9+.-]*:/i.test(key) || key.startsWith('file:'))) {
+    const { readFile } = await nodeImport('node:fs/promises');
+    const { fileURLToPath } = await nodeImport('node:url');
+    return new Uint8Array(await readFile(source instanceof URL || key.startsWith('file:') ? fileURLToPath(source) : key));
+  }
+  const response = await (fetchImpl || fetch)(source);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText} for ${key}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+const MAX_IMAGES = 200;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const dataUriBytes = (uri) => {
+  const comma = uri.indexOf(',');
+  if (comma < 0) return null;
+  if (!/;base64$/i.test(uri.slice(0, comma))) return new TextEncoder().encode(decodeURIComponent(uri.slice(comma + 1)));
+  const bin = atob(uri.slice(comma + 1));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+};
+
+/**
+ * The bytes for one `<img src>`: a name in the `images` map (bytes, Blob, File, URL or data: URI),
+ * else the `src` itself as a URL (http(s), blob:, a relative path; a file path under Node).
+ * Resolves `null` for a `src` that is not an image source; throws a readable reason if it fails.
+ */
+async function loadImage(src, images, fetchImpl, allowLocalFiles) {
+  const mapped = images && Object.hasOwn(images, src);
+  const source = mapped ? images[src] : src;
+  if (typeof source === 'string' && source.startsWith('data:')) return dataUriBytes(source);
+  if (typeof source === 'string' && /^(javascript|about):/i.test(source)) return null;
+  // Under Node a bare path or file: URL would read the disk; a template is not trusted with that.
+  if (!mapped && !allowLocalFiles && isNode && typeof source === 'string' && !/^(https?|blob):/i.test(source)) {
+    throw new Error('local files are not read unless `allowLocalFiles: true` (or pass the file in `images`)');
+  }
+  const bytes = await loadBytes(source, fetchImpl, false);
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
+  return bytes;
 }
 
 let wasmReady = null;
@@ -94,6 +124,9 @@ function ensureWasm(source, fetchImpl) {
   return wasmReady;
 }
 
+const COMPRESSION_LEVELS = { fast: 0, balanced: 1, small: 6 };
+let activeCompression = 'fast';
+
 /** The fonts are process-wide inside WebAssembly; remember which instance's set is active. */
 let activeFonts = null;
 
@@ -118,25 +151,41 @@ export class PDFEngine {
 
   /**
    * @param {{ fonts?: Array<string|URL|ArrayBuffer|Uint8Array|Blob>, defaultFonts?: boolean,
-   *           wasm?: string|URL|ArrayBuffer|Uint8Array, fetch?: typeof fetch }} [options]
+   *           wasm?: string|URL|ArrayBuffer|Uint8Array, fetch?: typeof fetch,
+   *           url?: string, token?: string }} [options]
    */
   constructor(options = {}) {
     if (Array.isArray(options)) options = { fonts: options };
     this.#options = { defaultFonts: true, ...options, fonts: (options.fonts || []).filter((f) => f !== '' && f != null) };
   }
 
-  /** Render HTML to a PDF. Resolves with the PDF bytes. */
+  /**
+   * Render HTML to a PDF. Resolves with the PDF bytes.
+   *
+   * Runs in this page (WebAssembly) unless a server `url` is given, here or in the constructor;
+   * then the request goes to that pdf-engine server instead and no WebAssembly is loaded.
+   */
   async generate(options) {
     if (!options || typeof options !== 'object') {
       throw clientError('MISSING_FIELD', 'generate() needs an options object with a `template`.');
     }
     const { template, data, password, width, height, orientation } = options;
+    const url = options.url ?? this.#options.url;
+    if (url) return this.#generateRemote(url, options.token ?? this.#options.token, options);
     await this.#start();
     this.#applyFonts();
+    const compression = options.compression ?? this.#options.compression ?? 'fast';
+    if (compression !== activeCompression) {
+      if (!(compression in COMPRESSION_LEVELS)) throw clientError('INVALID_FIELD', `compression must be 'fast', 'balanced' or 'small', not ${JSON.stringify(compression)}.`);
+      set_compression(COMPRESSION_LEVELS[compression]);
+      activeCompression = compression;
+    }
+    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation });
     try {
-      return this.#engine.generate(
-        JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation }),
-      );
+      // Images in data: URIs need nothing more. Any other <img src> (a URL, blob:, a name in
+      // `images`) is fetched first, so a template without them keeps the one-call fast path.
+      if (typeof template === 'string' && (options.images || /<img\b/i.test(template))) return await this.#generateWithImages(request, options);
+      return this.#engine.generate(request);
     } catch (e) {
       if (typeof WebAssembly !== 'undefined' && e instanceof WebAssembly.RuntimeError) {
         // A trap (a bug in the engine) leaves the module unusable: start over on the next call.
@@ -144,10 +193,67 @@ export class PDFEngine {
         this.#starting = null;
         wasmReady = null;
         activeFonts = null;
+        activeCompression = 'fast';
         throw new PDFEngineError({ code: 'RENDER_FAILED', message: 'The renderer crashed; it will restart on the next call.', status: 500 });
       }
       throw toError(e);
     }
+  }
+
+  async #generateWithImages(request, options) {
+    const { id, sources } = JSON.parse(this.#engine.prepare(request));
+    if (sources.length === 0) return this.#engine.render_prepared(id, [], []);
+    const fetchImpl = options.fetch || this.#options.fetch;
+    const warn = options.onImageError || this.#options.onImageError || ((src, reason) => console.warn(`pdf-engine: skipped image ${src.slice(0, 100)}: ${reason}`));
+    const names = [];
+    const bytes = [];
+    try {
+      await Promise.all(
+        sources.slice(0, MAX_IMAGES).map(async (src) => {
+          try {
+            const found = await loadImage(src, options.images, fetchImpl, options.allowLocalFiles ?? this.#options.allowLocalFiles);
+            if (found) {
+              names.push(src);
+              bytes.push(found);
+            }
+          } catch (e) {
+            warn(src, e?.message || String(e));
+          }
+        }),
+      );
+    } catch (e) {
+      this.#engine.discard(id);
+      throw e;
+    }
+    return this.#engine.render_prepared(id, names, bytes);
+  }
+
+  /** Render on a deployed pdf-engine server (`POST {url}/api/to-bytes`). */
+  async #generateRemote(url, token, { template, data, password, width, height, orientation }) {
+    const form = new FormData();
+    form.append('template', template ?? '');
+    form.append('data', JSON.stringify(data === undefined ? {} : data));
+    for (const [name, value] of Object.entries({ width, height, orientation, password })) {
+      if (value) form.append(name, value);
+    }
+    const headers = token ? { Authorization: /^Bearer /i.test(token) ? token : `Bearer ${token}` } : {};
+    const endpoint = `${String(url).replace(/\/+$/, '')}/api/to-bytes`;
+    let response;
+    try {
+      response = await (this.#options.fetch || fetch)(endpoint, { method: 'POST', body: form, headers });
+    } catch (e) {
+      throw clientError(
+        'SERVER_UNREACHABLE',
+        `Could not reach the pdf-engine server at ${endpoint}: ${e?.message || e}`,
+        'Check the URL, and that the server allows this origin (CORS_ALLOWED_ORIGINS).',
+      );
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      if (body && body.code) throw new PDFEngineError({ ...body, message: body.error });
+      throw new PDFEngineError({ code: 'INTERNAL_ERROR', message: `The server answered ${response.status} ${response.statusText}.`, status: response.status });
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   /** Load the engine now instead of on the first `generate()`. Returns the engine version. */

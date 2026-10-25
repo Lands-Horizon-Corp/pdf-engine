@@ -142,8 +142,6 @@ dependencies = [
 [[package]]
 name = "blitz-dom"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c81d0f520bad6798a54cc4360bcabd245dc0aba2ce5917217d1d82ac5ee6bfed"
 dependencies = [
  "accesskit",
  "app_units",
@@ -1452,8 +1450,6 @@ dependencies = [
 [[package]]
 name = "krilla"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ddd739cf930f99a70ee89ec51b21fab894b5f142dc9672e0e9a27947b2bc093"
 dependencies = [
  "base64 0.22.1",
  "bumpalo",
@@ -1933,6 +1929,8 @@ dependencies = [
  "base64 0.23.1",
  "console_error_panic_hook",
  "fulgur",
+ "js-sys",
+ "krilla",
  "lopdf 0.46.0",
  "md5",
  "minijinja 3.0.3",

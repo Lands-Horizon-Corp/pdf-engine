@@ -8,7 +8,8 @@ const path = require('node:path');
 const { PDFEngine, PDFEngineError, PROTOCOL_VERSION } = require('..');
 
 // Run `cargo build` (or `npm run build:native -- --debug`) first; PDF_ENGINE_BIN overrides the path.
-const binary = process.env.PDF_ENGINE_BIN || path.resolve(__dirname, '../../target/debug/pdf-engine');
+const exe = process.platform === 'win32' ? '.exe' : '';
+const binary = process.env.PDF_ENGINE_BIN || path.resolve(__dirname, `../../target/debug/pdf-engine${exe}`);
 
 const isPdf = (buf) => Buffer.isBuffer(buf) && buf.subarray(0, 5).toString() === '%PDF-';
 
@@ -149,7 +150,8 @@ test('the engine restarts after it dies', async () => {
     await pdf.ping();
     // Kill the child behind the client's back.
     const { execSync } = require('node:child_process');
-    execSync(`pkill -f "${binary} ipc" || true`);
+    if (process.platform === 'win32') execSync('taskkill /F /IM pdf-engine.exe /T', { stdio: 'ignore' });
+    else execSync(`pkill -f "${binary} ipc" || true`);
     await new Promise((r) => setTimeout(r, 300));
     assert.ok(isPdf(await pdf.generate({ template: '<p>again</p>' })));
   } finally {
@@ -165,4 +167,32 @@ test('close() lets requests in progress finish and rejects new ones', async () =
   assert.ok(isPdf(await inFlight));
   await closing;
   await assert.rejects(pdf.generate({ template: 'x' }), { code: 'ENGINE_CLOSED' });
+});
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC', 'base64');
+const hasImage = (bytes) => /\/Subtype\s*\/Image/.test(bytes.toString('latin1'));
+
+test('images: supplied as bytes, a data: URI or a file, and a folder of images', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-engine-img-'));
+  fs.writeFileSync(path.join(dir, 'logo.png'), PNG);
+  const pdf = new PDFEngine({ binary, imageDir: dir });
+  try {
+    const template = '<img src="a"><img src="b"><img src="c">';
+    const bytes = await pdf.generate({
+      template,
+      images: { a: PNG, b: `data:image/png;base64,${PNG.toString('base64')}`, c: path.join(dir, 'logo.png') },
+    });
+    assert.ok(isPdf(bytes) && hasImage(bytes));
+
+    // From imageDir, with no height given.
+    assert.ok(hasImage(await pdf.generate({ template: '<img src="logo.png" width="60">' })));
+    // Outside imageDir, and not an image: skipped, the document still renders.
+    assert.ok(!hasImage(await pdf.generate({ template: '<img src="../x.png"><img src="t">', images: { t: Buffer.from('text') } })));
+
+    await assert.rejects(pdf.generate({ template: '<img src="a">', images: { a: 42 } }), (e) => e instanceof PDFEngineError && e.code === 'INVALID_FIELD');
+    await assert.rejects(pdf.generate({ template: '<img src="a">', images: { a: path.join(dir, 'nope.png') } }), (e) => e.code === 'INVALID_FIELD');
+  } finally {
+    await pdf.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

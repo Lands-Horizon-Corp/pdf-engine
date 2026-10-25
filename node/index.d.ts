@@ -60,6 +60,13 @@ export interface PDFEngineOptions {
   binary?: string;
   /** Give up waiting for one answer after this many ms (default 60000; 0 = never). */
   timeoutMs?: number;
+  /**
+   * Folder `<img src>` may read local files from: `src="logo.png"` or a `file:` URL inside it.
+   * Nothing outside it (`..`, symlinks) is read. Off by default.
+   */
+  imageDir?: string;
+  /** Hosts `<img src="https://...">` may be fetched from (`cdn.example.com`, `*.example.com`). Off by default. */
+  imageHosts?: string[];
   /** Extra environment variables for the engine (e.g. `ASSET_ALLOWED_HOSTS`, `RENDER_TIMEOUT_SECS`). */
   env?: Record<string, string>;
   /** Receives the engine's log output (stderr). */
@@ -79,6 +86,12 @@ export interface GenerateOptions {
   height?: string;
   /** `landscape` swaps width and height (default `portrait`). */
   orientation?: 'portrait' | 'landscape';
+  /**
+   * Images for `<img src="name">`, by the exact `src` value: a Buffer or Uint8Array, a `data:` URI,
+   * or the path of a file (read by your program, so it is not limited by `imageDir`). They are
+   * sent to the engine with the request. An image that cannot be used is skipped, never an error.
+   */
+  images?: Record<string, Uint8Array | ArrayBuffer | string>;
 }
 
 export interface PingResult {

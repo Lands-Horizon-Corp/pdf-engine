@@ -761,8 +761,7 @@ pub fn draw_shaped_lines(
                         tracker.transition_to(canvas, link_span_ptr(run.link.as_ref()));
                     }
                     // Create Krilla font from cached data
-                    let data: krilla::Data = Arc::clone(&run.font_data).into();
-                    let Some(font) = krilla::text::Font::new(data, run.font_index) else {
+                    let Some(font) = crate::convert::krilla_font(&run.font_data, run.font_index) else {
                         continue;
                     };
 

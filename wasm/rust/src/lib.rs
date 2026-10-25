@@ -6,10 +6,12 @@
 //! `error`, `template`, `fulgur_engine`, `image_util` and `pdf_encrypt` live in `../../src`.
 //! Only the glue below is specific to the browser.
 //!
-//! There is no operating system here: fonts must be supplied by the caller (`add_font`), and
-//! images must be `data:` URIs.
+//! There is no operating system here: fonts must be supplied by the caller (`add_font`). Images
+//! in `data:` URIs load directly; any other image (a URL, a `blob:`, a File) is fetched by the
+//! JavaScript wrapper between `prepare` and `render_prepared`.
 
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -30,6 +32,14 @@ use fulgur_engine::{FulgurEngine, InProcessRenderer, PageMm, RenderJob, extract_
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
+    // Fast by default: the browser has one thread, so skipping compression saves time (about 15%).
+    krilla::stream::set_compression_level(0);
+}
+
+/// zlib level for PDF streams: 0 = none (fastest, largest), 1 = fast, 6 = small. Applies to the page's engines.
+#[wasm_bindgen]
+pub fn set_compression(level: u32) {
+    krilla::stream::set_compression_level(level);
 }
 
 /// Engine version (the same as the native engine's).
@@ -56,6 +66,15 @@ const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 pub struct Engine {
     fonts: Vec<Vec<u8>>,
     renderer: FulgurEngine,
+    prepared: HashMap<u32, Prepared>,
+    next_id: u32,
+}
+
+/// A request whose template is rendered and which waits for its external images.
+struct Prepared {
+    html: String,
+    page: PageMm,
+    password: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -65,6 +84,8 @@ impl Engine {
         Engine {
             fonts: Vec::new(),
             renderer: FulgurEngine::default(),
+            prepared: HashMap::new(),
+            next_id: 1,
         }
     }
 
@@ -85,6 +106,51 @@ impl Engine {
     pub fn generate(&self, request_json: &str) -> Result<Vec<u8>, JsValue> {
         self.run(request_json)
             .map_err(|e| JsValue::from_str(&e.to_json().to_string()))
+    }
+
+    /// First half of a render that has external images: render the template and keep the HTML.
+    ///
+    /// Returns `{ id, sources }`, `sources` being the `<img src>` values that are not `data:`
+    /// URIs. Fetch them, then call `render_prepared` (or `discard` to give up).
+    pub fn prepare(&mut self, request_json: &str) -> Result<String, JsValue> {
+        self.prepare_inner(request_json)
+            .map_err(|e| JsValue::from_str(&e.to_json().to_string()))
+    }
+
+    /// Second half: render the prepared request with the fetched images. `names[i]` is the `src`
+    /// value that `bytes[i]` answers; unreadable images are skipped, never fatal.
+    pub fn render_prepared(
+        &mut self,
+        id: u32,
+        names: js_sys::Array,
+        bytes: js_sys::Array,
+    ) -> Result<Vec<u8>, JsValue> {
+        let Some(p) = self.prepared.remove(&id) else {
+            return Err(JsValue::from_str(
+                &AppError::InvalidField("unknown prepared request".into())
+                    .to_json()
+                    .to_string(),
+            ));
+        };
+        let mut images = data_uri_images(&p.html);
+        for (name, data) in names.iter().zip(bytes.iter()) {
+            let (Some(name), Some(data)) =
+                (name.as_string(), data.dyn_into::<js_sys::Uint8Array>().ok())
+            else {
+                continue;
+            };
+            let data = data.to_vec();
+            if data.len() <= MAX_IMAGE_BYTES && image_util::is_supported_image(&data) {
+                images.push((name, Arc::new(data)));
+            }
+        }
+        self.finish(p, images)
+            .map_err(|e| JsValue::from_str(&e.to_json().to_string()))
+    }
+
+    /// Forget a prepared request that will not be rendered.
+    pub fn discard(&mut self, id: u32) {
+        self.prepared.remove(&id);
     }
 }
 
@@ -109,10 +175,55 @@ impl Engine {
 
         let html = template::render(&template, req.data)?;
         let images = data_uri_images(&html);
+        self.finish(
+            Prepared {
+                html,
+                page,
+                password: req.password,
+            },
+            images,
+        )
+    }
+
+    fn prepare_inner(&mut self, request_json: &str) -> Result<String, AppError> {
+        let req: Request = serde_json::from_str(request_json)
+            .map_err(|e| AppError::InvalidField(format!("request is not valid JSON: {e}")))?;
+        let template = req
+            .template
+            .ok_or_else(|| AppError::MissingField("template".into()))?;
+        let page = PageMm::parse_request(
+            req.width.as_deref().unwrap_or("8.5in"),
+            req.height.as_deref().unwrap_or("11in"),
+            req.orientation.as_deref().unwrap_or("portrait"),
+        )?;
+        let html = template::render(&template, req.data)?;
+        let sources: Vec<String> = image_util::image_sources(&html)
+            .into_iter()
+            .filter(|s| !s.starts_with("data:"))
+            .collect();
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        self.prepared.insert(
+            id,
+            Prepared {
+                html,
+                page,
+                password: req.password,
+            },
+        );
+        Ok(serde_json::json!({ "id": id, "sources": sources }).to_string())
+    }
+
+    fn finish(
+        &self,
+        p: Prepared,
+        images: Vec<(String, Arc<Vec<u8>>)>,
+    ) -> Result<Vec<u8>, AppError> {
+        let html = image_util::size_images(&p.html, &images).unwrap_or(p.html);
         let title = extract_title(&html);
         let mut job = RenderJob {
             html,
-            page,
+            page: p.page,
             title,
             images,
         };
@@ -128,7 +239,7 @@ impl Engine {
         }
         .map_err(AppError::Render)?;
 
-        match req.password.as_deref().filter(|p| !p.is_empty()) {
+        match p.password.as_deref().filter(|p| !p.is_empty()) {
             Some(password) => pdf_encrypt::encrypt(&pdf, password).map_err(AppError::PdfProcessing),
             None => Ok(pdf),
         }

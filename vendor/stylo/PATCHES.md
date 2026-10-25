@@ -5,7 +5,7 @@ Copy of [stylo](https://github.com/servo/stylo) 0.8.0 (MPL-2.0) with the patch b
 
 | # | File | Change | Why |
 | --- | --- | --- | --- |
-| 1 | `stylist.rs` | Build the user-agent cascade data per document instead of through the global `UA_CASCADE_DATA_CACHE` mutex | Blitz parses its user-agent stylesheet for every document, so the cache never hit; it only serialized all render threads behind one lock (about 40% of busy time under load) |
+| 1 | `stylist.rs` | The user-agent cascade data cache is per thread (`thread_local`) instead of one global mutex | The cache is useful only if documents share a parsed user-agent stylesheet, which the patched blitz-dom does per thread. A global mutex made all render threads queue (about 40% of busy time under load) |
 
 ## Upgrading stylo
 

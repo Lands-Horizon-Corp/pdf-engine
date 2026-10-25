@@ -33,3 +33,11 @@ wasm/*.tgz
 
 # Local sample apps
 sample/
+node_modules/
+wasm/e2e/dist/
+test-results/
+playwright-report/
+
+# Benchmark output (the PDFs each library made; results/ and charts/ are committed)
+bench/out/
+bench/browser/dist/

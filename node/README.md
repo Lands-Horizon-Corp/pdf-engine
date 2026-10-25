@@ -27,6 +27,8 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `fonts` | Font files (`.ttf`, `.otf`, `.ttc`) or folders, added to the system fonts. |
 | `binary` | Path to the `pdf-engine` executable (found automatically in a normal install). |
 | `timeoutMs` | Give up waiting for one answer after this long (default 60000). |
+| `imageDir` | A folder templates may load images from: `<img src="logo.png">` or a `file:` URL inside it. Nothing outside it (`..`, symlinks) is read. Off by default. |
+| `imageHosts` | Hosts `<img src="https://...">` may be fetched from, e.g. `['cdn.example.com', '*.example.com']`. Off by default. |
 | `env` | Extra environment for the engine, e.g. `ASSET_ALLOWED_HOSTS` for remote images. |
 | `onLog` | Receives the engine's log output. |
 
@@ -37,6 +39,7 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `password` | Encrypts the PDF. |
 | `width`, `height` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default US Letter). |
 | `orientation` | `portrait` (default) or `landscape`. |
+| `images` | Images for `<img src="name">`, by name: a Buffer/Uint8Array, a `data:` URI or a file path. Skipped, not an error, if unusable. |
 
 Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`.
 

@@ -71,9 +71,11 @@ fn max_in_flight(state: &AppState) -> usize {
         .unwrap_or(state.render_permit_count * 4)
 }
 
-/// A request frame. Request bodies are not used, so they are read and dropped.
+/// A request frame. The body of a `render` request carries its supplied images back to back
+/// (see `Request::images`); other ops have none.
 struct Frame {
     header: Vec<u8>,
+    body: Vec<u8>,
 }
 
 /// Read bytes without trusting the announced length: capacity grows as data arrives.
@@ -102,11 +104,8 @@ async fn read_frame<R: AsyncRead + Unpin>(r: &mut R, max: usize) -> io::Result<O
         ));
     }
     let header = read_exact_vec(r, header_len).await?;
-    let skipped = tokio::io::copy(&mut r.take(body_len as u64), &mut tokio::io::sink()).await?;
-    if skipped != body_len as u64 {
-        return Err(io::ErrorKind::UnexpectedEof.into());
-    }
-    Ok(Some(Frame { header }))
+    let body = read_exact_vec(r, body_len).await?;
+    Ok(Some(Frame { header, body }))
 }
 
 async fn write_frame<W: AsyncWrite + Unpin>(
@@ -139,6 +138,15 @@ struct Request {
     orientation: Option<String>,
     password: Option<String>,
     paths: Option<Vec<String>>,
+    /// Images the caller supplies, in body order: the `<img src>` value and the byte length.
+    #[serde(default)]
+    images: Vec<SuppliedImage>,
+}
+
+#[derive(Deserialize)]
+struct SuppliedImage {
+    src: String,
+    len: usize,
 }
 
 type Reply = (Vec<u8>, Bytes);
@@ -177,13 +185,13 @@ async fn handle(state: &AppState, frame: Frame) -> Reply {
         }
     };
     let id = req.id.clone();
-    match run_op(state, req).await {
+    match run_op(state, req, frame.body).await {
         Ok(reply) => reply,
         Err(err) => error_reply(id, &err),
     }
 }
 
-async fn run_op(state: &AppState, req: Request) -> Result<Reply, AppError> {
+async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, AppError> {
     let id = req.id.clone();
     match req.op.as_deref().unwrap_or("render") {
         "render" => {
@@ -198,9 +206,13 @@ async fn run_op(state: &AppState, req: Request) -> Result<Reply, AppError> {
                 filename: String::new(),
                 password: req.password.filter(|p| !p.is_empty()),
             };
-            let pdf = timeout(state.render_timeout, pdf::render(pdf_req, state))
-                .await
-                .map_err(|_| AppError::Timeout(state.render_timeout))??;
+            let supplied = split_images(&req.images, body)?;
+            let pdf = timeout(
+                state.render_timeout,
+                pdf::render_with_images(pdf_req, supplied, state),
+            )
+            .await
+            .map_err(|_| AppError::Timeout(state.render_timeout))??;
             Ok(ok_reply(
                 id,
                 "render",
@@ -238,6 +250,30 @@ async fn run_op(state: &AppState, req: Request) -> Result<Reply, AppError> {
             "unknown op `{other}` (expected render, ping, load_fonts or reload_fonts)"
         ))),
     }
+}
+
+type Images = Vec<(String, std::sync::Arc<Vec<u8>>)>;
+
+/// Cut the request body into the images the header announced.
+fn split_images(list: &[SuppliedImage], body: Vec<u8>) -> Result<Images, AppError> {
+    if list.is_empty() {
+        return Ok(Vec::new());
+    }
+    let total = list.iter().try_fold(0usize, |t, i| t.checked_add(i.len));
+    if total != Some(body.len()) {
+        return Err(AppError::Protocol(
+            "the images announced in the header do not add up to the request body".into(),
+        ));
+    }
+    let mut at = 0;
+    Ok(list
+        .iter()
+        .map(|i| {
+            let bytes = body[at..at + i.len].to_vec();
+            at += i.len;
+            (i.src.clone(), std::sync::Arc::new(bytes))
+        })
+        .collect())
 }
 
 /// Contents of every font file named by `paths`; a folder contributes the fonts inside it.
@@ -364,11 +400,40 @@ pub fn take_stdout() -> io::Result<tokio::fs::File> {
     Ok(tokio::fs::File::from_std(proto))
 }
 
-#[cfg(not(unix))]
+/// Windows: keep the real stdout handle for the protocol and point the process's stdout at `NUL`.
+/// Rust's `println!` looks the handle up on every write, so after this nothing but the protocol
+/// can reach the pipe the parent reads.
+#[cfg(windows)]
+pub fn take_stdout() -> io::Result<tokio::fs::File> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle};
+    use windows_sys::Win32::{
+        Foundation::INVALID_HANDLE_VALUE,
+        System::Console::{GetStdHandle, STD_OUTPUT_HANDLE, SetStdHandle},
+    };
+
+    // SAFETY: plain Win32 calls on the process's own standard handle.
+    let original = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+    if original.is_null() || original == INVALID_HANDLE_VALUE {
+        return Err(io::Error::other(
+            "no standard output to write the protocol to",
+        ));
+    }
+    let nul = std::fs::OpenOptions::new().write(true).open("NUL")?;
+    // SAFETY: `nul` is a valid open handle; it is leaked below so it stays valid for the process.
+    if unsafe { SetStdHandle(STD_OUTPUT_HANDLE, nul.as_raw_handle() as _) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    std::mem::forget(nul);
+    // SAFETY: `original` was the process's stdout handle; nothing else writes to it now.
+    let proto = unsafe { std::fs::File::from_raw_handle(original as _) };
+    Ok(tokio::fs::File::from_std(proto))
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn take_stdout() -> io::Result<tokio::fs::File> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "IPC mode is not supported on this platform yet (macOS and Linux only)",
+        "IPC mode is not supported on this platform",
     ))
 }
 

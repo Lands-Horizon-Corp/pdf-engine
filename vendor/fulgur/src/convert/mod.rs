@@ -150,35 +150,83 @@ impl ConvertContext<'_> {
 }
 
 // pdf-engine patch (see PATCHES.md): font file bytes copied once per process, not per render.
-// Each render gets its own `Blob` handle over the shared mapped font, so the key is the
-// bytes' address and length. The entry keeps a handle alive, which keeps the mapping alive, so
-// the address cannot be reused for different data while the entry exists. Cleared when system
-// fonts are reloaded.
-struct SharedFontBytes {
-    _keep_alive: parley::fontique::Blob<u8>,
-    bytes: Arc<Vec<u8>>,
+// A font file can reach a render through a fresh `Blob` (a different address each time, e.g. a
+// font opened on demand), so the key is the file's content: its length and a hash of its first,
+// middle and last 4 KB (font files differ in their table directories long before that). Keying
+// on the address and keeping a handle alive per entry grew by a full copy of the font on
+// every render. Cleared when system fonts are reloaded.
+struct FontState {
+    bytes: HashMap<(usize, u64), Arc<Vec<u8>>>,
+    // pdf-engine patch: the PDF library's parsed font for each shared font file, keyed by the
+    // file's address (the entry above keeps it alive, so the address cannot be reused).
+    krilla: HashMap<(usize, u32), krilla::text::Font>,
+    shared: std::collections::HashSet<usize>,
 }
 
-static FONT_BYTES: std::sync::LazyLock<std::sync::Mutex<HashMap<(usize, usize), SharedFontBytes>>> =
-    std::sync::LazyLock::new(Default::default);
+static FONT_STATE: std::sync::LazyLock<std::sync::RwLock<FontState>> = std::sync::LazyLock::new(|| {
+    std::sync::RwLock::new(FontState {
+        bytes: HashMap::new(),
+        krilla: HashMap::new(),
+        shared: Default::default(),
+    })
+});
+
+fn font_content_key(data: &[u8]) -> (usize, u64) {
+    use std::hash::{Hash, Hasher};
+    const WINDOW: usize = 4096;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    data.len().hash(&mut hasher);
+    data[..data.len().min(WINDOW)].hash(&mut hasher);
+    let mid = data.len() / 2;
+    data[mid.saturating_sub(WINDOW / 2)..(mid + WINDOW / 2).min(data.len())].hash(&mut hasher);
+    data[data.len().saturating_sub(WINDOW)..].hash(&mut hasher);
+    (data.len(), hasher.finish())
+}
 
 fn shared_font_bytes(font: &parley::FontData) -> Arc<Vec<u8>> {
     let data = font.data.data();
-    let key = (data.as_ptr() as usize, data.len());
-    let mut cache = FONT_BYTES.lock().unwrap_or_else(|e| e.into_inner());
-    Arc::clone(
-        &cache
-            .entry(key)
-            .or_insert_with(|| SharedFontBytes {
-                _keep_alive: font.data.clone(),
-                bytes: Arc::new(data.to_vec()),
-            })
-            .bytes,
-    )
+    let key = font_content_key(data);
+    if let Some(found) = FONT_STATE.read().unwrap_or_else(|e| e.into_inner()).bytes.get(&key) {
+        return Arc::clone(found);
+    }
+    let mut state = FONT_STATE.write().unwrap_or_else(|e| e.into_inner());
+    let entry = state
+        .bytes
+        .entry(key)
+        .or_insert_with(|| Arc::new(data.to_vec()))
+        .clone();
+    state.shared.insert(Arc::as_ptr(&entry) as usize);
+    entry
+}
+
+/// pdf-engine patch: the PDF library's `Font` for a font file, parsed once per process instead of
+/// once per text run. Only the shared font files are cached; a font that came with one document
+/// (a web font) is parsed each time and not kept.
+pub(crate) fn krilla_font(data: &Arc<Vec<u8>>, index: u32) -> Option<krilla::text::Font> {
+    let key = (Arc::as_ptr(data) as usize, index);
+    {
+        let state = FONT_STATE.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(font) = state.krilla.get(&key) {
+            return Some(font.clone());
+        }
+        if !state.shared.contains(&key.0) {
+            return krilla::text::Font::new(Arc::clone(data).into(), index);
+        }
+    }
+    let font = krilla::text::Font::new(Arc::clone(data).into(), index)?;
+    FONT_STATE
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .krilla
+        .insert(key, font.clone());
+    Some(font)
 }
 
 pub(crate) fn clear_font_bytes_cache() {
-    FONT_BYTES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    let mut state = FONT_STATE.write().unwrap_or_else(|e| e.into_inner());
+    state.bytes.clear();
+    state.krilla.clear();
+    state.shared.clear();
 }
 
 /// Phase 4 (fulgur-9t3z) + PR 8i: convert a resolved Blitz document into a

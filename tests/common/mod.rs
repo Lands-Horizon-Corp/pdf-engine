@@ -245,6 +245,7 @@ pub struct TestApp {
 pub struct TestAppBuilder {
     renderer: Option<Arc<dyn InProcessRenderer>>,
     assets: AssetPolicy,
+    cors_origins: Vec<String>,
     permits: usize,
     timeout: Duration,
     s3_mode: S3Mode,
@@ -257,6 +258,7 @@ impl TestApp {
         TestAppBuilder {
             renderer: None,
             assets: AssetPolicy::default(),
+            cors_origins: Vec::new(),
             permits: 4,
             timeout: Duration::from_secs(20),
             s3_mode: S3Mode::Ok,
@@ -333,6 +335,12 @@ impl TestAppBuilder {
         self
     }
 
+    /// Allow these browser origins (`*` = any) to call the API.
+    pub fn cors(mut self, origins: &[&str]) -> Self {
+        self.cors_origins = origins.iter().map(|o| o.to_string()).collect();
+        self
+    }
+
     pub fn assets(mut self, policy: AssetPolicy) -> Self {
         self.assets = policy;
         self
@@ -363,6 +371,7 @@ impl TestAppBuilder {
             renderer: spy.clone(),
             render_timeout: self.timeout,
             assets: Arc::new(self.assets),
+            cors_origins: self.cors_origins,
         };
 
         let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -549,8 +558,10 @@ pub fn info_title(doc: &Document) -> Option<String> {
         .ok()?;
     if raw.starts_with(&[0xFE, 0xFF]) {
         let units: Vec<u16> = raw[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_be_bytes(*c))
             .collect();
         String::from_utf16(&units).ok()
     } else {

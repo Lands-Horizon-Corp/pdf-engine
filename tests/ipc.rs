@@ -57,6 +57,16 @@ impl Engine {
         self.send_raw(&frame);
     }
 
+    fn send_with_body(&mut self, header: Value, body: &[u8]) {
+        let header = header.to_string();
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&(header.len() as u32).to_be_bytes());
+        frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        frame.extend_from_slice(header.as_bytes());
+        frame.extend_from_slice(body);
+        self.send_raw(&frame);
+    }
+
     fn recv(&mut self) -> (Value, Vec<u8>) {
         let mut prefix = [0u8; 8];
         self.stdout.read_exact(&mut prefix).expect("a reply frame");
@@ -217,4 +227,81 @@ fn a_broken_stream_is_reported_and_exits_with_an_error() {
     assert_eq!(h["error"]["code"], "IPC_PROTOCOL_ERROR");
     let status = engine.finish();
     assert_eq!(status.code(), Some(2));
+}
+
+fn png() -> Vec<u8> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC")
+        .unwrap()
+}
+
+fn has_image(pdf: &[u8]) -> bool {
+    lopdf::Document::load_mem(pdf)
+        .unwrap()
+        .objects
+        .values()
+        .any(|o| match o {
+            lopdf::Object::Stream(s) => s
+                .dict
+                .get(b"Subtype")
+                .and_then(lopdf::Object::as_name)
+                .is_ok_and(|n| n == b"Image"),
+            _ => false,
+        })
+}
+
+#[test]
+fn supplied_images_travel_in_the_request_body() {
+    let mut engine = Engine::start();
+    let png = png();
+    let template = r#"<p>hi</p><img src="logo"><img src="other">"#;
+    engine.send_with_body(
+        json!({ "id": 1, "template": template, "images": [{ "src": "logo", "len": png.len() }] }),
+        &png,
+    );
+    let (h, pdf) = engine.recv();
+    assert_eq!(h["ok"], true, "{h}");
+    assert!(has_image(&pdf));
+
+    // Lengths that do not add up to the body are a protocol error, not a hang or a panic.
+    engine.send_with_body(
+        json!({ "id": 2, "template": template, "images": [{ "src": "logo", "len": 5 }] }),
+        &png,
+    );
+    let (h, _) = engine.recv();
+    assert_eq!(h["error"]["code"], "IPC_PROTOCOL_ERROR", "{h}");
+    engine.finish();
+}
+
+#[test]
+fn local_images_load_only_from_the_image_folder() {
+    let dir = std::env::temp_dir().join(format!("pdf-engine-ipc-img-{}", std::process::id()));
+    let inside = dir.join("images");
+    std::fs::create_dir_all(&inside).unwrap();
+    std::fs::write(inside.join("logo.png"), png()).unwrap();
+    std::fs::write(dir.join("secret.png"), png()).unwrap();
+
+    let folder = inside.to_str().unwrap();
+    let mut engine = Engine::start_with(&[("ASSET_LOCAL_DIR", folder)]);
+    let file_url = format!("file://{}", inside.join("logo.png").display());
+    for (n, src, expected) in [
+        (1, "logo.png".to_string(), true),
+        (2, file_url, true),
+        (3, "../secret.png".to_string(), false),
+        (4, dir.join("secret.png").display().to_string(), false),
+    ] {
+        engine.send(json!({ "id": n, "template": format!(r#"<img src="{src}">"#) }));
+        let (h, pdf) = engine.recv();
+        assert_eq!(h["ok"], true, "{h}");
+        assert_eq!(has_image(&pdf), expected, "src {src}");
+    }
+    engine.finish();
+
+    // Without the setting nothing local is read.
+    let mut engine = Engine::start();
+    engine.send(json!({ "id": 1, "template": r#"<img src="logo.png">"# }));
+    assert!(!has_image(&engine.recv().1));
+    engine.finish();
+    std::fs::remove_dir_all(&dir).ok();
 }

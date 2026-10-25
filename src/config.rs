@@ -23,6 +23,9 @@ pub struct AppState {
     pub render_timeout: Duration,
     /// Rules for `<img src>` loading (`ASSET_*`).
     pub assets: Arc<AssetPolicy>,
+    /// Browser origins allowed to call the HTTP API (`CORS_ALLOWED_ORIGINS`, comma separated;
+    /// `*` allows any). Empty = no CORS headers, which is right for server-to-server callers.
+    pub cors_origins: Vec<String>,
 }
 
 fn cores() -> usize {
@@ -65,6 +68,12 @@ impl AppState {
             renderer: Arc::new(FulgurEngine::default()),
             render_timeout: render_timeout(),
             assets: Arc::new(AssetPolicy::from_env()),
+            cors_origins: env::var("CORS_ALLOWED_ORIGINS")
+                .unwrap_or_default()
+                .split(',')
+                .map(|o| o.trim().trim_end_matches('/').to_string())
+                .filter(|o| !o.is_empty())
+                .collect(),
         }
     }
 }

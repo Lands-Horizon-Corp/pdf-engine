@@ -6,8 +6,9 @@
 //!   is pinned to the checked address), accept only `image/*` responses, and are capped in size
 //!   and time.
 //! - Anything else (`file://`, relative paths, blocked hosts) is skipped; the PDF still renders.
+//!   Unless `ASSET_LOCAL_DIR` is set: then files inside that folder load too (IPC mode).
 
-use crate::image_util::{Skip, decode_data_uri, image_sources, is_supported_image};
+use crate::image_util::{Skip, decode_data_uri, image_sources, is_supported_image, percent_decode};
 use futures_util::future::join_all;
 use moka::future::Cache;
 use std::{
@@ -51,6 +52,10 @@ pub struct AssetPolicy {
     /// Allow private, loopback and link-local addresses (`ASSET_ALLOW_PRIVATE_IPS`). Off by
     /// default; only for trusted internal networks.
     pub allow_private_ips: bool,
+    /// Folder that `<img src>` may read local files from (`ASSET_LOCAL_DIR`): relative paths and
+    /// `file:` URLs inside it. Unset by default, and only meant for a program that renders its
+    /// own templates (the IPC mode); a web server rendering other people's templates keeps it off.
+    pub local_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for AssetPolicy {
@@ -62,6 +67,7 @@ impl Default for AssetPolicy {
             timeout: Duration::from_secs(5),
             allow_http: false,
             allow_private_ips: false,
+            local_dir: None,
         }
     }
 }
@@ -83,6 +89,9 @@ impl AssetPolicy {
             timeout: num("ASSET_TIMEOUT_MS").map_or(d.timeout, Duration::from_millis),
             allow_http: flag("ASSET_ALLOW_HTTP"),
             allow_private_ips: flag("ASSET_ALLOW_PRIVATE_IPS"),
+            local_dir: env::var_os("ASSET_LOCAL_DIR")
+                .filter(|d| !d.is_empty())
+                .map(Into::into),
         }
     }
 
@@ -99,10 +108,15 @@ impl AssetPolicy {
 
 /// Resolve every `<img src>` in `html` the policy allows, keyed by the exact `src` value.
 pub async fn resolve_images(policy: &AssetPolicy, html: &str) -> Vec<(String, Arc<Vec<u8>>)> {
-    let sources: Vec<String> = image_sources(html)
-        .into_iter()
-        .take(policy.max_images)
-        .collect();
+    resolve_sources(policy, image_sources(html)).await
+}
+
+/// Resolve these `src` values (at most `max_images` of them) as `resolve_images` does.
+pub async fn resolve_sources(
+    policy: &AssetPolicy,
+    sources: Vec<String>,
+) -> Vec<(String, Arc<Vec<u8>>)> {
+    let sources: Vec<String> = sources.into_iter().take(policy.max_images).collect();
     let fetches = sources.into_iter().map(|src| async move {
         let result = load(policy, &src).await.and_then(|bytes| {
             if is_supported_image(&bytes) {
@@ -137,7 +151,57 @@ async fn load(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
     if lower.starts_with("https://") || lower.starts_with("http://") {
         return fetch(policy, src).await;
     }
+    if let Some(dir) = &policy.local_dir {
+        return read_local(dir, src, policy.max_bytes).await;
+    }
     Err(Skip::Ignored)
+}
+
+/// A file inside `dir` (relative path or `file:` URL). Anything that resolves outside it,
+/// through `..` or a symlink, is refused.
+async fn read_local(dir: &std::path::Path, src: &str, max: usize) -> Result<Arc<Vec<u8>>, Skip> {
+    let path = match src.get(..5).filter(|p| p.eq_ignore_ascii_case("file:")) {
+        Some(_) => {
+            let rest = src[5..].trim_start_matches("//");
+            let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+            let decoded = String::from_utf8_lossy(&percent_decode(rest)).into_owned();
+            // `file:///C:/x.png` leaves `/C:/x.png` on Windows.
+            let decoded = match decoded.as_bytes() {
+                [b'/', d, b':', ..] if d.is_ascii_alphabetic() => decoded[1..].to_string(),
+                _ => decoded,
+            };
+            std::path::PathBuf::from(decoded)
+        }
+        None if src.contains("://") => return Err(Skip::Ignored),
+        None => {
+            std::path::PathBuf::from(String::from_utf8_lossy(&percent_decode(src)).into_owned())
+        }
+    };
+    let base = tokio::fs::canonicalize(dir)
+        .await
+        .map_err(|e| Skip::Failed(format!("image folder: {e}")))?;
+    let full = if path.is_absolute() {
+        path
+    } else {
+        base.join(path)
+    };
+    let full = tokio::fs::canonicalize(&full)
+        .await
+        .map_err(|_| Skip::Failed("file not found".into()))?;
+    if !full.starts_with(&base) {
+        return Err(Skip::Blocked("outside the image folder"));
+    }
+    let len = tokio::fs::metadata(&full)
+        .await
+        .map_err(|e| Skip::Failed(e.to_string()))?
+        .len();
+    if len > max as u64 {
+        return Err(Skip::Blocked("file too large"));
+    }
+    tokio::fs::read(&full)
+        .await
+        .map(Arc::new)
+        .map_err(|e| Skip::Failed(e.to_string()))
 }
 
 async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {

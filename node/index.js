@@ -21,6 +21,43 @@ const path = require('node:path');
 const PROTOCOL_VERSION = 1;
 
 /** An error from the engine (it carries the engine's `code`, `status`, `hint`, `line`) or from this client. */
+/** Environment that tells the engine where `<img src>` may come from. */
+function imageEnv({ imageDir, imageHosts }) {
+  const env = {};
+  if (imageDir) env.ASSET_LOCAL_DIR = path.resolve(imageDir);
+  if (imageHosts?.length) env.ASSET_ALLOWED_HOSTS = imageHosts.join(',');
+  return env;
+}
+
+/** The `images` option as bytes: Buffers and typed arrays as they are, a string as a `data:` URI or a file path. */
+async function collectImages(images) {
+  const out = [];
+  for (const [src, value] of Object.entries(images)) {
+    let bytes;
+    if (typeof value === 'string') {
+      bytes = value.startsWith('data:')
+        ? decodeDataUri(value)
+        : await fs.promises.readFile(value).catch((e) => {
+            throw clientError('INVALID_FIELD', `images["${src}"]: cannot read ${value}: ${e.code || e.message}`);
+          });
+    } else if (value instanceof ArrayBuffer) {
+      bytes = Buffer.from(value);
+    } else if (ArrayBuffer.isView(value)) {
+      bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    } else {
+      throw clientError('INVALID_FIELD', `images["${src}"] must be a Buffer, a Uint8Array, a data: URI or a file path.`);
+    }
+    out.push({ src, bytes });
+  }
+  return out;
+}
+
+function decodeDataUri(uri) {
+  const comma = uri.indexOf(',');
+  if (comma < 0) throw clientError('INVALID_FIELD', 'images: malformed data: URI.');
+  return /;base64$/i.test(uri.slice(0, comma)) ? Buffer.from(uri.slice(comma + 1), 'base64') : Buffer.from(decodeURIComponent(uri.slice(comma + 1)));
+}
+
 class PDFEngineError extends Error {
   constructor({ code, message, status, hint, line }) {
     super(message);
@@ -70,7 +107,7 @@ class PDFEngine {
 
   /**
    * @param {{ fonts?: string[], binary?: string, timeoutMs?: number, env?: Record<string,string>,
-   *           onLog?: (text: string) => void } | string[]} [options]
+   *           imageDir?: string, imageHosts?: string[], onLog?: (text: string) => void } | string[]} [options]
    */
   constructor(options = {}) {
     if (Array.isArray(options)) options = { fonts: options };
@@ -88,16 +125,22 @@ class PDFEngine {
       throw clientError('MISSING_FIELD', 'generate() needs an options object with a `template`.');
     }
     const { template, data, password, width, height, orientation } = options;
+    const supplied = options.images ? await collectImages(options.images) : [];
     await this.#ensureStarted();
-    const { body } = await this.#request({
-      op: 'render',
-      template,
-      data: data === undefined ? {} : data,
-      password: password || undefined,
-      width,
-      height,
-      orientation,
-    });
+    const { body } = await this.#request(
+      {
+        op: 'render',
+        template,
+        data: data === undefined ? {} : data,
+        password: password || undefined,
+        width,
+        height,
+        orientation,
+        images: supplied.length ? supplied.map(({ src, bytes }) => ({ src, len: bytes.length })) : undefined,
+      },
+      this.#options.timeoutMs,
+      supplied.length ? Buffer.concat(supplied.map((i) => i.bytes)) : null,
+    );
     return body;
   }
 
@@ -157,7 +200,7 @@ class PDFEngine {
     const binary = tried.find((p) => fs.existsSync(p)) || exeName();
     const child = spawn(binary, ['ipc'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...this.#options.env },
+      env: { ...process.env, ...imageEnv(this.#options), ...this.#options.env },
       windowsHide: true,
     });
     this.#child = child;
@@ -221,15 +264,16 @@ class PDFEngine {
     }
   }
 
-  async #request(header, timeoutMs = this.#options.timeoutMs) {
+  async #request(header, timeoutMs = this.#options.timeoutMs, payload = null) {
     const child = this.#child;
     if (!child) throw clientError('ENGINE_EXITED', 'The engine is not running.');
     const id = this.#nextId++;
     const json = Buffer.from(JSON.stringify({ id, ...header }));
-    const frame = Buffer.allocUnsafe(8 + json.length);
+    const frame = Buffer.allocUnsafe(8 + json.length + (payload ? payload.length : 0));
     frame.writeUInt32BE(json.length, 0);
-    frame.writeUInt32BE(0, 4);
+    frame.writeUInt32BE(payload ? payload.length : 0, 4);
     json.copy(frame, 8);
+    if (payload) payload.copy(frame, 8 + json.length);
 
     const reply = new Promise((resolve, reject) => {
       const timer =

@@ -26,6 +26,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix-cors"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aff07ada3254fc02618cb7850da91dceb23b5dbda53c6676ccbb28ba504f150"
+dependencies = [
+ "actix-utils",
+ "actix-web",
+ "derive_more",
+ "futures-util",
+ "log",
+ "once_cell",
+ "smallvec",
+]
+
+[[package]]
 name = "actix-http"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -503,8 +518,6 @@ dependencies = [
 [[package]]
 name = "blitz-dom"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c81d0f520bad6798a54cc4360bcabd245dc0aba2ce5917217d1d82ac5ee6bfed"
 dependencies = [
  "accesskit",
  "app_units",
@@ -1166,20 +1179,6 @@ dependencies = [
  "darling_core 0.24.1",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "dashmap"
-version = "6.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
-dependencies = [
- "cfg-if",
- "crossbeam-utils",
- "hashbrown 0.14.5",
- "lock_api",
- "once_cell",
- "parking_lot_core",
 ]
 
 [[package]]
@@ -1861,9 +1860,6 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
-dependencies = [
- "foldhash 0.2.0",
-]
 
 [[package]]
 name = "hermit-abi"
@@ -2483,8 +2479,6 @@ dependencies = [
 [[package]]
 name = "krilla"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ddd739cf930f99a70ee89ec51b21fab894b5f142dc9672e0e9a27947b2bc093"
 dependencies = [
  "base64 0.22.1",
  "bumpalo",
@@ -2709,15 +2703,6 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.21",
  "weezl 0.2.1",
-]
-
-[[package]]
-name = "lru"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
-dependencies = [
- "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -3287,26 +3272,24 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "pdf-engine"
 version = "1.1.1"
 dependencies = [
+ "actix-cors",
  "actix-multipart",
  "actix-web",
  "axum",
  "base64 0.23.1",
  "bytes",
  "chrono",
- "dashmap",
  "dotenvy",
  "flate2",
  "fulgur",
  "futures-util",
  "libc",
  "lopdf 0.46.0",
- "lru",
  "md5",
  "mimalloc",
  "minijinja 3.0.3",
  "moka",
  "notify",
- "once_cell",
  "opendal",
  "reqwest",
  "serde",
@@ -3315,11 +3298,10 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "uuid",
- "xxhash-rust",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5031,7 +5013,6 @@ checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
 dependencies = [
  "bytes",
  "futures-core",
- "futures-io",
  "futures-sink",
  "libc",
  "pin-project-lite",
@@ -5865,12 +5846,6 @@ name = "xmp-writer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
-
-[[package]]
-name = "xxhash-rust"
-version = "0.8.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
 
 [[package]]
 name = "yazi"

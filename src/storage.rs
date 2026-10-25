@@ -34,8 +34,8 @@ pub async fn html_to_pdf_to_storage(
 
         let payload = MediaPayload {
             file_name: object_name
-                .split('/')
-                .last()
+                .rsplit('/')
+                .next()
                 .unwrap_or("doc.pdf")
                 .to_string(),
             file_size,

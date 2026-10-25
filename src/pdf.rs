@@ -22,10 +22,33 @@ pub async fn render_template(
 
 /// Render a request to its final PDF bytes.
 pub async fn render(req: PdfRequest, state: &AppState) -> Result<Bytes, AppError> {
+    render_with_images(req, Vec::new(), state).await
+}
+
+/// Like `render`, with images the caller already holds, keyed by the exact `<img src>` value.
+/// They win over anything the asset policy would load for the same `src`.
+pub async fn render_with_images(
+    req: PdfRequest,
+    supplied: Vec<(String, Arc<Vec<u8>>)>,
+    state: &AppState,
+) -> Result<Bytes, AppError> {
     let page = PageMm::parse_request(&req.width, &req.height, &req.orientation)?;
     let html = render_template(req.template, req.data).await?;
 
-    let images = assets::resolve_images(&state.assets, &html).await;
+    let mut images = if supplied.is_empty() {
+        assets::resolve_images(&state.assets, &html).await
+    } else {
+        // Fetch only what the caller did not bring.
+        let missing: Vec<String> = crate::image_util::image_sources(&html)
+            .into_iter()
+            .filter(|s| !supplied.iter().any(|(k, _)| k == s))
+            .collect();
+        let mut loaded = assets::resolve_sources(&state.assets, missing).await;
+        loaded.extend(supplied);
+        loaded
+    };
+    images.retain(|(_, b)| crate::image_util::is_supported_image(b));
+    let html = crate::image_util::size_images(&html, &images).unwrap_or(html);
 
     let title = extract_title(&html);
     let job = Arc::new(RenderJob {

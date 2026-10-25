@@ -6,13 +6,35 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+### Performance
+
+- **Memory leak fixed.** A font file that reached a render through a fresh handle (for example a font
+  named in `font-family` that the system opens on demand) was copied and kept for every document, about
+  7 MB each. Ten thousand multi-table statements peaked at 37 GB; they now peak at 0.8 GB and finish 3×
+  faster (52 s to 17 s). Ten thousand 7-page invoices went from 10.2 GB to 0.85 GB.
+- **Browser package about 1.7× faster, native small documents faster too.** The parsed user-agent stylesheet
+  and the style data built from it are now reused for every document on a thread (patched blitz-dom and
+  stylo; it was about half of a small document's time). The WebAssembly build is optimised for speed
+  (opt-level 3, SIMD), and PDF streams are stored uncompressed by default (`compression: 'fast'`;
+  `'small'` gives about 40% smaller files and takes about 20% longer). A receipt takes about 0.8 ms and a
+  30-line invoice about 1.7 ms in Chromium. The WebAssembly module grew from 2.4 to 3.2 MB (brotli).
+
 ### Added
 
+- **Images everywhere.** Browser package: `<img src>` can be a URL, `blob:`, `data:` or a name from the new
+  `images` option (Blob, File, bytes), loaded before rendering; failures are skipped and reported to
+  `onImageError`. Node client: `images` (bytes, `data:` URI or file path, sent in the request frame),
+  `imageDir` and `imageHosts`. Server: `ASSET_LOCAL_DIR`.
+- Images with no height, or only a width, are drawn at their own proportions (they used to vanish).
 - **IPC mode** for Node.js and Electron: `pdf-engine ipc` serves render requests over
   stdin/stdout (no HTTP server, no port, no token, no storage settings). PDFs come back as raw
   bytes. Protocol: `src/ipc.rs`.
 - **Browser package** in `wasm/` (`@lands-horizon-corp/pdf-engine-wasm`): the same renderer compiled to
   WebAssembly for React, Vue, Svelte and plain JS. No server; bundled Latin fonts, add others with `fonts`.
+- `url` option in the browser package: render on a deployed server instead of in the page. The HTTP
+  server answers browsers with `CORS_ALLOWED_ORIGINS` (default off).
+- `bench/`: benchmarks against html2pdf.js, jspdf-html2canvas and headless Chromium; browser matrix
+  tests (Chromium, WebKit, Firefox in CI) with plain JS, React and Vue in `wasm/e2e/`.
 - **Node.js client** in `node/`: `new PDFEngine({ fonts })` and `generate({ template, data,
   password, ... })`, with TypeScript types. See `node/README.md`. Published as
   `@lands-horizon-corp/pdf-engine`.

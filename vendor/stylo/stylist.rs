@@ -79,7 +79,6 @@ use servo_arc::{Arc, ArcBorrow, ThinArc};
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
 use std::{mem, ops};
 
 /// The type of the stylesheets that the stylist contains.
@@ -263,16 +262,13 @@ where
 /// Measure heap usage of UA_CASCADE_DATA_CACHE.
 #[cfg(feature = "gecko")]
 pub fn add_size_of_ua_cache(ops: &mut MallocSizeOfOps, sizes: &mut ServoStyleSetSizes) {
-    UA_CASCADE_DATA_CACHE
-        .lock()
-        .unwrap()
-        .add_size_of(ops, sizes);
+    UA_CASCADE_DATA_CACHE.with(|c| c.borrow().add_size_of(ops, sizes));
 }
 
-lazy_static! {
-    /// A cache of computed user-agent data, to be shared across documents.
-    static ref UA_CASCADE_DATA_CACHE: Mutex<UserAgentCascadeDataCache> =
-        Mutex::new(UserAgentCascadeDataCache::new());
+thread_local! {
+    /// A cache of computed user-agent data, to be shared across the documents of one thread.
+    static UA_CASCADE_DATA_CACHE: std::cell::RefCell<UserAgentCascadeDataCache> =
+        std::cell::RefCell::new(UserAgentCascadeDataCache::new());
 }
 
 impl CascadeDataCacheEntry for UserAgentCascadeData {
@@ -425,18 +421,22 @@ impl DocumentCascadeData {
             // Dirty check is just a minor optimization (no need to grab the
             // lock if nothing has changed).
             if origin_flusher.dirty() {
-                // pdf-engine patch (see PATCHES.md): build this document's user-agent cascade
-                // data directly instead of through the process-wide `UA_CASCADE_DATA_CACHE`.
-                // Every document parses its own user-agent stylesheet, so the cache (keyed by
-                // stylesheet identity) never hits; it only made all threads queue on one mutex
-                // while each rebuilt the data. Building here runs in parallel.
-                self.user_agent = <UserAgentCascadeData as CascadeDataCacheEntry>::rebuild(
-                    device,
-                    quirks_mode,
-                    origin_flusher,
-                    guards.ua_or_user,
-                    &self.user_agent,
-                )?;
+                // pdf-engine patch (see PATCHES.md): the cache is per thread. The embedder
+                // (blitz-dom, also patched) reuses one parsed user-agent stylesheet per thread, so
+                // this hits for every document after the first on that thread, and no thread
+                // waits for another.
+                let cached = UA_CASCADE_DATA_CACHE.with(|cache| {
+                    cache.borrow_mut().lookup(
+                        device,
+                        quirks_mode,
+                        origin_flusher,
+                        guards.ua_or_user,
+                        &self.user_agent,
+                    )
+                })?;
+                if let Some(data) = cached {
+                    self.user_agent = data;
+                }
             }
         }
 
@@ -1781,7 +1781,7 @@ impl Stylist {
 
     /// Shutdown the static data that this module stores.
     pub fn shutdown() {
-        let _entries = UA_CASCADE_DATA_CACHE.lock().unwrap().take_all();
+        let _entries = UA_CASCADE_DATA_CACHE.with(|c| c.borrow_mut().take_all());
     }
 }
 

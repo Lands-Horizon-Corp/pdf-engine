@@ -5,7 +5,7 @@
 //
 // Needs (once):  rustup target add wasm32-unknown-unknown
 //                cargo install wasm-bindgen-cli --version <the wasm-bindgen version in rust/Cargo.lock>
-// Optional:      wasm-opt (binaryen) for a smaller file.
+// Optional:      wasm-opt (binaryen) for speed (-O3).
 import { spawnSync } from 'node:child_process';
 import { brotliCompressSync, gzipSync, constants } from 'node:zlib';
 import fs from 'node:fs';
@@ -46,9 +46,9 @@ run('wasm-bindgen', ['--target', 'web', '--out-dir', dist, built]);
 
 const wasm = path.join(dist, 'pdf_engine_wasm_bg.wasm');
 if (spawnSync('wasm-opt', ['--version'], { env }).status === 0) {
-  run('wasm-opt', ['-Oz', '--enable-bulk-memory', '--enable-nontrapping-float-to-int', '--enable-sign-ext', '--enable-mutable-globals', wasm, '-o', wasm]);
+  run('wasm-opt', ['-O3', '--enable-simd', '--enable-multivalue', '--enable-reference-types', '--enable-bulk-memory', '--enable-nontrapping-float-to-int', '--enable-sign-ext', '--enable-mutable-globals', wasm, '-o', wasm]);
 } else {
-  console.log('(wasm-opt not found: skipping the extra size optimisation)');
+  console.log('(wasm-opt not found: skipping the extra speed optimisation)');
 }
 
 const bytes = fs.readFileSync(wasm);

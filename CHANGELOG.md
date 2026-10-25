@@ -12,6 +12,10 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
   `{% import %}`. **`{% pagebreak %}`** starts a new page. **`<barcode>`** draws QR codes and Code 128, Code 39, EAN-13
   and EAN-8 barcodes as vector shapes (the tests decode a QR code back from the PDF).
 
+- **Browser package:** `pdf.preview()` (a live preview with outlines around every box), `workers: N` (documents made in
+  Web Workers, or worker threads under Node), and `usePDFEngine` for React and Vue and `createPDFEngine` for Svelte
+  (`/react`, `/vue`, `/svelte`), all tested in Chromium and WebKit with real apps.
+
 ### Fixed
 
 - **Page numbers, headers and footers** (`@page` margin boxes) were never drawn: the engine forced a zero page margin

@@ -114,6 +114,27 @@ Your own server, with the page as a fallback:
 export const pdf = new PDFEngine({ url: 'https://pdf.example.com', token: '…', pick: 'auto' });
 ```
 
+## The store
+
+`createPDFEngine` is a plain Svelte store (works in Svelte 3, 4 and 5) with `busy` and `error`:
+
+```svelte
+<script>
+  import { onDestroy } from 'svelte';
+  import { createPDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/svelte';
+
+  const pdf = createPDFEngine();
+  onDestroy(pdf.close);
+</script>
+
+<button disabled={$pdf.busy} on:click={() => pdf.download({ template, data: invoice }, 'invoice.pdf')}>
+  {$pdf.busy ? 'Making PDF…' : 'Download PDF'}
+</button>
+{#if $pdf.error}<p role="alert">{$pdf.error.code}: {$pdf.error.message}</p>{/if}
+```
+
+The store contract is tested in the browser; a full Svelte app is not part of the tests yet.
+
 ## Things to know
 
 - **SSR:** call the engine from event handlers or `onMount`, not at the top level of a `+page.server.ts` or

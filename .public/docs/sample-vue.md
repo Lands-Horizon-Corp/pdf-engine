@@ -120,6 +120,25 @@ Your own server, with the page as a fallback:
 export const pdf = new PDFEngine({ url: 'https://pdf.example.com', token: '…', pick: 'auto' });
 ```
 
+## The composable
+
+`usePDFEngine` keeps one engine per component and gives you `busy` and `error` as refs:
+
+```vue
+<script setup lang="ts">
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/vue';
+const { download, busy, error } = usePDFEngine();
+</script>
+
+<template>
+  <button :disabled="busy" @click="download({ template, data: invoice }, 'invoice.pdf')">{{ busy ? 'Making PDF…' : 'Download PDF' }}</button>
+  <p v-if="error" role="alert">{{ error.code }}: {{ error.message }}</p>
+</template>
+```
+
+For many documents use workers: `usePDFEngine({ workers: 'auto' })`. `preview()` shows a template live with outlines
+([reference](browser-api.md#preview-while-you-build-a-template)).
+
 ## Things to know
 
 - **Nuxt:** render PDFs in client-only code (`onMounted`, event handlers, a `.client.vue` component or

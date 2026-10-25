@@ -130,6 +130,30 @@ Or render on your own pdf-engine server (the Docker image), and fall back to the
 export const pdf = new PDFEngine({ url: 'https://pdf.example.com', token: '…', pick: 'auto' });
 ```
 
+## The hook
+
+`usePDFEngine` keeps one engine per component and gives you `busy` and `error` (it closes the engine when the component
+unmounts, StrictMode included):
+
+```tsx
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/react';
+
+export function InvoiceButton({ invoice }: { invoice: Invoice }) {
+  const { download, busy, error } = usePDFEngine();
+  return (
+    <>
+      <button disabled={busy} onClick={() => download({ template, data: invoice }, `invoice-${invoice.no}.pdf`)}>
+        {busy ? 'Making PDF…' : 'Download PDF'}
+      </button>
+      {error && <p role="alert">{error.code}: {error.message}</p>}
+    </>
+  );
+}
+```
+
+For many documents use workers: `usePDFEngine({ workers: 'auto' })`. While you design a template, `preview({ template, data }, { target: '#preview' })`
+shows it live with outlines around every box ([reference](browser-api.md#preview-while-you-build-a-template)).
+
 ## Things to know
 
 - **React StrictMode** renders effects twice in development; that is why the engine is created at module level

@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  // The package is linked from outside this folder: resolve its optional `react` and `vue` from this app, as they would
+  // be in a real install.
+  resolve: { preserveSymlinks: true },
   build: {
     rollupOptions: {
       input: {

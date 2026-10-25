@@ -16,13 +16,38 @@
     },
     "./wasm": "./dist/pdf_engine_wasm_bg.wasm",
     "./fonts/*": "./fonts/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./react": {
+      "types": "./react.d.ts",
+      "import": "./react.js",
+      "default": "./react.js"
+    },
+    "./vue": {
+      "types": "./vue.d.ts",
+      "import": "./vue.js",
+      "default": "./vue.js"
+    },
+    "./svelte": {
+      "types": "./svelte.d.ts",
+      "import": "./svelte.js",
+      "default": "./svelte.js"
+    }
   },
   "sideEffects": false,
   "files": [
     "index.js",
     "index.d.ts",
+    "svelte.d.ts",
+    "svelte.js",
+    "vue.d.ts",
+    "vue.js",
+    "react.d.ts",
+    "react.js",
     "routing.js",
+    "worker.js",
+    "pool.js",
+    "worker-core.js",
+    "worker-node.js",
     "dist/pdf_engine_wasm.js",
     "dist/pdf_engine_wasm_bg.wasm",
     "fonts",
@@ -55,5 +80,17 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=17",
+    "vue": "^3.2"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  }
 }

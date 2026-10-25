@@ -26,6 +26,7 @@ renders a receipt in about a millisecond. An array is shorthand for `{ fonts: [.
 | `defaultFonts` | `boolean` (`true`) | Load the bundled Noto Sans Regular and Bold (Latin, Cyrillic, Greek, Vietnamese). |
 | `wasm` | `string \| URL \| bytes` | Where the `.wasm` file is, if your bundler does not find it. |
 | `fetch` | `typeof fetch` | A custom `fetch` for fonts, the `.wasm` file, images and server requests. |
+| `workers` | `number \| 'auto'` | Make documents in this many Web Workers instead of on the page's thread. [Workers](#workers) |
 | `compression` | `'fast' \| 'balanced' \| 'small'` | `fast` (default) stores streams: quickest, about 40 KB for a receipt. `small` is about 40% smaller and about 20% slower. |
 | `url`, `token` | `string \| string[]` | Your pdf-engine server(s) and bearer token(s). [Routing](#choosing-where-documents-are-made) |
 | `pick`, `autoMaxBytes`, `fallback` | | Where documents are made. [Routing](#choosing-where-documents-are-made) |
@@ -78,6 +79,69 @@ Or build the URL yourself:
 ```ts
 const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));   // <iframe src={url}>, <a href download>
 ```
+
+## Preview while you build a template
+
+```ts
+const view = await pdf.preview({ template, data }, { target: '#preview' });   // an iframe in #preview (or a floating panel)
+
+textarea.oninput = () => view.update({ template: textarea.value, data });     // redraw after every edit
+view.close();
+```
+
+`preview()` makes the PDF and shows it in an `<iframe>`. By default every element gets a thin red outline (`outlines:
+false` turns it off, a string sets the colour), so you can see where boxes, flex rows, table cells and margins really
+are; the outlines never move anything. `update()` calls are queued, only the latest renders, and errors reject the
+promise (show them next to your editor: `e.line`, `e.hint`). The PDF viewer shows where pages end.
+
+## Workers
+
+```ts
+const pdf = new PDFEngine({ workers: 2 });          // or 'auto': the cores minus one, at most 4
+const files = await Promise.all(invoices.map((data) => pdf.generate({ template, data })));
+```
+
+With `workers`, documents are made in Web Workers (worker threads under Node): several at once, and the page stays smooth
+while a large document is made. Each worker loads its own copy of the engine (about 10 MB) and its fonts, so use 1 or 2 for
+a page and `'auto'` for batches. Errors keep their `code` and `line`; `images`, `partials` and `onImageError` work as
+usual (Blobs and `File`s are handed to the worker; functions cannot be, so URL images use the worker's own `fetch`).
+Documents sent to a server (`url`) do not use workers. `close()` stops them. One document is not made faster by
+workers: a single render still runs on one thread.
+
+## React, Vue and Svelte helpers
+
+Small wrappers keep one engine per component and give you `busy` and `error`:
+
+```tsx
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/react';
+
+function InvoiceButton({ invoice }) {
+  const { download, busy, error } = usePDFEngine();
+  return <button disabled={busy} onClick={() => download({ template, data: invoice }, 'invoice.pdf')}>{busy ? 'Making PDF…' : 'Download'}</button>;
+}
+```
+
+```vue
+<script setup>
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/vue';
+const { download, busy, error } = usePDFEngine();      // busy and error are refs
+</script>
+```
+
+```svelte
+<script>
+  import { onDestroy } from 'svelte';
+  import { createPDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/svelte';
+  const pdf = createPDFEngine();                       // a store: $pdf.busy, $pdf.error
+  onDestroy(pdf.close);
+</script>
+<button disabled={$pdf.busy} on:click={() => pdf.download({ template, data }, 'invoice.pdf')}>Download</button>
+```
+
+Each returns `generate`, `download`, `open`, `print`, `preview` and `ping` (the same as `PDFEngine`), and the methods still reject, so
+you can `try`/`catch` too. The engine is closed when the component goes away. React and Vue are optional peer
+dependencies of the package; the Svelte store needs nothing. The hooks are tested in the browser with real React and
+Vue apps.
 
 ## Other methods
 

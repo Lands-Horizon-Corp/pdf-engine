@@ -25,6 +25,19 @@ for (const app of ['plain', 'react', 'vue']) {
     expect(r.error).toMatchObject({ code: 'TEMPLATE_ERROR', status: 400, line: 2, isEngineError: true });
     expect(r.remote, 'rendering on a server from another origin (CORS)').toBe('%PDF-');
     expect(r.remoteError).toBe('TEMPLATE_ERROR');
+    expect(r.genericFont, 'font-family: Arial, sans-serif still draws text').toBe(true);
+    expect(r.workers.ok, 'six documents from two workers').toBe(6);
+    expect(r.workers.pages, 'a pagebreak makes two pages').toBe(2);
+    expect(r.workers.error).toMatchObject({ code: 'TEMPLATE_ERROR', line: 2, isEngineError: true });
+    expect(r.preview, 'preview() puts an iframe in the target and update() redraws it').toEqual({ frame: true, urlChanged: true });
+    expect(r.previewClosed).toBe(true);
+    expect(r.store.header).toBe('%PDF-');
+    expect(r.store.states, 'the store goes busy and idle, then busy, receives the error, and ends idle with it').toEqual(['false:-', 'true:-', 'false:-', 'true:-', 'true:TEMPLATE_ERROR', 'false:TEMPLATE_ERROR']);
+    if (app !== 'plain') {
+      expect(r.hook.header, 'the hook makes a PDF').toBe('%PDF-');
+      expect(r.hook.failure).toBe('TEMPLATE_ERROR');
+    }
+    if (app === 'vue') expect(r.hook).toMatchObject({ busyAfter: false, errorCode: 'TEMPLATE_ERROR' });
     expect(r.repeated).toBe(20);
     expect(problems).toEqual([]);
   });

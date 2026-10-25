@@ -352,3 +352,33 @@ test('{% pagebreak %} starts a new page, and <barcode> draws vector shapes', asy
     pdf.close();
   }
 });
+
+test('workers: documents are made in worker threads, errors and images included', async () => {
+  const pdf = new PDFEngine({ workers: 2, partials: { header: '<h1>{{ t }}</h1>' } });
+  const skipped = [];
+  try {
+    assert.match((await pdf.ping()).version, /^\d+\.\d+\.\d+/);
+    // Several at once, from one call site.
+    const many = await Promise.all(Array.from({ length: 8 }, (_, i) => pdf.generate({ template: '{% include "header" %}<p>{{ i }}</p>{% pagebreak %}<p>x</p>', data: { t: 'T', i } })));
+    for (const bytes of many) assert.ok(isPdf(bytes) && pageCount(bytes) === 2);
+    assert.ok(bytes_differ(many[0], many[1]), 'each document has its own data');
+    // Errors keep their codes.
+    await assert.rejects(pdf.generate({ template: '<p>\n{% if %}' }), { code: 'TEMPLATE_ERROR', line: 2 });
+    await assert.rejects(pdf.generate({ template: 'x', compression: 'max' }), { code: 'INVALID_FIELD' });
+    // An image supplied as bytes; a missing one is reported to this call's callback.
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC', 'base64'));
+    const withImage = await pdf.generate({ template: '<img src="logo" width="40"><img src="https://nope.invalid/x.png">', images: { logo: png }, fetch: undefined, onImageError: (src, why) => skipped.push([src, why]) });
+    assert.match(latin1(withImage), /\/Subtype\s*\/Image/);
+    assert.equal(skipped.length, 1);
+    assert.match(skipped[0][0], /nope\.invalid/);
+    // Fonts reach every worker.
+    await pdf.loadFonts([]);
+    assert.ok(isPdf(await pdf.generate({ template: '<p>still works</p>' })));
+  } finally {
+    pdf.close();
+  }
+  await assert.rejects(pdf.generate({ template: 'x' }), { code: 'ENGINE_CLOSED' });
+  await assert.rejects(new PDFEngine({ workers: 99 }).generate({ template: 'x' }), { code: 'INVALID_FIELD' });
+});
+
+const bytes_differ = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) !== 0;

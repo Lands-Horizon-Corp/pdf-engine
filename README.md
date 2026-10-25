@@ -287,13 +287,14 @@ With Vite, keep the browser package out of dependency pre-bundling (one line):
 
 | Method | Does |
 | --- | --- |
-| `new PDFEngine(options?)` | Create once and reuse. Options: `fonts`, `url`, `token`, `pick`, `autoMaxBytes`, `fallback`, `compression`, `pruneData`, `onImageError`, ... |
+| `new PDFEngine(options?)` | Create once and reuse. Options: `fonts`, `url`, `token`, `pick`, `autoMaxBytes`, `fallback`, `workers`, `partials`, `compression`, `pruneData`, `onImageError`, ... |
 | `generate({ template, data, ... })` | Returns the PDF as a `Uint8Array`. Also `password`, `width`, `height`, `orientation`, `images` |
 | `download(options, filename)` | Makes the PDF and saves it |
 | `open(options)` | Shows the PDF in a new tab |
 | `print(options)` | Opens the browser's print dialog |
 | `ping()` | Loads the engine now, returns its version |
 | `loadFonts(fonts)` | Use these fonts from now on |
+| `preview(options, view)` | Shows a live preview with box outlines; `update()` redraws |
 | `close()` | Release memory |
 
 **Node and Electron package** ([full reference](.public/docs/desktop-api.md))
@@ -560,9 +561,8 @@ Planned, not built yet:
 - [ ] Verify printing on physical receipt, label and office printers
 - [x] Reusable template **partials**, `{% pagebreak %}`, and `<barcode>` / QR tags drawn as vector shapes
 - [ ] Repeating `<thead>` on later pages
-- [ ] A live layout preview with box outlines (`pdf.preview()`)
 - [ ] `@font-face`, `float` and `rowspan`
-- [ ] A Web Worker pool for the browser package, and React, Vue and Svelte wrapper components
+- [x] A live layout preview with box outlines (`pdf.preview()`), a Web Worker pool (`workers`), and React, Vue and Svelte helpers
 
 ---
 

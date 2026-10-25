@@ -47,6 +47,12 @@ export class PDFEngineError extends Error {
 export type FontSource = string | URL | ArrayBuffer | Uint8Array | Blob;
 
 export interface PDFEngineOptions {
+  /**
+   * Make documents in this many Web Workers (Worker threads under Node) instead of on the page's own thread, so
+   * several are made at once and the page stays smooth. `'auto'` is the cores minus one, at most 4. Each worker loads
+   * its own copy of the engine (about 10 MB). Not used for documents sent to a `url`. Default: 0, this thread.
+   */
+  workers?: number | 'auto';
   /** Partial templates every document can include (see `GenerateOptions.partials`). */
   partials?: Record<string, string>;
   /**
@@ -137,6 +143,24 @@ export interface GenerateOptions<T = unknown> {
   pruneData?: boolean;
 }
 
+export interface PreviewOptions {
+  /** A selector or element to put the preview in. Default: a floating panel with a close button. */
+  target?: string | Element;
+  /** Draw a thin outline around every element (default `true`); a string is the colour. Layout is not changed. */
+  outlines?: boolean | string;
+  /** Height of the preview (default `80vh`). */
+  height?: string;
+}
+
+export interface PreviewController<T = unknown> {
+  readonly element: HTMLIFrameElement;
+  /** The current PDF's blob URL. */
+  readonly url: string | null;
+  /** Redraw, optionally with new options. Resolves when the picture is current; rejects with the engine's error. */
+  update(options?: GenerateOptions<T>): Promise<void>;
+  close(): void;
+}
+
 export class PDFEngine {
   constructor(options?: PDFEngineOptions | FontSource[]);
 
@@ -145,6 +169,12 @@ export class PDFEngine {
 
   /** Render, then save the PDF through the browser's download. Browser only. */
   download<T = unknown>(options: GenerateOptions<T>, filename?: string): Promise<void>;
+
+  /**
+   * Show the document in the page while you build the template, with thin outlines around every box. Returns a
+   * controller: `update(options)` redraws (queued; only the latest runs), `close()` removes it. Browser only.
+   */
+  preview<T = unknown>(options: GenerateOptions<T>, view?: PreviewOptions): Promise<PreviewController<T>>;
 
   /** Render, then show the PDF in a new tab. Browser only. Resolves with the new window, or null if it was blocked. */
   open<T = unknown>(options: GenerateOptions<T>): Promise<Window | null>;

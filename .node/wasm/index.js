@@ -9,6 +9,7 @@
  * `generate()` runs on the calling thread (a few milliseconds for a receipt). Call it from a Web
  * Worker if you render large documents.
  */
+import { WorkerPool } from './pool.js';
 import { ServerPool, choose, isRetryable, pruneData, requestBytes, serversOf } from './routing.js';
 import init, { Engine, set_compression, version as engineVersion } from './dist/pdf_engine_wasm.js';
 
@@ -168,6 +169,36 @@ export class PDFEngine {
     this.#options = { defaultFonts: true, ...options, fonts: (options.fonts || []).filter((f) => f !== '' && f != null) };
   }
 
+  #workerThreads = null;
+
+  /** How many workers to render with: `workers: 3`, or `'auto'` (cores minus one, at most 4). 0 = this thread. */
+  #workerCount() {
+    const w = this.#options.workers;
+    if (!w) return 0;
+    if (w === 'auto') {
+      const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
+      return Math.max(1, Math.min(4, cores - 1));
+    }
+    if (!Number.isInteger(w) || w < 0 || w > 16) throw clientError('INVALID_FIELD', `workers must be a whole number from 0 to 16, or 'auto', not ${JSON.stringify(w)}.`);
+    return w;
+  }
+
+  /** Relative URLs mean something different inside a worker; make them absolute against the page. */
+  #absolute(value) {
+    if (value instanceof URL) return value.href;
+    if (typeof value === 'string' && typeof document !== 'undefined' && !/^[a-z][a-z0-9+.-]*:/i.test(value)) return new URL(value, document.baseURI).href;
+    return value;
+  }
+
+  #workerPool(count) {
+    if (!this.#workerThreads) {
+      const { workers, fetch: _fetch, url, token, pick, autoMaxBytes, fallback, onImageError, ...rest } = this.#options;
+      const init = { ...rest, fonts: this.#options.fonts.map((f) => this.#absolute(f)), wasm: rest.wasm === undefined ? undefined : this.#absolute(rest.wasm) };
+      this.#workerThreads = new WorkerPool(count, init, (e) => new PDFEngineError({ ...e, message: e.message }));
+    }
+    return this.#workerThreads;
+  }
+
   /**
    * Render HTML to a PDF. Resolves with the PDF bytes.
    *
@@ -209,6 +240,15 @@ export class PDFEngine {
   }
 
   async #generateLocal(options) {
+    const workers = this.#workerCount();
+    if (workers > 0) {
+      if (this.#closed) throw clientError('ENGINE_CLOSED', 'This PDFEngine was closed; create a new one.');
+      const { url, token, pick, autoMaxBytes, fallback, onImageError, fetch: _fetch, ...rest } = options;
+      const images = rest.images && Object.fromEntries(Object.entries(rest.images).map(([k, v]) => [k, this.#absolute(v)]));
+      const send = { ...rest, images, partials: this.#partials(options) };
+      const warn = onImageError || this.#options.onImageError || ((src, reason) => console.warn(`pdf-engine: skipped image ${String(src).slice(0, 100)}: ${reason}`));
+      return this.#workerPool(workers).generate(send, warn);
+    }
     const { template, data, password, width, height, orientation } = options;
     await this.#start();
     this.#applyFonts();
@@ -341,8 +381,101 @@ export class PDFEngine {
     }, 120_000);
   }
 
+  /**
+   * Show the document in the page while you build the template. Returns a controller: call `update(options)` after every
+   * edit to redraw it (renders are queued, only the latest one runs), `close()` to remove it. Browser only.
+   *
+   * With `outlines` (the default) every element gets a thin red outline, so you see where boxes, flex rows, table
+   * cells and margins really are. The outlines do not change the layout. The PDF viewer shows where pages end.
+   *
+   * @param {object} options what `generate()` takes
+   * @param {{ target?: string|Element, outlines?: boolean|string, height?: string }} [view]
+   *        `target`: a selector or element to put the preview in (default: a floating panel).
+   */
+  async preview(options, view = {}) {
+    if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+      throw clientError('NOT_IN_BROWSER', 'preview() needs a browser page.');
+    }
+    const { target, outlines = true, height = '80vh' } = view;
+    let panel = null;
+    let host = typeof target === 'string' ? document.querySelector(target) : target;
+    if (target && !host) throw clientError('INVALID_FIELD', `preview(): nothing matches the target ${JSON.stringify(target)}.`);
+    if (!host) {
+      host = panel = document.createElement('div');
+      panel.style.cssText = 'position:fixed;right:12px;bottom:12px;width:min(560px,92vw);z-index:2147483647;background:#fff;border:1px solid #888;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.25);overflow:hidden;font:12px system-ui,sans-serif';
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#eef2ff';
+      bar.append(Object.assign(document.createElement('span'), { textContent: 'pdf-engine preview' }));
+      const x = Object.assign(document.createElement('button'), { textContent: '×', title: 'Close', ariaLabel: 'Close the preview' });
+      x.style.cssText = 'border:0;background:none;font-size:18px;cursor:pointer';
+      x.onclick = () => controller.close();
+      bar.append(x);
+      panel.append(bar);
+      document.body.append(panel);
+    }
+    const frame = document.createElement('iframe');
+    frame.title = 'PDF preview';
+    frame.style.cssText = `width:100%;height:${panel ? '70vh' : height};border:0;background:#f3f4f6`;
+    host.append(frame);
+
+    const colour = typeof outlines === 'string' ? outlines : 'rgba(220,38,38,.7)';
+    const line = `linear-gradient(${colour},${colour})`;
+    // Backgrounds, not `outline` or borders: they are drawn, and they never move anything.
+    const debug = `<style>*{background-image:${line},${line},${line},${line};background-size:100% 1px,100% 1px,1px 100%,1px 100%;background-position:top left,bottom left,top left,top right;background-repeat:no-repeat}</style>`;
+
+    let current = options;
+    let url = null;
+    let running = null;
+    let again = false;
+    let closed = false;
+    const draw = async () => {
+      const shown = outlines && typeof current.template === 'string' ? { ...current, template: debug + current.template } : current;
+      const bytes = await this.generate(shown);
+      if (closed) return;
+      const next = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      frame.src = `${next}#toolbar=0&navpanes=0&view=FitH`;
+      if (url) setTimeout(URL.revokeObjectURL, 10_000, url);
+      url = next;
+    };
+    const controller = {
+      element: frame,
+      get url() {
+        return url;
+      },
+      /** Redraw, with new options if you pass them. Resolves when the picture is up to date (or rejects with the error). */
+      update(next) {
+        if (closed) return Promise.resolve();
+        if (next) current = next;
+        if (running) {
+          again = true;
+          return running;
+        }
+        running = (async () => {
+          try {
+            do {
+              again = false;
+              await draw();
+            } while (again && !closed);
+          } finally {
+            running = null;
+          }
+        })();
+        return running;
+      },
+      close() {
+        closed = true;
+        frame.remove();
+        panel?.remove();
+        if (url) URL.revokeObjectURL(url);
+      },
+    };
+    await controller.update();
+    return controller;
+  }
+
   /** Load the engine now instead of on the first `generate()`. Returns the engine version. */
   async ping() {
+    if (this.#workerCount() > 0) return this.#workerPool(this.#workerCount()).ping();
     await this.#start();
     return { version: engineVersion() };
   }
@@ -350,6 +483,7 @@ export class PDFEngine {
   /** Use these fonts (in addition to the default ones, unless `defaultFonts: false`) from now on. */
   async loadFonts(fonts) {
     this.#options.fonts = [...fonts].filter((f) => f !== '' && f != null);
+    if (this.#workerThreads) return this.#workerThreads.loadFonts(this.#options.fonts.map((f) => this.#absolute(f)));
     this.#starting = null;
     await this.#start();
   }
@@ -357,6 +491,8 @@ export class PDFEngine {
   /** Release the engine's memory. */
   close() {
     this.#closed = true;
+    this.#workerThreads?.close();
+    this.#workerThreads = null;
     this.#engine?.free();
     this.#engine = null;
     if (activeFonts === this) activeFonts = null;

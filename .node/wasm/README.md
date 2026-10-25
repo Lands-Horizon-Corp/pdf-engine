@@ -24,9 +24,106 @@ window.open(url);                                  // or <iframe src={url}> or <
 ```
 
 Every option, method and error is in the [reference](../../.public/docs/browser-api.md). No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
+Using React, Vue or Svelte? See [Framework helpers](#react-vue-and-svelte-helpers).
 
 The Node.js/Electron package ([`@lands-horizon-corp/pdf-engine`](../desktop/README.md)) has the same API, so
 code moves between them.
+
+## Templates
+
+The template language is [minijinja](https://github.com/mitsuhiko/minijinja): `{{ value }}`, `{% for %}`, `{% if %}`,
+filters and macros, HTML-escaped by default. Full guide: [Templates and CSS](../../.public/docs/templates.md).
+
+**Partials** (headers, footers, rows, layouts), given to the constructor or to one call:
+
+```js
+const pdf = new PDFEngine({
+  partials: {
+    header: '<h1>{{ store }}</h1><hr>',
+    row: '<tr><td>{{ item.name }}</td><td>₱{{ item.price }}</td></tr>',
+  },
+});
+await pdf.generate({
+  template: '{% include "header" %}<table>{% for item in items %}{% include "row" %}{% endfor %}</table>',
+  data: { store: 'Manila Central', items },
+});
+```
+
+`{% extends %}` / `{% block %}` make page layouts and `{% import %}` brings in macros.
+
+**Page numbers, headers and footers** with `@page` margin boxes:
+
+```html
+<style>
+  @page { margin: 20mm;
+    @top-center   { content: "{{ company }}"; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); } }
+</style>
+```
+
+**Page breaks** with `{% pagebreak %}`, and **vector QR codes and barcodes** with `<barcode>`:
+
+```html
+<h1>Invoice</h1> ... {% pagebreak %} <h1>Terms</h1>
+<barcode value="https://example.com/pay/{{ no }}" type="qr" width="120" />
+<barcode value="{{ no }}" type="code128" width="220" height="60" />   <!-- also code39, ean13, ean8 -->
+```
+
+They are drawn as shapes, so they stay sharp at any size and scan from paper or screen.
+
+## Preview while you build a template
+
+```js
+const view = await pdf.preview({ template, data }, { target: '#preview' });   // an iframe in #preview
+textarea.oninput = () => view.update({ template: textarea.value, data });     // redraw after every edit
+view.close();
+```
+
+Every element gets a thin outline (`outlines: false` turns it off), so you can see where boxes, flex rows, table
+cells and margins really are. The outlines never move anything. Errors reject the promise: show `e.line` and
+`e.hint` next to your editor.
+
+## Workers
+
+```js
+const pdf = new PDFEngine({ workers: 2 });          // or 'auto': the cores minus one, at most 4
+const files = await Promise.all(invoices.map((data) => pdf.generate({ template, data })));
+```
+
+Documents are made in Web Workers (worker threads under Node), several at once, and the page stays smooth while a
+large document is made. Each worker loads its own copy of the engine (about 10 MB) and its fonts, so use 1 or 2 for a
+page and `'auto'` for batches. A single document is not made faster: it still renders on one thread.
+
+## React, Vue and Svelte helpers
+
+One engine per component, with `busy` and `error`. React and Vue are optional peer dependencies; the Svelte store needs nothing.
+
+```tsx
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/react';
+
+const { download, busy, error } = usePDFEngine();
+<button disabled={busy} onClick={() => download({ template, data }, 'invoice.pdf')}>Download</button>
+```
+
+```vue
+<script setup>
+import { usePDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/vue';
+const { download, busy, error } = usePDFEngine();      // busy and error are refs
+</script>
+```
+
+```svelte
+<script>
+  import { onDestroy } from 'svelte';
+  import { createPDFEngine } from '@lands-horizon-corp/pdf-engine-wasm/svelte';
+  const pdf = createPDFEngine();                       // a store: $pdf.busy, $pdf.error
+  onDestroy(pdf.close);
+</script>
+```
+
+Each returns `generate`, `download`, `open`, `print`, `preview` and `ping`. Guides:
+[React](../../.public/docs/sample-react.md), [Vue](../../.public/docs/sample-vue.md),
+[Svelte](../../.public/docs/sample-svelte.md), [Next.js](../../.public/docs/sample-nextjs.md).
 
 ## Images
 
@@ -105,7 +202,10 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 | `fetch` | A custom `fetch` for fonts, the wasm file and server requests. |
 | `url`, `token` | One server, or arrays of servers and tokens, instead of rendering in the page (see below). |
 | `pick`, `autoMaxBytes`, `fallback` | Where documents are rendered when there is a `url`: see below. |
-| `pruneData` | Send only the `data` keys the template names (default `true`). |
+| `pruneData` | Send only the `data` keys the template names (default `true`; skipped when the template uses partials). |
+| `partials` | Named templates for `{% include %}`, `{% extends %}` and `{% import %}`. Also per `generate()`. |
+| `workers` | Make documents in this many workers (a number or `'auto'`). See [Workers](#workers). |
+| `onImageError` | `(src, reason)` called for an image that could not be used. |
 
 | `generate({ ... })` | |
 | --- | --- |
@@ -114,8 +214,11 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 | `password` | Encrypts the PDF. |
 | `width`, `height` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default US Letter). |
 | `orientation` | `portrait` (default) or `landscape`. |
+| `images` | Images by name for `<img src="name">`. See [Images](#images). |
+| `partials` | Partial templates for this document, merged over the constructor's. |
 
-Also `ping()`, `loadFonts(fonts)` and `close()`.
+Also `download(options, filename)`, `open(options)`, `print(options)`, `preview(options, view)`, `ping()`,
+`loadFonts(fonts)` and `close()`.
 
 ## Render on your server instead
 
@@ -214,7 +317,7 @@ Codes are listed in `index.d.ts`; they match the native engine's (`MISSING_FIELD
 - **Size:** about 3.2 MB compressed (brotli), loaded once and cached by the browser.
 - **Speed:** the first call also loads the module (about 100 ms); after that a receipt takes about
   1 ms and a 30-line invoice about 2 ms (the first few hundred documents run a little slower while the browser
-  optimises the module). `generate()` runs on the calling thread, so for large
-  documents call it from a Web Worker.
+  optimises the module). `generate()` runs on the calling thread by default; use [`workers`](#workers) to keep a
+  page smooth while large documents are made.
 - **Images:** PNG, JPEG, GIF and SVG, with or without a width and height. See [Images](#images).
 - **Same engine as the server:** templates, CSS support and error codes match the native engine.

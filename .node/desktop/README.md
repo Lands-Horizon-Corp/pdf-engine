@@ -3,6 +3,10 @@
 HTML to PDF. The Rust engine runs as a child process and talks to your code over stdin/stdout, so
 there is **no HTTP server, no port and no network call**; the PDF comes back as raw bytes.
 
+> **Status:** this package is not on npm yet. It needs the engine binary built for each platform first, so for now
+> build it from the repository (see [Install the binary](#install-the-binary)). For web pages, the
+> [WebAssembly package](../wasm/README.md) is published.
+
 ```ts
 import { PDFEngine } from '@lands-horizon-corp/pdf-engine';
 
@@ -30,6 +34,8 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `imageDir` | A folder templates may load images from: `<img src="logo.png">` or a `file:` URL inside it. Nothing outside it (`..`, symlinks) is read. Off by default. |
 | `imageHosts` | Hosts `<img src="https://...">` may be fetched from, e.g. `['cdn.example.com', '*.example.com']`. Off by default. |
 | `env` | Extra environment for the engine, e.g. `ASSET_ALLOWED_HOSTS` for remote images. |
+| `partials` | Named templates for `{% include %}`, `{% extends %}` and `{% import %}`, available to every document. |
+| `printers` | Printers to offer besides the system's, such as network printers. See [Printing](#printing-electron-tauri-node). |
 | `onLog` | Receives the engine's log output. |
 
 | `generate({ ... })` | |
@@ -40,6 +46,36 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `width`, `height` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px` (default US Letter). |
 | `orientation` | `portrait` (default) or `landscape`. |
 | `images` | Images for `<img src="name">`, by name: a Buffer/Uint8Array, a `data:` URI or a file path. Skipped, not an error, if unusable. |
+| `partials` | Partial templates for this document, merged over the constructor's. |
+
+## Templates
+
+The template language is [minijinja](https://github.com/mitsuhiko/minijinja): `{{ value }}`, `{% for %}`, `{% if %}`,
+filters and macros, HTML-escaped by default. Full guide: [Templates and CSS](../../.public/docs/templates.md).
+
+```js
+const pdf = new PDFEngine({
+  partials: { header: '<h1>{{ store }}</h1><hr>', row: '<tr><td>{{ item.name }}</td><td>₱{{ item.price }}</td></tr>' },
+});
+
+await pdf.generate({
+  template: `<style>
+               @page { margin: 20mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); } }
+             </style>
+             {% include "header" %}
+             <table>{% for item in items %}{% include "row" %}{% endfor %}</table>
+             {% pagebreak %}
+             <h2>Terms</h2>
+             <barcode value="https://example.com/pay/{{ no }}" type="qr" width="120" />`,
+  data: { store: 'Manila Central', items, no: '12345' },
+});
+```
+
+- **Partials:** `{% include %}`, `{% extends %}` with `{% block %}`, and `{% import %}` for macros.
+- **Page numbers, headers and footers:** `@page` margin boxes with `counter(page)` and `counter(pages)`.
+- **Page breaks:** `{% pagebreak %}`.
+- **Vector QR codes and barcodes:** `<barcode type="qr | code128 | code39 | ean13 | ean8">`. They are drawn as shapes,
+  so they stay sharp and scan from paper. A value that does not fit the type is an `INVALID_FIELD` error.
 
 Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`, `printers()`, `print()` and `pid`. Full reference: [`.public/docs/desktop-api.md`](../../.public/docs/desktop-api.md).
 
@@ -158,7 +194,8 @@ Packaging with electron-builder: the executable cannot run from inside `app.asar
 
 ## Browsers
 
-A web page cannot start a program, so it cannot use this package directly. Call a backend that
+A web page cannot start a program, so it cannot use this package directly. In a page, use the WebAssembly package
+[`@lands-horizon-corp/pdf-engine-wasm`](../wasm/README.md) (same `generate()` call, no server), or call a backend that
 uses `PDFEngine`, or run the engine's HTTP mode (`pdf-engine`, see the root README).
 
 ## How the Rust engine and this package stay in sync

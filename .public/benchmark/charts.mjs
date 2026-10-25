@@ -121,31 +121,16 @@ const htmlRows = (key) => [
   { label: 'pdf-engine', value: key(nRow('pdf-engine')), ours: true },
   { label: 'Puppeteer (headless shell)', value: key(nRow('Puppeteer (headless shell)')) },
   { label: 'Puppeteer (default)', value: key(nRow('Puppeteer (default)')) },
+  { label: 'html-pdf', value: key(nRow('html-pdf (PhantomJS)')), note: 'PhantomJS, deprecated' },
+  { label: 'wkhtmltopdf', value: key(nRow('wkhtmltopdf')), note: 'archived' },
 ].filter((r) => Number.isFinite(r.value));
-const codeRows = (key) =>
-  [
-    ['pdfkit (Noto Sans)', 'Unicode font'],
-    ['pdfmake (Noto Sans)', 'Unicode font'],
-    ['pdf-lib (Noto Sans)', 'Unicode font'],
-    ['jsPDF (Noto Sans)', 'Unicode font'],
-    ['@react-pdf/renderer', 'Unicode font'],
-    ['pdfkit (built-in font)', 'Latin only'],
-    ['pdfmake (built-in font)', 'Latin only'],
-    ['pdf-lib (built-in font)', 'Latin only'],
-    ['jsPDF (built-in font)', 'Latin only'],
-  ]
-    .map(([label, note]) => ({ label, value: key(nRow(label) ?? {}), note }))
-    .filter((r) => Number.isFinite(r.value));
 
 chart({
   file: 'node-time',
   title: 'In Node: time to make one invoice PDF',
   subtitle: 'Shorter is faster. 30-row invoice, warm median.',
   format: ms,
-  groups: [
-    { title: 'HTML to PDF', rows: htmlRows((r) => r.medianMs).sort((a, b) => a.value - b.value) },
-    { title: 'PDF drawn in code (does not read HTML)', rows: codeRows((r) => r.medianMs).sort((a, b) => a.value - b.value) },
-  ],
+  groups: [{ rows: htmlRows((r) => r.medianMs).sort((a, b) => a.value - b.value) }],
 });
 
 chart({
@@ -154,10 +139,7 @@ chart({
   subtitle: 'Longer is faster. Up to 8 requests in flight.',
   format: perSecond,
   better: 'higher',
-  groups: [
-    { title: 'HTML to PDF', rows: htmlRows((r) => r.perSecond).sort((a, b) => b.value - a.value) },
-    { title: 'PDF drawn in code (does not read HTML)', rows: codeRows((r) => r.perSecond).sort((a, b) => b.value - a.value) },
-  ],
+  groups: [{ rows: htmlRows((r) => r.perSecond).sort((a, b) => b.value - a.value) }],
 });
 
 const wasm = resolve(here, '../../.node/wasm/dist/pdf_engine_wasm_bg.wasm');
@@ -177,6 +159,8 @@ chart({
         { label: 'pdf-engine (native binary)', value: node.footprint['pdf-engine'], ours: true },
         { label: 'Puppeteer + headless shell', value: node.footprint['Puppeteer (headless shell)'] },
         { label: 'Puppeteer + Chrome', value: node.footprint['Puppeteer (default)'] },
+        ...(node.footprint['html-pdf (PhantomJS)'] ? [{ label: 'html-pdf + PhantomJS', value: node.footprint['html-pdf (PhantomJS)'] }] : []),
+        ...(node.footprint.wkhtmltopdf ? [{ label: 'wkhtmltopdf', value: node.footprint.wkhtmltopdf }] : []),
       ],
     },
   ],
@@ -189,14 +173,12 @@ if (existsSync(scalePath)) {
   const label = {
     'pdf-engine': 'pdf-engine', 'puppeteer-shell': 'Puppeteer (headless shell)', puppeteer: 'Puppeteer (default)',
     wasm: 'pdf-engine (WebAssembly)', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas',
-    pdfkit: 'pdfkit', pdfmake: 'pdfmake', 'pdf-lib': 'pdf-lib', jspdf: 'jsPDF', 'react-pdf': '@react-pdf/renderer',
-    'pdfkit-builtin': 'pdfkit', 'pdfmake-builtin': 'pdfmake', 'pdf-lib-builtin': 'pdf-lib', 'jspdf-builtin': 'jsPDF',
+    'html-pdf': 'html-pdf', wkhtmltopdf: 'wkhtmltopdf',
   };
-  const note = { pdfkit: 'Unicode font', pdfmake: 'Unicode font', 'pdf-lib': 'Unicode font', jspdf: 'Unicode font', 'react-pdf': 'Unicode font', 'pdfkit-builtin': 'Latin only', 'pdfmake-builtin': 'Latin only', 'pdf-lib-builtin': 'Latin only', 'jspdf-builtin': 'Latin only' };
+  const note = { 'html-pdf': 'PhantomJS, x86 under Rosetta', wkhtmltopdf: 'x86 under Rosetta' };
   const groupsOf = [
-    ['HTML to PDF (native)', ['pdf-engine', 'puppeteer-shell', 'puppeteer']],
+    ['HTML to PDF (native / server)', ['pdf-engine', 'puppeteer-shell', 'puppeteer', 'html-pdf', 'wkhtmltopdf']],
     ['HTML to PDF in the browser', ['wasm', 'html2pdf', 'jspdf-html2canvas']],
-    ['PDF drawn in code (does not read HTML)', ['pdfkit', 'pdfmake', 'pdf-lib', 'jspdf', 'react-pdf', 'pdfkit-builtin', 'pdfmake-builtin', 'pdf-lib-builtin', 'jspdf-builtin']],
   ];
   const titles = { small: 'receipts (1 page)', large: 'large invoices (300 lines, 7-9 pages)', multitable: 'multi-table statements (5 tables, 4-6 pages)' };
   const counts = scale.count.toLocaleString('en-US');

@@ -103,23 +103,20 @@ text, in 1 to 2 ms. The same engine also runs natively in Electron, Tauri and Do
 | Runs in the browser, no server | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | Nothing heavy to install (no Chromium, PhantomJS or binary) | ✅ | ❌ ~370 MB | ✅ | ✅ | ❌ PhantomJS | ❌ binary |
 | Maintained | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
-| Time for a receipt, in the browser<sup>1</sup> | **0.7 ms** | n/a | 85 ms | 71 ms | n/a | n/a |
+| Time for a receipt, in the browser<sup>1</sup> | **0.7 ms** | n/a | 87 ms | 73 ms | n/a | n/a |
 | Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <sub>1. Chromium on an Apple M4, median after warm-up ([benchmarks](#benchmarks)). Puppeteer, html-pdf and wkhtmltopdf
-need a server, so a browser time does not apply: on a server a receipt takes 4.6 ms with Puppeteer (fastest mode)
-against 1.0 ms here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-engine does not run;
+need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with Puppeteer (fastest mode),
+356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac, so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-engine does not run;
 see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
-
-Libraries that **draw pages in code** (pdf-lib, jsPDF, pdfkit, pdfmake) are a different kind of tool and are not
-in this table; they are in the [benchmarks](#benchmarks) too, including where they are faster.
 
 **What you get**
 
 - 📄 **Real PDFs.** Vector text in tens of KB. Flexbox, grid, tables, gradients, transforms, SVG, CSS variables,
   `calc()`, page breaks, multi-column, and `@page` margin boxes.
-- ⚡ **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice. [Numbers and graphs](#benchmarks), including where
-  it loses.
+- ⚡ **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice. [Numbers and graphs](#benchmarks), with the machine and
+  the conditions (PhantomJS and wkhtmltopdf run under Rosetta on the test Mac).
 - 🌍 **Every language.** About 150 Noto fonts on the server cover practically every living script (Chinese, Arabic,
   Hindi, Thai, emoji, ...); in the browser you add the font you need.
 - 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros; HTML-escaped by default.
@@ -175,63 +172,40 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 2.0 s | 5,008 | 1 |
-| jsPDF (built-in font) | 10,000 | 3.4 s | 2,932 | 1 |
-| pdfkit (built-in font) | 10,000 | 4.3 s | 2,312 | 1 |
-| pdf-lib (built-in font) | 10,000 | 5.0 s | 1,991 | 1 |
-| pdf-engine (WebAssembly) | 10,000 | 7.0 s | 1,427 | 1 |
-| pdfmake (built-in font) | 10,000 | 10 s | 990 | 1 |
-| Puppeteer (headless shell) | 10,000 | 14 s | 710 | 1 |
-| @react-pdf/renderer | 10,000 | 56 s | 180 | 1 |
-| Puppeteer (default) | 10,000 | 1.2 min | 134 | 1 |
-| jsPDF (Noto Sans) | 9,832 | 2.5 min (projected) | 66 | 1 |
-| pdfkit (Noto Sans) | 7,545 | 3.3 min (projected) | 50 | 1 |
-| pdfmake (Noto Sans) | 7,168 | 3.5 min (projected) | 48 | 1 |
-| pdf-lib (Noto Sans) | 6,570 | 3.8 min (projected) | 44 | 1 |
-| jspdf-html2canvas | 2,192 | 11.4 min (projected) | 15 | 1 |
-| html2pdf.js | 1,864 | 13.4 min (projected) | 12 | 1 |
+| pdf-engine | 10,000 | 2.0 s | 5,047 | 1 |
+| pdf-engine (WebAssembly) | 10,000 | 7.0 s | 1,436 | 1 |
+| Puppeteer (headless shell) | 10,000 | 13 s | 753 | 1 |
+| Puppeteer (default) | 10,000 | 1.2 min | 145 | 1 |
+| wkhtmltopdf | 2,728 | 9.2 min (projected) | 18 | 1 |
+| jspdf-html2canvas | 2,173 | 11.5 min (projected) | 14 | 1 |
+| html2pdf.js | 1,798 | 13.9 min (projected) | 12 | 1 |
+| html-pdf (PhantomJS) | 1,214 | 20.7 min (projected) | 8 | 1 |
 
 **Large invoices** (300 lines, 7-9 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 33 s | 304 | 7 |
-| jsPDF (built-in font) | 10,000 | 1.2 min | 143 | 8 |
-| pdfkit (built-in font) | 10,000 | 1.2 min | 138 | 8 |
+| pdf-engine | 10,000 | 33 s | 305 | 7 |
 | Puppeteer (headless shell) | 10,000 | 1.4 min | 120 | 7 |
-| pdf-lib (built-in font) | 10,000 | 1.8 min | 91 | 8 |
-| pdf-engine (WebAssembly) | 10,000 | 2.2 min | 77 | 7 |
-| Puppeteer (default) | 8,348 | 3.0 min (projected) | 56 | 7 |
-| pdfmake (built-in font) | 6,723 | 3.7 min (projected) | 45 | 6 |
-| jsPDF (Noto Sans) | 6,443 | 3.9 min (projected) | 43 | 8 |
-| pdfkit (Noto Sans) | 4,544 | 5.5 min (projected) | 30 | 8 |
-| pdfmake (Noto Sans) | 3,318 | 7.5 min (projected) | 22 | 8 |
-| pdf-lib (Noto Sans) | 1,788 | 14.0 min (projected) | 12 | 8 |
-| @react-pdf/renderer | 917 | 27.3 min (projected) | 6 | 9 |
-| html2pdf.js | 568 | 44.1 min (projected) | 4 | 7 |
-| jspdf-html2canvas | 521 | 48.0 min (projected) | 3 | 7 |
+| pdf-engine (WebAssembly) | 10,000 | 2.2 min | 76 | 7 |
+| Puppeteer (default) | 8,422 | 3.0 min (projected) | 56 | 7 |
+| wkhtmltopdf | 2,384 | 10.5 min (projected) | 16 | 7 |
+| html-pdf (PhantomJS) | 1,117 | 22.4 min (projected) | 7 | 9 |
+| html2pdf.js | 566 | 44.2 min (projected) | 4 | 7 |
+| jspdf-html2canvas | 521 | 48.1 min (projected) | 3 | 7 |
 
 **Multi-table statements** (5 tables of 35 lines, 4-6 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 18 s | 557 | 5 |
-| jsPDF (built-in font) | 10,000 | 43 s | 231 | 5 |
-| pdfkit (built-in font) | 10,000 | 45 s | 224 | 5 |
+| pdf-engine | 10,000 | 19 s | 528 | 5 |
 | Puppeteer (headless shell) | 10,000 | 57 s | 176 | 5 |
-| pdf-lib (built-in font) | 10,000 | 1.1 min | 150 | 5 |
-| pdf-engine (WebAssembly) | 10,000 | 1.3 min | 126 | 5 |
-| pdfmake (built-in font) | 10,000 | 2.3 min | 73 | 4 |
-| Puppeteer (default) | 10,000 | 2.4 min | 70 | 5 |
-| jsPDF (Noto Sans) | 7,825 | 3.2 min (projected) | 52 | 5 |
-| pdfkit (Noto Sans) | 5,451 | 4.6 min (projected) | 36 | 5 |
-| pdfmake (Noto Sans) | 4,228 | 5.9 min (projected) | 28 | 5 |
-| pdf-lib (Noto Sans) | 2,541 | 9.8 min (projected) | 17 | 5 |
-| @react-pdf/renderer | 1,726 | 14.5 min (projected) | 12 | 6 |
-| html2pdf.js | 794 | 31.5 min (projected) | 5 | 5 |
-| jspdf-html2canvas | 768 | 32.6 min (projected) | 5 | 5 |
-
-Not run here: html-pdf: } Node.js v26.10.0
+| pdf-engine (WebAssembly) | 10,000 | 1.3 min | 125 | 5 |
+| Puppeteer (default) | 10,000 | 2.2 min | 77 | 5 |
+| wkhtmltopdf | 2,520 | 9.9 min (projected) | 17 | 5 |
+| html-pdf (PhantomJS) | 1,165 | 21.6 min (projected) | 8 | 6 |
+| html2pdf.js | 797 | 31.4 min (projected) | 5 | 5 |
+| jspdf-html2canvas | 767 | 32.6 min (projected) | 5 | 5 |
 
 Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-25.
 
@@ -426,24 +400,6 @@ The packages that turn **HTML into a PDF**. Figures are live from the npm regist
 <sub>Downloads show adoption, not quality: Puppeteer is established and widely used, and pdf-engine is new with no
 track record. They suit different jobs: Puppeteer renders anything Chrome can, including JavaScript, on a server;
 pdf-engine turns HTML templates into documents quickly, in the browser or a server.</sub>
-
-<details>
-<summary>Also measured: libraries that draw pages in code (not HTML to PDF)</summary>
-
-pdf-lib, jsPDF, pdfkit, pdfmake and @react-pdf/renderer build a PDF from drawing commands or their own components;
-you position the content yourself. They are very popular and good at that job (pdf-lib edits existing PDFs). They are
-in the [benchmark graphs](#benchmarks) because people choose them for the same documents, and with their built-in
-Latin-only font some are faster than pdf-engine per document in the browser.
-
-| Package | Weekly downloads | Updated | Runs in | How it makes the PDF | Takes HTML? |
-| --- | ---: | --- | --- | --- | --- |
-| [pdf-lib](https://www.npmjs.com/package/pdf-lib) | 12,610,613 | 4 years ago | Browser, Node | Create and edit PDFs in code | No |
-| [jspdf](https://www.npmjs.com/package/jspdf) | 9,890,457 | 7 months ago | Browser, Node | Drawing API in code | Via html2canvas (a picture) |
-| [pdfkit](https://www.npmjs.com/package/pdfkit) | 7,195,535 | 2 months ago | Node, browser | Drawing API in code | No |
-| [@react-pdf/renderer](https://www.npmjs.com/package/@react-pdf/renderer) | 4,144,759 | 2 months ago | React, Node | React components to PDF | Its own components |
-| [pdfmake](https://www.npmjs.com/package/pdfmake) | 1,792,584 | 7 days ago | Browser, Node | Document definitions in code | No |
-
-</details>
 
 ---
 

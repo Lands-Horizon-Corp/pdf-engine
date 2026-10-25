@@ -75,7 +75,7 @@ bench-setup: ## Build what is measured and install the benchmark tools and brows
 	cargo build --release
 	cd .node/wasm && npm run build
 	cd .public/benchmark && npm install && npx playwright install chromium webkit firefox \
-		&& npx puppeteer browsers install chrome chrome-headless-shell && npm run build
+		&& npx puppeteer browsers install chrome chrome-headless-shell && npm run setup:tools && npm run build
 
 bench-check: ## Render one document of each kind with every library, to see they match
 	cd .public/benchmark && npm run check

@@ -1,6 +1,5 @@
 // The scale benchmark: every library renders up to 10,000 different documents per scenario, each in
-// its own process, while this script records the memory of that whole process tree (Chrome and the
-// native engine included).   node scale.mjs [--count 10000] [--budget 150] [--scenarios small,large,multitable]
+// its own process, timed. (The memory of the whole process tree is sampled too, for the record.)   node scale.mjs [--count 10000] [--budget 150] [--scenarios small,large,multitable]
 //                                           [--libs id,id] [--force]
 // A run stops at `count` documents or after `budget` seconds. A library that hits the budget is reported with
 // what it finished, and its time for `count` is a projection (marked as such).
@@ -16,7 +15,7 @@ const arg = (name, fallback) => {
 const count = Number(arg('count', 10000));
 const budget = Number(arg('budget', 150));
 const scenarioNames = arg('scenarios', 'small,large,multitable').split(',');
-const all = ['pdf-engine', 'wasm', 'puppeteer-shell', 'puppeteer', 'html2pdf', 'jspdf-html2canvas', 'pdfkit', 'pdfkit-builtin', 'pdf-lib', 'pdf-lib-builtin', 'jspdf', 'jspdf-builtin', 'pdfmake', 'pdfmake-builtin', 'react-pdf', 'html-pdf'];
+const all = ['pdf-engine', 'wasm', 'puppeteer-shell', 'puppeteer', 'html2pdf', 'jspdf-html2canvas', 'html-pdf', 'wkhtmltopdf'];
 const libs = arg('libs', all.join(',')).split(',');
 const force = process.argv.includes('--force');
 

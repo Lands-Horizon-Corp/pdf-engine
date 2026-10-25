@@ -41,4 +41,5 @@ playwright-report/
 
 # Benchmark output (the PDFs each library made; results/ and charts/ are committed)
 .public/benchmark/out/
+.public/benchmark/tools/
 .public/benchmark/browser/dist/

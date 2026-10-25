@@ -1,6 +1,6 @@
 // Live npm facts for the packages people reach for when they search "pdf".   node npm-stats.mjs
 const packages = [
-  'puppeteer', 'jspdf', 'pdfkit', 'pdfmake', 'pdf-lib', '@react-pdf/renderer', 'html2pdf.js', 'puppeteer-core',
+  'puppeteer', 'html2pdf.js', 'puppeteer-core',
   'html-pdf', 'wkhtmltopdf', 'jspdf-html2canvas', 'pdf-creator-node', 'html-pdf-node', 'vue-html2pdf',
   'html-export-pdf-cli', 'pdf-node', '@adobe/pdfservices-node-sdk',
 ];

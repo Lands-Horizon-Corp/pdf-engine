@@ -1,5 +1,4 @@
-// The documents of the scale benchmark. Every library draws the same data: HTML libraries get the
-// HTML below, libraries that draw from code get `data`. Each document has its own invoice number.
+// The documents of the benchmark: HTML every library turns into a PDF. Each document has its own invoice number.
 
 const css = `
   body { font-family: 'Noto Sans', Arial, sans-serif; font-size: 12px; color: #1f2937; margin: 0; padding: 32px; }
@@ -30,10 +29,9 @@ function scenario(name, label, shape) {
     name,
     label,
     rows: sections.reduce((n, s) => n + s.rows.length, 0),
-    /** The document with its own number (`i`), as HTML and as data. */
+    /** The document with its own number (`i`), as HTML. */
     render(i) {
       const no = `2026-${String(i).padStart(6, '0')}`;
-      const data = { title: shape.title, no, sections, total };
       const body = `
         <div class="top"><div><div class="brand">Lands Horizon</div>123 Ayala Ave, Makati</div>
           <div class="r"><b style="font-size:16px">${shape.title}</b><br>#${no}<br>24 Oct 2026</div></div>
@@ -46,7 +44,7 @@ function scenario(name, label, shape) {
           )
           .join('')}
         <div class="total">Total ₱${total}</div>`;
-      return { data, css, body, html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>` };
+      return { css, body, html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>` };
     },
   };
 }

@@ -11,7 +11,7 @@ import { fmt, machine, median, p95, textChars } from './stats.js';
 
 const CONCURRENCY = 8;
 const now = () => performance.now();
-const ids = ['pdf-engine', 'puppeteer-shell', 'puppeteer', 'pdfkit', 'pdfkit-builtin', 'pdfmake', 'pdfmake-builtin', 'pdf-lib', 'pdf-lib-builtin', 'jspdf', 'jspdf-builtin', 'react-pdf', 'html-pdf'];
+const ids = ['pdf-engine', 'puppeteer-shell', 'puppeteer', 'html-pdf', 'wkhtmltopdf'];
 const { ok: libraries, skipped } = await loadAll(ids);
 for (const s of skipped) console.error(`${s.id} not measured: ${s.reason.slice(0, 100)}`);
 
@@ -82,6 +82,14 @@ try {
   footprint['Puppeteer (headless shell)'] = du(resolve(cache, 'chrome-headless-shell'));
 } catch (e) {
   console.error(`Puppeteer install size not measured: ${e.message}`);
+}
+try {
+  const { phantomPath, toolsDir } = await import('./tools.mjs');
+  const phantom = phantomPath();
+  if (phantom) footprint['html-pdf (PhantomJS)'] = du(resolve(phantom, '..'));
+  footprint['wkhtmltopdf'] = du(resolve(toolsDir, 'wkhtmltox', 'bin')) + du(resolve(toolsDir, 'wkhtmltox', 'lib'));
+} catch (e) {
+  console.error(`PhantomJS and wkhtmltopdf install sizes not measured: ${e.message}`);
 }
 console.log(`\nInstall size (MB): ${Object.entries(footprint).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ')}`);
 mkdirSync(resolve(import.meta.dirname, 'results'), { recursive: true });

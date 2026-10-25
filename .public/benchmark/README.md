@@ -1,6 +1,6 @@
 # Benchmarks
 
-Speed of pdf-engine against the packages people use to make PDFs, measured on your own machine. Plain Node
+Speed of pdf-engine against the other HTML-to-PDF packages (Puppeteer, html2pdf.js, jspdf-html2canvas, html-pdf, wkhtmltopdf), measured on your own machine. Plain Node
 scripts; the charts and tables in the main README come from them. Only speed is measured here.
 
 | Command | What it measures | Time |
@@ -27,6 +27,7 @@ cargo build --release                        # at the repository root
 npm install
 npx playwright install chromium webkit firefox      # the browsers for the in-browser runs
 npx puppeteer browsers install chrome chrome-headless-shell
+npm run setup:tools                          # PhantomJS (for html-pdf) and wkhtmltopdf, into tools/
 npm run build                                # bundles the browser test page
 ```
 
@@ -55,8 +56,7 @@ A long run can be stopped and resumed: results are saved after every run. On a l
 
 ## What is measured
 
-**Documents** ([`scenarios.js`](scenarios.js)). One data model produces the HTML for the HTML libraries and
-the same content as data for the libraries that draw from code, so everyone makes the same document:
+**Documents** ([`scenarios.js`](scenarios.js)). Every library receives the same HTML, so everyone makes the same document:
 
 | Document | Content |
 | --- | --- |
@@ -89,38 +89,36 @@ library that draws a blank page or a picture is visible (`npm run check` shows t
 | `wasm` | pdf-engine, WebAssembly | in Chromium, one at a time |
 | `puppeteer`, `puppeteer-shell` | Puppeteer with its default headless mode, and with `chrome-headless-shell` | 8 pages in flight |
 | `html2pdf`, `jspdf-html2canvas` | html2pdf.js, jspdf-html2canvas | in Chromium, one at a time |
-| `pdfkit`, `pdfmake`, `pdf-lib`, `jspdf` | The libraries that draw from code, with the Noto Sans Unicode font | one at a time (one JavaScript thread) |
-| `*-builtin` | The same, with the built-in Latin font (no ₱ sign, so it writes "PHP") | one at a time |
-| `react-pdf` | @react-pdf/renderer | one at a time |
-| `html-pdf` | html-pdf (PhantomJS) | needs a PhantomJS binary, see below |
+| `html-pdf` | html-pdf (PhantomJS) | 8 in flight |
+| `wkhtmltopdf` | wkhtmltopdf 0.12.6 (one process per document) | 8 in flight |
+
+**Notes on PhantomJS and wkhtmltopdf.** Neither has an Apple Silicon build, so on an M-series Mac they run
+as x86_64 under Rosetta 2, which slows them down; on x86 Linux or Windows they would be faster. Their numbers
+here are therefore an upper bound on their time. `npm run setup:tools` installs both into `tools/`
+(or set `WKHTMLTOPDF=/path/to/wkhtmltopdf`). PhantomJS ignores `zoomFactor`, so html-pdf makes 9 pages where
+Chrome makes 7 for the 300-line invoice; wkhtmltopdf is run with `--disable-smart-shrinking --zoom 1.3`
+to get Chrome's page counts. Both engines are old (PhantomJS is archived since 2018, wkhtmltopdf since 2023)
+and do not support modern CSS such as grid; `npm run check` shows what each draws.
 
 **Not measured here:**
 
-- **html-pdf** drives PhantomJS, which has no Apple Silicon build; it runs where `phantomjs` is installed.
-- **wkhtmltopdf** is a system program, not an npm package; add a driver if you have it installed.
 - **@adobe/pdfservices-node-sdk** calls Adobe's hosted service (account, network and per-call cost), so
   there is nothing to run locally.
 - **puppeteer-core** is the same code as Puppeteer without the browser download.
 
 ## Fairness rules
 
-- Every library makes the same content, with the same font where it needs one (Noto Sans, from memory, so
-  nobody reads the font file per document). The built-in-font variants are listed separately: they are
-  faster to draw, but they cannot write ₱ or any non-Latin text.
+- Only HTML-to-PDF packages are measured: each one receives the same HTML.
 - Each competitor gets its best configuration: Puppeteer is measured in both of its headless modes, and
-  the code-based libraries with and without a Unicode font.
-- The libraries that draw from code are not HTML-to-PDF tools. They are included because people choose
-  them for the same job; the README says which kind each one is.
-- JavaScript libraries run on one thread, as they do in a normal server process; pdf-engine and Puppeteer
-  use several cores. Compare per-core cost by running one process per core if that is how you deploy.
+  wkhtmltopdf is tuned until its page count matches Chrome's.
+- The in-browser libraries run on the page's one thread; pdf-engine's server and Puppeteer use several cores.
 - Numbers from one machine show the ranking and the size of the gaps, not what you will get. Run it on
   your hardware, and report losses as well as wins.
 
 ## Adding a library
 
 1. In [`libs.mjs`](libs.mjs), add a driver: `{ name, kind, concurrency, make, render, close }`, where
-   `render(handle, doc)` returns the PDF bytes (`doc.html` for HTML tools, `doc.data` for code-based ones;
-   `layout(data, peso)` gives code-based tools the shared page layout).
+   `render(handle, doc)` returns the PDF bytes from `doc.html`.
 2. Add its id to the `all` list in [`scale.mjs`](scale.mjs) (and the list in `node.mjs`). For the browser,
    add an adapter to `libraries` in [`browser/src/page.js`](browser/src/page.js).
 3. `npm run check` shows what it draws; fix the layout until the pages and text match the others.
@@ -130,7 +128,7 @@ library that draws a blank page or a picture is visible (`npm run check` shows t
 
 | | |
 | --- | --- |
-| `scenarios.js`, `libs.mjs`, `layout.js` | The documents, the library drivers and the shared page layout |
+| `scenarios.js`, `libs.mjs`, `tools.mjs`, `setup-tools.mjs` | The documents, the library drivers, and where PhantomJS/wkhtmltopdf are found and installed |
 | `node.mjs`, `browser.mjs`, `browser/` | Per-document benchmark (Node, browsers) and the page the browsers load |
 | `scale.mjs`, `scale-worker.mjs` | The 10,000-document run and its one-library-per-process worker |
 | `sizes.mjs` | What a browser downloads for each library |

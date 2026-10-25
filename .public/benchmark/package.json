@@ -2,7 +2,7 @@
   "name": "pdf-engine-bench",
   "private": true,
   "type": "module",
-  "description": "Compares pdf-engine with other HTML-to-PDF packages. Run: npm install && npm run bench",
+  "description": "Compares pdf-engine with the other HTML-to-PDF packages: Puppeteer, html2pdf.js, jspdf-html2canvas, html-pdf and wkhtmltopdf. Run: npm install && npm run setup:tools && npm run bench",
   "scripts": {
     "build": "vite build --config browser/vite.config.js",
     "check": "node check.mjs",
@@ -11,24 +11,19 @@
     "scale": "node scale.mjs",
     "stats": "node npm-stats.mjs",
     "charts": "node charts.mjs",
-    "bench": "npm run build && npm run bench:browser && npm run bench:node && npm run charts"
+    "bench": "npm run build && npm run bench:browser && npm run bench:node && npm run charts",
+    "setup:tools": "node setup-tools.mjs"
   },
   "dependencies": {
     "@lands-horizon-corp/pdf-engine": "file:../../.node/desktop",
     "@lands-horizon-corp/pdf-engine-wasm": "file:../../.node/wasm",
-    "@pdf-lib/fontkit": "^1.1.1",
-    "@react-pdf/renderer": "^4.9.0",
     "html-pdf": "^3.0.1",
     "html2pdf.js": "^0.14.0",
-    "jspdf": "^4.2.1",
     "jspdf-html2canvas": "^1.7.0",
-    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.0.0",
-    "pdfkit": "^0.20.2",
-    "pdfmake": "^0.3.12",
     "playwright": "^1.64.1",
     "puppeteer": "^25.16.0",
-    "react": "^19.3.1",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "phantomjs-prebuilt": "^2.1.16"
   }
 }

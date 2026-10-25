@@ -2,9 +2,9 @@
 // (pdf-engine's WebAssembly module). Each library is bundled alone with Vite, then compressed with gzip and
 // brotli like a real server does.   node sizes.mjs   (writes results/sizes.json)
 //
-// Fonts are not counted: a library that draws from code needs the same Noto Sans files as everyone else for
-// non-Latin text, and with its built-in font it needs none. pdf-engine ships Noto Sans Regular and Bold
-// (Latin, Cyrillic, Greek, Vietnamese) as separate files; `defaultFonts: false` skips them.
+// Fonts are not counted: html2pdf.js and jspdf-html2canvas draw the page as an image and need none;
+// pdf-engine ships Noto Sans Regular and Bold (Latin, Cyrillic, Greek, Vietnamese) as separate files, and
+// `defaultFonts: false` skips them.
 import { build } from 'vite';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -18,11 +18,6 @@ mkdirSync(tmp, { recursive: true });
 
 const entries = {
   'pdf-engine (WebAssembly)': `import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm'; window.x = PDFEngine;`,
-  'jsPDF': `import { jsPDF } from 'jspdf'; window.x = jsPDF;`,
-  'pdf-lib': `import { PDFDocument, StandardFonts } from 'pdf-lib'; window.x = [PDFDocument, StandardFonts];`,
-  'pdf-lib + fontkit (Unicode fonts)': `import { PDFDocument } from 'pdf-lib'; import fontkit from '@pdf-lib/fontkit'; window.x = [PDFDocument, fontkit];`,
-  'pdfkit': `import PDFDocument, { registerStdFonts } from 'pdfkit'; import h from 'pdfkit/standard-fonts/Helvetica'; import hb from 'pdfkit/standard-fonts/HelveticaBold'; registerStdFonts(h, hb); window.x = PDFDocument;`,
-  'pdfmake': `import pdfMake from 'pdfmake/build/pdfmake'; window.x = pdfMake;`,
   'html2pdf.js': `import html2pdf from 'html2pdf.js'; window.x = html2pdf;`,
   'jspdf-html2canvas': `import h from 'jspdf-html2canvas'; window.x = h;`,
 };

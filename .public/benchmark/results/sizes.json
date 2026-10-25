@@ -9,51 +9,11 @@
   "rows": [
     {
       "library": "pdf-engine (WebAssembly)",
-      "jsRaw": 19897,
-      "jsGzip": 7165,
-      "jsBrotli": 6824,
-      "dataRaw": 11627526,
-      "dataBrotli": 3317195
-    },
-    {
-      "library": "jsPDF",
-      "jsRaw": 1032195,
-      "jsGzip": 258536,
-      "jsBrotli": 233238,
-      "dataRaw": 0,
-      "dataBrotli": 0
-    },
-    {
-      "library": "pdf-lib",
-      "jsRaw": 629322,
-      "jsGzip": 214777,
-      "jsBrotli": 174219,
-      "dataRaw": 0,
-      "dataBrotli": 0
-    },
-    {
-      "library": "pdf-lib + fontkit (Unicode fonts)",
-      "jsRaw": 1527475,
-      "jsGzip": 569790,
-      "jsBrotli": 467302,
-      "dataRaw": 0,
-      "dataBrotli": 0
-    },
-    {
-      "library": "pdfkit",
-      "jsRaw": 660531,
-      "jsGzip": 227914,
-      "jsBrotli": 210534,
-      "dataRaw": 0,
-      "dataBrotli": 0
-    },
-    {
-      "library": "pdfmake",
-      "jsRaw": 1075351,
-      "jsGzip": 311130,
-      "jsBrotli": 283015,
-      "dataRaw": 0,
-      "dataBrotli": 0
+      "jsRaw": 27757,
+      "jsGzip": 9492,
+      "jsBrotli": 9010,
+      "dataRaw": 11710410,
+      "dataBrotli": 3347340
     },
     {
       "library": "html2pdf.js",

@@ -190,6 +190,7 @@ use_self = "warn"
 wildcard_dependencies = "warn"
 
 [lints.rust]
+warnings = { level = "allow", priority = 10 }   # pdf-engine: third-party code, its warnings are not ours to fix
 elided_lifetimes_in_paths = "warn"
 keyword_idents_2024 = "forbid"
 missing_debug_implementations = "warn"

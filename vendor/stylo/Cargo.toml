@@ -273,3 +273,6 @@ default-features = false
 
 [build-dependencies.walkdir]
 version = "2.1.4"
+
+[lints.rust]
+warnings = { level = "allow", priority = 10 }   # pdf-engine: third-party code, its warnings are not ours to fix

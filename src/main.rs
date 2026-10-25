@@ -86,6 +86,82 @@ fn run_ipc() -> ! {
     std::process::exit(code);
 }
 
+/// `pdf-engine printers` and `pdf-engine print`: one request, one answer, for programs that cannot speak the
+/// IPC protocol (a Tauri sidecar, a shell script). The request is JSON with the same fields as the IPC
+/// `printers` and `print` ops, read from `--request <file>`, from standard input (`--request -`) or given
+/// on the command line (`--json '<request>'`). The answer
+/// is one line of JSON on standard output (`{"ok":true,...}` or `{"ok":false,"error":{...}}`); the exit
+/// status is 0 for ok and 1 otherwise.
+fn run_cli(op: &str) -> ! {
+    init_logging();
+    let args: Vec<String> = std::env::args().skip(2).collect();
+    let source = args
+        .iter()
+        .position(|a| a == "--request")
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str);
+    // `--json '<request>'` puts the request on the command line (small receipts; the file or stdin have no size limit).
+    let inline = args
+        .iter()
+        .position(|a| a == "--json")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
+    let output = match ipc::take_stdout() {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("pdf-engine {op}: cannot take over stdout: {e}");
+            std::process::exit(1);
+        }
+    };
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let ok = runtime.block_on(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut raw = Vec::new();
+        let read = match source {
+            _ if inline.is_some() => {
+                raw = inline.unwrap_or_default().into_bytes();
+                Ok(())
+            }
+            Some("-") => tokio::io::stdin().read_to_end(&mut raw).await.map(drop),
+            Some(path) => tokio::fs::read(path).await.map(|b| raw = b),
+            None if op == "printers" => {
+                raw = b"{}".to_vec();
+                Ok(())
+            }
+            None => Err(std::io::Error::other("print needs --request <file>, --request - (standard input) or --json '<request>'")),
+        };
+        let reply = match read {
+            Ok(()) => {
+                // Put the op in the request, whatever the file says.
+                let mut request: serde_json::Value = serde_json::from_slice(&raw).unwrap_or(serde_json::Value::Null);
+                if let Some(map) = request.as_object_mut() {
+                    map.insert("op".into(), op.into());
+                    let state = AppState::for_ipc();
+                    ipc::handle_one(&state, request.to_string().into_bytes()).await.0
+                } else {
+                    br#"{"ok":false,"error":{"code":"INVALID_FIELD","error":"the request must be a JSON object","status":400}}"#.to_vec()
+                }
+            }
+            Err(e) => serde_json::json!({ "ok": false, "error": { "code": "IO_ERROR", "error": e.to_string(), "status": 500 } })
+                .to_string()
+                .into_bytes(),
+        };
+        let ok = serde_json::from_slice::<serde_json::Value>(&reply)
+            .ok()
+            .and_then(|v| v.get("ok").and_then(serde_json::Value::as_bool))
+            .unwrap_or(false);
+        let mut output = output;
+        let _ = output.write_all(&reply).await;
+        let _ = output.write_all(b"\n").await;
+        let _ = output.flush().await;
+        ok
+    });
+    std::process::exit(if ok { 0 } else { 1 });
+}
+
 /// `pdf-engine` (default): the HTTP API.
 fn run_http() {
     init_logging();
@@ -99,9 +175,11 @@ fn run_http() {
         }
         fonts::watch_from_env(state.renderer.clone());
 
-        let addr: SocketAddr = format!("0.0.0.0:{}", port())
+        // 0.0.0.0 for a container; set API_HOST=127.0.0.1 when the server is a sidecar of a desktop app.
+        let host = std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+        let addr: SocketAddr = format!("{host}:{}", port())
             .parse()
-            .expect("Invalid address");
+            .expect("API_HOST and API_PORT must make a socket address like 127.0.0.1:6767");
         tracing::info!(
             "pdf-engine v{} listening on http://{}",
             env!("CARGO_PKG_VERSION"),
@@ -118,9 +196,13 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("healthcheck") => healthcheck(),
         Some("ipc") => run_ipc(),
+        Some("printers") => run_cli("printers"),
+        Some("print") => run_cli("print"),
         Some("serve") | None => run_http(),
         Some(other) => {
-            eprintln!("unknown command `{other}`; use `ipc`, `serve` (default) or `healthcheck`");
+            eprintln!(
+                "unknown command `{other}`; use `ipc`, `printers`, `print`, `serve` (default) or `healthcheck`"
+            );
             std::process::exit(64);
         }
     }

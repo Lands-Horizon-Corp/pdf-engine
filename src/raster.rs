@@ -19,7 +19,9 @@ impl Bitmap {
     /// Rows packed 8 dots to a byte, most significant bit first, 1 = black.
     fn packed_row(&self, row: usize) -> impl Iterator<Item = u8> + '_ {
         self.dots[row * self.width..(row + 1) * self.width]
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|c| c.iter().fold(0u8, |acc, &d| (acc << 1) | d))
     }
 
@@ -67,8 +69,12 @@ pub fn pdf_to_bitmap(pdf: &[u8], dots: usize, dither: bool) -> Result<Bitmap, Ap
         height += h;
     }
 
-    let height = trim_blank_rows(&grey, dots, height);
-    grey.truncate(height * dots);
+    let end = trim_blank_rows(&grey, dots, height);
+    grey.truncate(end * dots);
+    // Paper above the first ink is waste too; keep a small margin.
+    let start = first_ink_row(&grey, dots).saturating_sub(8);
+    grey.drain(..start * dots);
+    let height = end - start;
     let dots_out = if dither {
         floyd_steinberg(&mut grey, dots, height)
     } else {
@@ -87,6 +93,14 @@ fn trim_blank_rows(grey: &[u8], width: usize, height: usize) -> usize {
         .rev()
         .find(|&y| grey[y * width..(y + 1) * width].iter().any(|&g| g < 200));
     last_ink.map_or(1, |y| (y + 1 + 8).min(height))
+}
+
+/// The first row with ink (the last row if there is none).
+fn first_ink_row(grey: &[u8], width: usize) -> usize {
+    let rows = grey.len() / width;
+    (0..rows)
+        .find(|&y| grey[y * width..(y + 1) * width].iter().any(|&g| g < 200))
+        .unwrap_or(0)
 }
 
 fn threshold(grey: &[u8]) -> Vec<u8> {

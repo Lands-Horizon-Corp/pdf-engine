@@ -15,7 +15,9 @@ export type ErrorCode =
   | 'RENDER_FAILED'
   | 'PDF_PROCESSING_FAILED'
   | 'TIMEOUT'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'PRINT_FAILED'
+  | 'PRINTER_UNREACHABLE';
 
 /** Error codes produced by this client, not the engine. */
 export type ClientErrorCode =
@@ -24,9 +26,7 @@ export type ClientErrorCode =
   | 'ENGINE_EXITED'
   | 'ENGINE_CLOSED'
   | 'CLIENT_TIMEOUT'
-  | 'PROTOCOL_MISMATCH'
-  | 'PRINTER_UNREACHABLE'
-  | 'PRINT_FAILED';
+  | 'PROTOCOL_MISMATCH';
 
 /** Wire protocol version; the client refuses an engine that reports a different one. */
 export const PROTOCOL_VERSION: 1;
@@ -153,8 +153,8 @@ export class PDFEngine {
 
   /**
    * The printers this computer can print to: those the operating system lists plus the `printers` you passed
-   * to the constructor, plus USB receipt and label printers seen directly when the optional `usb` package is
-   * installed. Network printers cannot be discovered, so list them in the constructor.
+   * to the constructor, plus USB receipt and label printers seen directly. Network printers cannot be
+   * discovered, so list them in the constructor.
    */
   printers(): Promise<Printer[]>;
 

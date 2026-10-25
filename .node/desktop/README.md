@@ -75,16 +75,19 @@ await pdf.print({
   `language` (`escpos` or `zpl`), and everything `generate()` takes except `password`.
 - **USB.** The simple way is the operating-system queue: add the printer (the "Generic / Text Only" driver on
   Windows, a raw queue on macOS and Linux) and use its `system://` id. To talk to the USB device directly, by
-  vendor and product id (`usb://0483:5740`), install the optional [`usb`](https://www.npmjs.com/package/usb)
-  package (`npm install usb`); `printers()` then lists receipt and label printers it finds. Windows needs a
-  WinUSB driver for that device (Zadig), which stops it appearing as a normal printer; Linux needs permission
-  on the device (a udev rule). Direct USB is for receipt and label printers; PDFs go through `system://`.
+  vendor and product id (`usb://0483:5740`), nothing extra is needed: `printers()` lists the receipt and label
+  printers the engine finds. Windows needs a WinUSB driver for that device (Zadig), which stops it appearing as
+  a normal printer; Linux needs permission on the device (a udev rule). Direct USB is for receipt and label
+  printers; PDFs go through `system://`.
 - **Not a web feature.** A web page cannot see printers; the browser package's `print()` opens the browser's
   print dialog instead.
 
 Printing needs the operating system's tools to be present (`lp` and `lpstat` on macOS and Linux, PowerShell
 on Windows). Errors are `PRINTER_UNREACHABLE` (a network printer did not answer) and `PRINT_FAILED` (the
 queue refused the job); both carry the system's message.
+
+The printing itself is done by the engine, so it is also available without Node: `pdf-engine printers` and
+`pdf-engine print --request <file>` (see the [Tauri guide](../../.public/docs/sample-tauri.md)).
 
 ## Errors
 

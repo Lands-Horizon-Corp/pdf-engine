@@ -17,7 +17,6 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const printing = require('./printing.js');
 
 const PROTOCOL_VERSION = 1;
 
@@ -148,11 +147,13 @@ class PDFEngine {
 
   /**
    * The printers this computer can print to: those the operating system knows (USB, network and Bluetooth
-   * printers with their driver installed) plus the `printers` you passed to the constructor, such as
-   * `{ id: 'net://192.168.1.150:9100', name: 'Kitchen' }`.
+   * printers with their driver installed), the `printers` you passed to the constructor (network printers,
+   * which cannot be discovered), and USB receipt and label printers the engine sees directly.
    */
   async printers() {
-    return printing.listPrinters({ extra: this.#options.printers || [] });
+    await this.#ensureStarted();
+    const { header } = await this.#request({ op: 'printers', printers: this.#options.printers || [] });
+    return header.printers;
   }
 
   /**
@@ -163,65 +164,32 @@ class PDFEngine {
     if (!options || typeof options !== 'object') {
       throw clientError('MISSING_FIELD', 'print() needs an options object with a `printerId` and a `template`.');
     }
-    let target;
-    try {
-      target = printing.parsePrinterId(options.printerId);
-    } catch (e) {
-      throw clientError('INVALID_FIELD', e.message);
-    }
-    const known = (await this.printers()).find((p) => p.id === options.printerId);
-    const type = options.type ?? known?.type ?? (target.scheme === 'net' || target.scheme === 'usb' ? 'thermal' : 'document');
-    if (!['thermal', 'label', 'document'].includes(type)) {
-      throw clientError('INVALID_FIELD', `type must be 'thermal', 'label' or 'document', not ${JSON.stringify(type)}.`);
-    }
-    if (target.scheme === 'usb' && type === 'document') {
-      throw clientError('INVALID_FIELD', 'A usb:// printer takes receipt or label commands, not PDFs. Print documents through the system: system://<printer name>.');
-    }
-    const copies = Math.max(1, Math.min(100, Number(options.copies) || 1));
-    const { printerId, type: _type, copies: _copies, paper, language, cut, feed, dither, ...render } = options;
-
-    let bytes;
-    let sent = 'pdf';
-    if (type === 'document') {
-      bytes = await this.generate(render);
-    } else {
-      sent = language ?? (type === 'label' ? 'zpl' : 'escpos');
-      const dots = typeof paper === 'number' ? paper : printing.PAPER_DOTS[paper ?? '80mm'];
-      if (!dots) {
-        throw clientError('INVALID_FIELD', `paper must be '58mm', '80mm', '112mm' or a width in dots, not ${JSON.stringify(paper)}.`);
-      }
-      const supplied = render.images ? await collectImages(render.images) : [];
-      await this.#ensureStarted();
-      ({ body: bytes } = await this.#request(
-        {
-          op: 'raster',
-          template: render.template,
-          data: render.data === undefined ? {} : render.data,
-          height: render.height,
-          format: sent,
-          dots,
-          dpi: printing.DPI,
-          cut: cut ?? true,
-          feed,
-          dither: dither ?? false,
-          images: supplied.length ? supplied.map(({ src, bytes: b }) => ({ src, len: b.length })) : undefined,
-        },
-        this.#options.timeoutMs,
-        supplied.length ? Buffer.concat(supplied.map((i) => i.bytes)) : null,
-      ));
-    }
-
-    try {
-      for (let i = 0; i < copies; i++) {
-        if (target.scheme === 'net') await printing.sendNet(target.host, target.port, bytes);
-        else if (target.scheme === 'usb') await printing.sendUsb(target.vendorId, target.productId, bytes);
-        else if (sent === 'pdf') await printing.sendSystemPdf(target.name, bytes, { copies: 1 });
-        else await printing.sendSystemRaw(target.name, bytes);
-      }
-    } catch (e) {
-      throw clientError(e.code === 'PRINTER_UNREACHABLE' ? 'PRINTER_UNREACHABLE' : 'PRINT_FAILED', `Printing to ${printerId} failed: ${e.stderr?.trim() || e.message}`, 'Check that the printer is on, connected and listed by printers().');
-    }
-    return { printerId, type, language: sent, bytes: bytes.length, copies };
+    const { printerId, type, paper, language, cut, feed, dither, copies, template, data, width, height, orientation } = options;
+    const supplied = options.images ? await collectImages(options.images) : [];
+    await this.#ensureStarted();
+    const { header } = await this.#request(
+      {
+        op: 'print',
+        printerId,
+        type,
+        paper,
+        language,
+        cut,
+        feed,
+        dither,
+        copies,
+        template,
+        data: data === undefined ? {} : data,
+        width,
+        height,
+        orientation,
+        printers: this.#options.printers || [],
+        images: supplied.length ? supplied.map(({ src, bytes }) => ({ src, len: bytes.length })) : undefined,
+      },
+      this.#options.timeoutMs,
+      supplied.length ? Buffer.concat(supplied.map((i) => i.bytes)) : null,
+    );
+    return { printerId: header.printerId, type: header.type, language: header.language, bytes: header.bytes, copies: header.copies };
   }
 
   /** Start the engine now instead of on the first `generate()`. Returns its version information. */

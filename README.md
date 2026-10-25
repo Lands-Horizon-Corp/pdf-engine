@@ -207,6 +207,10 @@ async function download() {
 <template><button @click="download">Download PDF</button></template>
 ```
 
+Step-by-step guides: [React](.public/docs/sample-react.md), [Vue](.public/docs/sample-vue.md),
+[Svelte](.public/docs/sample-svelte.md), [Next.js](.public/docs/sample-nextjs.md),
+[Electron](.public/docs/sample-electron.md), [Tauri](.public/docs/sample-tauri.md).
+
 ### Plain HTML, Vanilla JS, jQuery (no build step)
 
 ```html
@@ -282,7 +286,9 @@ await pdf.print({ printerId: printers[0].id, paper: '80mm', template, data });
 ```
 
 Receipt printers get ESC/POS, label printers ZPL, office printers the PDF, through the operating system's
-queue, a network socket (`net://host:9100`) or USB directly (`usb://vendor:product`, optional `usb` package).
+queue, a network socket (`net://host:9100`) or USB directly (`usb://vendor:product`). Electron and Node use it
+through the Node package; Tauri (or anything else) runs `pdf-engine print` as a sidecar
+([Tauri guide](.public/docs/sample-tauri.md#printing-receipt-label-and-office-printers)).
 Details in the [Node guide](.node/desktop/README.md#printing-electron-tauri-node). A web page cannot see printers; the
 browser package has `print()` for the browser's own print dialog.
 
@@ -454,6 +460,7 @@ Responses are gzip/brotli/zstd compressed when the client asks.
 | `STORAGE_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` | optional | S3 / MinIO, for `/api/to-s3` |
 | `STORAGE_REGION` | `us-east-1` | |
 | `API_PORT` | `6767` | |
+| `API_HOST` | `0.0.0.0` | Address to listen on; `127.0.0.1` for a desktop sidecar that only the app should reach |
 | `RENDER_TIMEOUT_SECS` | `45` | Per request; `408` when exceeded |
 | `CORS_ALLOWED_ORIGINS` | none | Browser origins allowed to call the API, comma separated (`*` = any) |
 | `ASSET_ALLOWED_HOSTS` | off | Hosts `<img>` may load from, e.g. `cdn.example.com,*.assets.io` |

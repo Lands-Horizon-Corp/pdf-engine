@@ -298,3 +298,6 @@ version = "1.1"
 version = "0.4"
 features = ["wasm_js"]
 default-features = false
+
+[lints.rust]
+warnings = { level = "allow", priority = 10 }   # pdf-engine: third-party code, its warnings are not ours to fix

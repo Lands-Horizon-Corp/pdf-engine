@@ -55,6 +55,12 @@ pub enum AppError {
     #[cfg(not(target_arch = "wasm32"))]
     #[error("Internal Task Error: {0}")]
     Join(#[from] tokio::task::JoinError),
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error("Printing failed: {0}")]
+    Printer(String),
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error("Could not reach the printer: {0}")]
+    PrinterUnreachable(String),
 }
 
 impl AppError {
@@ -76,6 +82,8 @@ impl AppError {
         "PDF_PROCESSING_FAILED",
         "TIMEOUT",
         "INTERNAL_ERROR",
+        "PRINT_FAILED",
+        "PRINTER_UNREACHABLE",
     ];
 
     /// Stable identifier callers can branch on. New codes may be added; existing ones never change.
@@ -99,6 +107,10 @@ impl AppError {
             AppError::Timeout(_) => "TIMEOUT",
             #[cfg(not(target_arch = "wasm32"))]
             AppError::Join(_) => "INTERNAL_ERROR",
+            #[cfg(not(target_arch = "wasm32"))]
+            AppError::Printer(_) => "PRINT_FAILED",
+            #[cfg(not(target_arch = "wasm32"))]
+            AppError::PrinterUnreachable(_) => "PRINTER_UNREACHABLE",
         }
     }
 
@@ -115,6 +127,8 @@ impl AppError {
             AppError::PayloadTooLarge(_) | AppError::TemplateOutputTooLarge(_) => 413,
             AppError::Timeout(_) => 408,
             AppError::StorageNotConfigured => 501,
+            #[cfg(not(target_arch = "wasm32"))]
+            AppError::Printer(_) | AppError::PrinterUnreachable(_) => 502,
             _ => 500,
         }
     }
@@ -169,6 +183,14 @@ impl AppError {
             AppError::Io(_) => return None,
             #[cfg(not(target_arch = "wasm32"))]
             AppError::Storage(_) | AppError::Join(_) => return None,
+            #[cfg(not(target_arch = "wasm32"))]
+            AppError::Printer(_) => {
+                "The operating system or the printer refused the job. Check that it is on, has paper and is listed by `printers`."
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppError::PrinterUnreachable(_) => {
+                "Check the printer's address and cable, and that it is on. Network printers listen on port 9100."
+            }
         })
     }
 

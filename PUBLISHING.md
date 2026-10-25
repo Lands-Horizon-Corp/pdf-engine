@@ -58,7 +58,7 @@ the **Node** package is published, print on at least:
 - a receipt printer by network (`net://host:9100`) and through the system queue (`system://...`) on macOS or
   Linux, and on **Windows** (the raw-print PowerShell path has never run on Windows);
 - an office printer with a PDF (`type: 'document'`) on each system;
-- a USB receipt printer directly (`usb://vendor:product` with `npm install usb`), on Windows with a WinUSB
+- a USB receipt printer directly (`usb://vendor:product`), on Windows with a WinUSB
   driver and on Linux with a udev rule;
 - a label printer, if ZPL is advertised for that release.
 

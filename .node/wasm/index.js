@@ -56,7 +56,8 @@ async function loadBytes(source, fetchImpl, cache = true) {
 }
 
 async function fetchBytes(source, key, fetchImpl) {
-  if (isNode && (source instanceof URL ? source.protocol === 'file:' : !/^[a-z][a-z0-9+.-]*:/i.test(key) || key.startsWith('file:'))) {
+  // A Windows path (C:\\dir\\file) starts like a URL scheme, so it is recognised first.
+  if (isNode && (source instanceof URL ? source.protocol === 'file:' : /^[A-Za-z]:[\\/]/.test(key) || !/^[a-z][a-z0-9+.-]*:/i.test(key) || key.startsWith('file:'))) {
     const { readFile } = await nodeImport('node:fs/promises');
     const { fileURLToPath } = await nodeImport('node:url');
     return new Uint8Array(await readFile(source instanceof URL || key.startsWith('file:') ? fileURLToPath(source) : key));
@@ -321,7 +322,7 @@ export class PDFEngine {
     frame.src = url;
     await new Promise((ok, fail) => {
       frame.onload = ok;
-      frame.onerror = () => fail(clientError('PRINT_FAILED', 'The browser could not load the PDF for printing.'));
+      frame.onerror = () => fail(clientError('BROWSER_PRINT_FAILED', 'The browser could not load the PDF for printing.'));
       document.body.appendChild(frame);
     });
     frame.contentWindow.focus();

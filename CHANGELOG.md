@@ -21,12 +21,13 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Added
 
-- **Printing from the Node package** (Electron, Tauri, Node): `printers()` lists the operating system's
-  printers (plus network printers you pass in), and `print()` sends a receipt as ESC/POS, a label as ZPL or a
-  document as PDF, through the system queue or straight to a network printer. New IPC op `raster` renders a
-  template to printer commands (pure Rust rasteriser, no new system libraries). USB printers can also be
-  used directly by vendor and product id (`usb://0483:5740`) with the optional `usb` package. Not yet tried on physical
-  printers; see `PUBLISHING.md`.
+- **Printing** (Electron, Tauri, Node, any program): the engine lists printers and prints a receipt as
+  ESC/POS, a label as ZPL or a document as PDF, through the system queue (`system://`), a network socket
+  (`net://host:9100`) or a USB device directly (`usb://vendor:product`, pure Rust, no libusb). Use it from the
+  Node client (`printers()`, `print()` over IPC) or from the command line: `pdf-engine printers` and
+  `pdf-engine print --request <file>` (one JSON answer on standard output), which a Tauri sidecar can run.
+  New IPC ops `raster`, `printers` and `print`; error codes `PRINT_FAILED` and `PRINTER_UNREACHABLE`.
+  New setting `API_HOST`. Not yet tried on physical printers; see `PUBLISHING.md`.
 - **Browser package: several servers and smart routing.** `url` and `token` accept arrays (round robin; a
   server that is down or overloaded is skipped), `pick: 'server' | 'browser' | 'auto'` with `autoMaxBytes`,
   and a fallback to WebAssembly when offline. Only the `data` keys a template names are sent (`pruneData`).

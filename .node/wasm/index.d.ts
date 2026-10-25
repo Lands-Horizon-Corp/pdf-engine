@@ -15,10 +15,12 @@ export type ErrorCode =
   | 'RENDER_FAILED'
   | 'PDF_PROCESSING_FAILED'
   | 'TIMEOUT'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'PRINT_FAILED'
+  | 'PRINTER_UNREACHABLE';
 
 /** Error codes produced by this package, not the engine. */
-export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED' | 'SERVER_UNREACHABLE' | 'NOT_IN_BROWSER' | 'PRINT_FAILED';
+export type ClientErrorCode = 'WASM_LOAD_FAILED' | 'FONT_LOAD_FAILED' | 'ENGINE_CLOSED' | 'SERVER_UNREACHABLE' | 'NOT_IN_BROWSER' | 'BROWSER_PRINT_FAILED';
 
 export interface PDFEngineErrorInit {
   code: ErrorCode | ClientErrorCode;

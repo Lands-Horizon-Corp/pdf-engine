@@ -154,3 +154,6 @@ version = "1.0.93"
 [profile.release]
 lto = true
 panic = "abort"
+
+[lints.rust]
+warnings = { level = "allow", priority = 10 }   # pdf-engine: third-party code, its warnings are not ours to fix

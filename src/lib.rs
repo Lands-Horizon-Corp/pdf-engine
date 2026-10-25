@@ -13,6 +13,7 @@ pub mod ipc;
 pub mod models;
 pub mod pdf;
 pub mod pdf_encrypt;
+pub mod printing;
 pub mod raster;
 pub mod storage;
 pub mod template;

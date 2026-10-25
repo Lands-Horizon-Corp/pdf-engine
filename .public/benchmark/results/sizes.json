@@ -9,11 +9,11 @@
   "rows": [
     {
       "library": "pdf-engine (WebAssembly)",
-      "jsRaw": 15291,
-      "jsGzip": 5440,
-      "jsBrotli": 5194,
-      "dataRaw": 11627522,
-      "dataBrotli": 3316172
+      "jsRaw": 19897,
+      "jsGzip": 7165,
+      "jsBrotli": 6824,
+      "dataRaw": 11627526,
+      "dataBrotli": 3317195
     },
     {
       "library": "jsPDF",

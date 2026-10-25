@@ -16,10 +16,12 @@ const bytes = await pdf.generate({ template: '<h1>Invoice {{ no }}</h1>', data: 
 - **One engine everywhere.** Browser, desktop app and server give the same output, with the same API and
   the same error codes.
 - **Templates built in.** `{{ value }}`, loops and HTML-escaping; no second library.
-- **Fast.** Under 1 ms for a receipt and under 2 ms for a 30-line invoice, in the browser or natively.
-  With the same Unicode font, 10–30× faster than jsPDF, pdf-lib, pdfkit and pdfmake in the browser, and
-  about 50× faster than the html2canvas libraries. Those libraries are quicker only with their built-in
-  Latin-only font, which cannot draw ₱ or non-Latin text ([benchmarks](#benchmarks)).
+- **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice, native or in the browser. Natively, 10,000
+  multi-table statements take 18 s: 3× faster than Puppeteer's fastest mode (57 s) and 2.4× faster than jsPDF or
+  pdfkit with their built-in fonts (about 44 s). In the browser, with the same Unicode font, it is 10–40× faster than
+  jsPDF, pdf-lib, pdfkit and pdfmake and about 50–100× faster than the html2canvas libraries. Where it does not win:
+  in the browser, jsPDF, pdfkit and pdf-lib with their built-in Latin-only font (no ₱, no non-Latin text) make a
+  document in 0.2–1.2 ms, against 0.7–1.5 ms here ([benchmarks](#benchmarks)).
 - **Small enough.** A 32 MB native binary, or 3.2 MB of WebAssembly (brotli).<sup>1</sup>
 - **Every language.** About 150 Noto fonts on the server cover practically every living script; in the
   browser you add the font you need.
@@ -68,65 +70,65 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 2.0 s | 4,894 | 1 |
-| jsPDF (built-in font) | 10,000 | 3.3 s | 3,023 | 1 |
-| pdfkit (built-in font) | 10,000 | 4.2 s | 2,394 | 1 |
-| pdf-lib (built-in font) | 10,000 | 4.8 s | 2,077 | 1 |
-| pdf-engine (WebAssembly) | 10,000 | 7.7 s | 1,298 | 1 |
-| pdfmake (built-in font) | 10,000 | 9.6 s | 1,039 | 1 |
-| Puppeteer (headless shell) | 10,000 | 14 s | 716 | 1 |
-| @react-pdf/renderer | 10,000 | 52 s | 193 | 1 |
-| Puppeteer (default) | 10,000 | 1.3 min | 129 | 1 |
-| jsPDF (Noto Sans) | 10,000 | 2.4 min | 69 | 1 |
-| pdfkit (Noto Sans) | 7,715 | 3.2 min (projected) | 51 | 1 |
-| pdfmake (Noto Sans) | 7,376 | 3.4 min (projected) | 49 | 1 |
-| pdf-lib (Noto Sans) | 6,720 | 3.7 min (projected) | 45 | 1 |
-| jspdf-html2canvas | 2,171 | 11.5 min (projected) | 14 | 1 |
-| html2pdf.js | 1,848 | 13.5 min (projected) | 12 | 1 |
+| pdf-engine | 10,000 | 2.0 s | 5,008 | 1 |
+| jsPDF (built-in font) | 10,000 | 3.4 s | 2,932 | 1 |
+| pdfkit (built-in font) | 10,000 | 4.3 s | 2,312 | 1 |
+| pdf-lib (built-in font) | 10,000 | 5.0 s | 1,991 | 1 |
+| pdf-engine (WebAssembly) | 10,000 | 7.0 s | 1,427 | 1 |
+| pdfmake (built-in font) | 10,000 | 10 s | 990 | 1 |
+| Puppeteer (headless shell) | 10,000 | 14 s | 710 | 1 |
+| @react-pdf/renderer | 10,000 | 56 s | 180 | 1 |
+| Puppeteer (default) | 10,000 | 1.2 min | 134 | 1 |
+| jsPDF (Noto Sans) | 9,832 | 2.5 min (projected) | 66 | 1 |
+| pdfkit (Noto Sans) | 7,545 | 3.3 min (projected) | 50 | 1 |
+| pdfmake (Noto Sans) | 7,168 | 3.5 min (projected) | 48 | 1 |
+| pdf-lib (Noto Sans) | 6,570 | 3.8 min (projected) | 44 | 1 |
+| jspdf-html2canvas | 2,192 | 11.4 min (projected) | 15 | 1 |
+| html2pdf.js | 1,864 | 13.4 min (projected) | 12 | 1 |
 
 **Large invoices** (300 lines, 7-9 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 30 s | 336 | 7 |
+| pdf-engine | 10,000 | 33 s | 304 | 7 |
+| jsPDF (built-in font) | 10,000 | 1.2 min | 143 | 8 |
 | pdfkit (built-in font) | 10,000 | 1.2 min | 138 | 8 |
-| jsPDF (built-in font) | 10,000 | 1.2 min | 137 | 8 |
-| Puppeteer (headless shell) | 10,000 | 1.5 min | 111 | 7 |
+| Puppeteer (headless shell) | 10,000 | 1.4 min | 120 | 7 |
 | pdf-lib (built-in font) | 10,000 | 1.8 min | 91 | 8 |
-| pdf-engine (WebAssembly) | 10,000 | 2.5 min | 67 | 7 |
-| Puppeteer (default) | 6,735 | 3.7 min (projected) | 45 | 7 |
-| pdfmake (built-in font) | 6,642 | 3.8 min (projected) | 44 | 6 |
-| jsPDF (Noto Sans) | 6,498 | 3.8 min (projected) | 43 | 8 |
-| pdfkit (Noto Sans) | 4,558 | 5.5 min (projected) | 30 | 8 |
-| pdfmake (Noto Sans) | 3,247 | 7.7 min (projected) | 22 | 8 |
-| pdf-lib (Noto Sans) | 1,802 | 13.9 min (projected) | 12 | 8 |
-| @react-pdf/renderer | 897 | 27.9 min (projected) | 6 | 9 |
-| html2pdf.js | 568 | 44.0 min (projected) | 4 | 7 |
-| jspdf-html2canvas | 525 | 47.7 min (projected) | 3 | 7 |
+| pdf-engine (WebAssembly) | 10,000 | 2.2 min | 77 | 7 |
+| Puppeteer (default) | 8,348 | 3.0 min (projected) | 56 | 7 |
+| pdfmake (built-in font) | 6,723 | 3.7 min (projected) | 45 | 6 |
+| jsPDF (Noto Sans) | 6,443 | 3.9 min (projected) | 43 | 8 |
+| pdfkit (Noto Sans) | 4,544 | 5.5 min (projected) | 30 | 8 |
+| pdfmake (Noto Sans) | 3,318 | 7.5 min (projected) | 22 | 8 |
+| pdf-lib (Noto Sans) | 1,788 | 14.0 min (projected) | 12 | 8 |
+| @react-pdf/renderer | 917 | 27.3 min (projected) | 6 | 9 |
+| html2pdf.js | 568 | 44.1 min (projected) | 4 | 7 |
+| jspdf-html2canvas | 521 | 48.0 min (projected) | 3 | 7 |
 
 **Multi-table statements** (5 tables of 35 lines, 4-6 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| jsPDF (built-in font) | 10,000 | 44 s | 227 | 5 |
-| pdfkit (built-in font) | 10,000 | 45 s | 221 | 5 |
-| pdf-engine | 10,000 | 52 s | 193 | 5 |
-| Puppeteer (headless shell) | 10,000 | 57 s | 175 | 5 |
-| pdf-lib (built-in font) | 10,000 | 1.1 min | 149 | 5 |
-| pdf-engine (WebAssembly) | 10,000 | 1.5 min | 111 | 5 |
-| Puppeteer (default) | 10,000 | 2.2 min | 75 | 5 |
-| pdfmake (built-in font) | 10,000 | 2.3 min | 72 | 4 |
-| jsPDF (Noto Sans) | 7,867 | 3.2 min (projected) | 52 | 5 |
-| pdfkit (Noto Sans) | 5,435 | 4.6 min (projected) | 36 | 5 |
-| pdfmake (Noto Sans) | 4,227 | 5.9 min (projected) | 28 | 5 |
-| pdf-lib (Noto Sans) | 2,534 | 9.9 min (projected) | 17 | 5 |
-| @react-pdf/renderer | 1,715 | 14.6 min (projected) | 11 | 6 |
-| html2pdf.js | 789 | 31.7 min (projected) | 5 | 5 |
-| jspdf-html2canvas | 769 | 32.5 min (projected) | 5 | 5 |
+| pdf-engine | 10,000 | 18 s | 557 | 5 |
+| jsPDF (built-in font) | 10,000 | 43 s | 231 | 5 |
+| pdfkit (built-in font) | 10,000 | 45 s | 224 | 5 |
+| Puppeteer (headless shell) | 10,000 | 57 s | 176 | 5 |
+| pdf-lib (built-in font) | 10,000 | 1.1 min | 150 | 5 |
+| pdf-engine (WebAssembly) | 10,000 | 1.3 min | 126 | 5 |
+| pdfmake (built-in font) | 10,000 | 2.3 min | 73 | 4 |
+| Puppeteer (default) | 10,000 | 2.4 min | 70 | 5 |
+| jsPDF (Noto Sans) | 7,825 | 3.2 min (projected) | 52 | 5 |
+| pdfkit (Noto Sans) | 5,451 | 4.6 min (projected) | 36 | 5 |
+| pdfmake (Noto Sans) | 4,228 | 5.9 min (projected) | 28 | 5 |
+| pdf-lib (Noto Sans) | 2,541 | 9.8 min (projected) | 17 | 5 |
+| @react-pdf/renderer | 1,726 | 14.5 min (projected) | 12 | 6 |
+| html2pdf.js | 794 | 31.5 min (projected) | 5 | 5 |
+| jspdf-html2canvas | 768 | 32.6 min (projected) | 5 | 5 |
 
 Not run here: html-pdf: } Node.js v26.10.0
 
-Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-24.
+Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-25.
 
 </details>
 

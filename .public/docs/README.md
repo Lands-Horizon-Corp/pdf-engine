@@ -17,6 +17,7 @@ process), in Tauri (as a sidecar), on a server (HTTP, Docker) and from the comma
 | Call it from another language or a script | [Command line and IPC protocol](cli-and-ipc.md) |
 | Use other scripts and languages (Chinese, Arabic, ...) | [Fonts and languages](fonts-and-languages.md) |
 | Understand an error code | [Errors](errors.md) |
+| Understand an error code | Every test suite, where it runs, and what is not tested |
 | See the problems people have with HTML to PDF, and where pdf-engine stands on each | [Real-world concerns](user-concerns.md) |
 | Compare speed with other packages, or measure it myself | [Benchmarks](../benchmark/README.md) |
 

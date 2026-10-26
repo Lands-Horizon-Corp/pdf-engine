@@ -276,7 +276,7 @@ if (existsSync(readmePath) && readFileSync(readmePath, 'utf8').includes('<!-- be
 
   if (existsSync(memoryPath)) {
     const memory = JSON.parse(readFileSync(memoryPath, 'utf8'));
-    md += `### Memory: one PDF of 1, 100 and 1000 pages\n\nEach library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.\n\n`;
+    md += `### Memory: one PDF of 1, 100 and 1000 pages\n\nEach library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. A library that cannot make the document is shown as failed.\n\n`;
     for (const scenario of Object.keys(memoryPages)) md += `${picture(`memory-${scenario}`, `Peak memory for one PDF of ${memoryPages[scenario]}`)}\n`;
     const ids = [...new Set(memory.rows.map((r) => r.id))];
     const cell = (id, sc) => {

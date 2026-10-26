@@ -237,7 +237,7 @@ Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-26.
 
 ### Memory: one PDF of 1, 100 and 1000 pages
 
-Each library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.
+Each library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. A library that cannot make the document is shown as failed.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".public/benchmark/charts/memory-pages1-dark.svg">
@@ -460,6 +460,7 @@ flowchart TD
 | [Command line and IPC](.public/docs/cli-and-ipc.md) | The commands and the wire protocol, to write a client in any language |
 | [Fonts and languages](.public/docs/fonts-and-languages.md) | Scripts covered, adding fonts |
 | [Errors](.public/docs/errors.md) | Every code and what to do about it |
+| [Testing](.public/docs/testing.md) | Every test suite (smoke, happy path, sad path, limits and memory, sidecar), where each runs in CI, and what is **not** tested |
 | [Real-world concerns](.public/docs/user-concerns.md) | What developers struggle with in HTML to PDF, and where pdf-engine stands on each: solved, partly, or planned |
 | Guides | [React](.public/docs/sample-react.md) · [Vue](.public/docs/sample-vue.md) · [Svelte](.public/docs/sample-svelte.md) · [Next.js](.public/docs/sample-nextjs.md) · [Electron](.public/docs/sample-electron.md) · [Tauri](.public/docs/sample-tauri.md) |
 
@@ -553,7 +554,7 @@ from a browser, and change `API_BEARER_TOKEN` before exposing it.
 ```bash
 make test       # functional test suites
 make check      # fmt + tests (what CI runs)
-make node       # Node client tests (cargo build first)
+make node       # Node client tests (cargo build first); all suites: .public/docs/testing.md
 make bench      # speed per document, then redraw the charts
 make help       # everything else
 ```

@@ -2,6 +2,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/v/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/dw/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=downloads" alt="npm weekly downloads" /></a>
+  <a href="https://www.jsdelivr.com/package/npm/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/jsdelivr/npm/hm/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=cdn%20hits" alt="jsDelivr monthly hits" /></a>
   <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/actions"><img src="https://img.shields.io/github/actions/workflow/status/Lands-Horizon-Corp/pdf-engine/ci.yml?branch=master&style=flat-square&label=CI" alt="CI status" /></a>
   <img src="https://img.shields.io/badge/browsers-Chromium%20%7C%20Firefox%20%7C%20WebKit-orange?style=flat-square" alt="browsers" />
   <img src="https://img.shields.io/badge/engine-Rust%20%2B%20WebAssembly-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust and WebAssembly" />

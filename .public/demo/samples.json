@@ -1,8 +1,1581 @@
 {
+  "stress": {
+    "label": "★ Stress test: annual report (everything at once)",
+    "options": {},
+    "template": "<style>\n  :root { --brand: #2563eb; --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --soft: #eff4ff; --gap: 12px; --good: #059669; --bad: #dc2626; --warn: #d97706; }\n  @page {\n    margin: 22mm 16mm 20mm 16mm;\n    @top-left      { content: \"{{ company }}\"; font-size: 9px; color: #6b7280; }\n    @top-right     { content: \"{{ title }} · {{ period }}\"; font-size: 9px; color: #6b7280; }\n    @bottom-left   { content: \"Confidential\"; font-size: 9px; color: #6b7280; }\n    @bottom-right  { content: \"Page \" counter(page) \" of \" counter(pages); font-size: 9px; color: #6b7280; }\n  }\n  body { font-family: \"Noto Sans\", sans-serif; color: var(--ink); font-size: 11px; line-height: 1.45; }\n  h1, h2, h3 { margin: 0; }\n  h2 { font-size: 19px; color: var(--brand); border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin: 0 0 12px; }\n  h3 { font-size: 13px; margin: 14px 0 6px; }\n  p { margin: 0 0 8px; }\n  .muted { color: var(--muted); }\n  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 9px; font-weight: bold; color: #fff; }\n  .good { background: var(--good); } .bad { background: var(--bad); } .warn { background: var(--warn); }\n  .r { text-align: right; } .c { text-align: center; }\n\n  /* cover */\n  .cover { display: flex; flex-direction: column; justify-content: space-between; height: 235mm; }\n  .cover .band { background: var(--brand); color: #fff; padding: 26px 28px; border-radius: 14px; }\n  .cover .band h1 { font-size: 40px; letter-spacing: 1px; }\n  .cover .band .sub { font-size: 15px; opacity: .85; margin-top: 6px; }\n  .cover .row { display: flex; gap: 18px; align-items: center; justify-content: space-between; }\n  .cover .blocks { display: flex; gap: 10px; }\n  .cover .blocks div { width: 70px; height: 70px; border-radius: 12px; }\n  .cover .codes { text-align: center; }\n\n  /* contents */\n  ol.toc { counter-reset: toc; list-style: none; padding: 0; margin: 0; }\n  ol.toc li { counter-increment: toc; display: flex; justify-content: space-between; border-bottom: 1px dotted #9ca3af; padding: 5px 0; font-size: 13px; }\n  ol.toc li::before { content: counter(toc) \". \"; color: var(--brand); font-weight: bold; margin-right: 8px; }\n  ol.toc li span.t { flex: 1; }\n\n  /* kpi grid */\n  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); }\n  .kpi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }\n  .kpi .v { font-size: 22px; font-weight: bold; margin: 2px 0; }\n  .kpi .l { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }\n  .kpi .d { font-size: 10px; }\n  .kpi.hl { background: var(--soft); border-color: var(--brand); }\n\n  /* two blocks side by side */\n  .two { display: flex; gap: calc(var(--gap) * 1.5); margin: 10px 0; }\n  .two > div { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }\n  .legend span { display: inline-block; margin-right: 12px; font-size: 10px; }\n  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }\n\n  /* tables */\n  table { width: 100%; border-collapse: collapse; }\n  th { background: var(--soft); text-align: left; padding: 5px 7px; font-size: 10px; border-bottom: 2px solid var(--brand); }\n  td { padding: 4px 7px; border-bottom: 1px solid var(--line); }\n  tbody tr:nth-child(even) td { background: #f9fafb; }\n  tfoot td { font-weight: bold; border-top: 2px solid var(--ink); background: var(--soft); }\n  tr { page-break-inside: avoid; }\n  .mono { font-family: monospace; font-size: 10px; }\n\n  /* text columns */\n  .cols { column-count: 2; column-gap: 22px; text-align: justify; }\n  .quote { border-left: 4px solid var(--brand); padding: 6px 12px; margin: 10px 0; background: var(--soft); font-style: italic; }\n  .stamp { display: inline-block; transform: rotate(-12deg); border: 3px solid var(--good); color: var(--good); font-weight: bold; font-size: 20px; padding: 2px 14px; border-radius: 6px; opacity: .75; }\n  .lang p { margin: 0 0 4px; }\n  ul.check { list-style: none; padding: 0; margin: 0; }\n  ul.check li::before { content: \"✓ \"; color: var(--good); font-weight: bold; }\n  .sig { display: flex; gap: 30px; margin-top: 26px; }\n  .sig div { flex: 1; border-top: 1px solid var(--ink); padding-top: 4px; font-size: 10px; }\n</style>\n\n{% macro badge(s) %}{% if s == \"paid\" %}<span class=\"tag good\">PAID</span>{% elif s == \"late\" %}<span class=\"tag bad\">LATE</span>{% else %}<span class=\"tag warn\">OPEN</span>{% endif %}{% endmacro %}\n{% macro money(v) %}₱{{ v }}{% endmacro %}\n\n<!-- 1. COVER -->\n<div class=\"cover\">\n  <div class=\"row\"><img src=\"logo\" width=\"64\"><span class=\"muted\">{{ period }}</span></div>\n  <div class=\"band\">\n    <h1>{{ title }}</h1>\n    <div class=\"sub\">{{ company }} · prepared {{ prepared }}</div>\n  </div>\n  <div class=\"row\">\n    <div class=\"blocks\"><div style=\"background:#2563eb\"></div><div style=\"background:#10b981\"></div><div style=\"background:#f59e0b\"></div><div style=\"background:#ef4444\"></div></div>\n    <div class=\"codes\">\n      <barcode value=\"https://example.com/reports/{{ report_no }}\" type=\"qr\" width=\"96\" />\n      <div class=\"mono\">{{ report_no }}</div>\n    </div>\n  </div>\n  <div class=\"c\"><barcode value=\"{{ report_no }}\" type=\"code128\" width=\"260\" height=\"42\" /></div>\n</div>\n\n{% pagebreak %}\n\n<!-- 2. CONTENTS -->\n<h2>Contents</h2>\n<ol class=\"toc\">\n  {% for s in sections %}<li><span class=\"t\">{{ s.name }}</span><span class=\"muted\">{{ s.note }}</span></li>{% endfor %}\n</ol>\n<h3>What this document exercises</h3>\n<ul class=\"check\">\n  {% for f in features %}<li>{{ f }}</li>{% endfor %}\n</ul>\n\n{% pagebreak %}\n\n<!-- 3. KPIs -->\n<h2>Key figures</h2>\n<div class=\"grid\">\n  {% for k in kpis %}\n  {% include \"kpi\" %}\n  {% endfor %}\n</div>\n\n<h3>Revenue and costs by month</h3>\n<div class=\"legend\"><span><i style=\"background:#2563eb\"></i>Revenue</span><span><i style=\"background:#f59e0b\"></i>Costs</span><span><i style=\"background:#059669\"></i>Profit line</span></div>\n<svg width=\"660\" height=\"215\" viewBox=\"0 0 680 220\" style=\"display:block;max-width:100%\" xmlns=\"http://www.w3.org/2000/svg\">\n  <line x1=\"40\" y1=\"190\" x2=\"670\" y2=\"190\" stroke=\"#9ca3af\" stroke-width=\"1\"/>\n  <line x1=\"40\" y1=\"10\" x2=\"40\" y2=\"190\" stroke=\"#9ca3af\" stroke-width=\"1\"/>\n  {% for g in [0, 1, 2, 3] %}<line x1=\"40\" y1=\"{{ 190 - g * 45 }}\" x2=\"670\" y2=\"{{ 190 - g * 45 }}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>{% endfor %}\n  {% for m in months %}\n    <rect x=\"{{ 52 + loop.index0 * 52 }}\" y=\"{{ 190 - m.revenue }}\" width=\"16\" height=\"{{ m.revenue }}\" fill=\"#2563eb\"/>\n    <rect x=\"{{ 70 + loop.index0 * 52 }}\" y=\"{{ 190 - m.costs }}\" width=\"16\" height=\"{{ m.costs }}\" fill=\"#f59e0b\"/>\n    <text x=\"{{ 52 + loop.index0 * 52 }}\" y=\"206\" font-size=\"9\" fill=\"#6b7280\" font-family=\"sans-serif\">{{ m.name }}</text>\n  {% endfor %}\n  <polyline fill=\"none\" stroke=\"#059669\" stroke-width=\"2.5\" points=\"{% for m in months %}{{ 69 + loop.index0 * 52 }},{{ 190 - m.profit }} {% endfor %}\"/>\n  {% for m in months %}<circle cx=\"{{ 69 + loop.index0 * 52 }}\" cy=\"{{ 190 - m.profit }}\" r=\"3.5\" fill=\"#059669\"/>{% endfor %}\n</svg>\n<div style=\"display:flex;justify-content:space-between;padding:2px 14px 0 48px;font-size:9px;color:#6b7280\">{% for m in months %}<span>{{ m.name }}</span>{% endfor %}</div>\n\n<div class=\"two\">\n  <div>\n    <h3 style=\"margin-top:0\">Share by region</h3>\n    <svg width=\"130\" height=\"130\" viewBox=\"0 0 150 150\" style=\"display:block\" xmlns=\"http://www.w3.org/2000/svg\">\n      <circle cx=\"75\" cy=\"75\" r=\"50\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"26\" stroke-dasharray=\"{{ donut[0] }} 314.16\" transform=\"rotate(-90 75 75)\"/>\n      <circle cx=\"75\" cy=\"75\" r=\"50\" fill=\"none\" stroke=\"#10b981\" stroke-width=\"26\" stroke-dasharray=\"{{ donut[1] }} 314.16\" stroke-dashoffset=\"-{{ donut[0] }}\" transform=\"rotate(-90 75 75)\"/>\n      <circle cx=\"75\" cy=\"75\" r=\"50\" fill=\"none\" stroke=\"#f59e0b\" stroke-width=\"26\" stroke-dasharray=\"{{ donut[2] }} 314.16\" stroke-dashoffset=\"-{{ donut[3] }}\" transform=\"rotate(-90 75 75)\"/>\n    </svg>\n    <div class=\"legend\"><span><i style=\"background:#2563eb\"></i>Luzon</span><span><i style=\"background:#10b981\"></i>Visayas</span><span><i style=\"background:#f59e0b\"></i>Mindanao</span></div>\n  </div>\n  <div>\n    <h3 style=\"margin-top:0\">Highlights</h3>\n    <div class=\"quote\">“{{ quote }}”</div>\n    <div class=\"stamp\">APPROVED</div>\n  </div>\n</div>\n\n{% pagebreak %}\n\n<!-- 4. NARRATIVE -->\n<h2>Management discussion</h2>\n<div class=\"cols\">\n  {% for p in paragraphs %}<p>{{ p }}</p>{% endfor %}\n</div>\n<h3>One font, several languages</h3>\n<div class=\"lang\">\n  <p><b>Filipino:</b> Magandang araw! Salamat po sa tiwala ninyo sa amin ngayong taon. Ang halaga ay ₱1,250,000.00.</p>\n  <p><b>Русский:</b> Привет, мир! Это отчёт, созданный прямо в браузере, без сервера.</p>\n  <p><b>Ελληνικά:</b> Γειά σου κόσμε! Αυτό το PDF δημιουργήθηκε στον περιηγητή σας.</p>\n  <p><b>Tiếng Việt:</b> Xin chào thế giới! Đây là tệp PDF được tạo trong trình duyệt.</p>\n</div>\n\n{% pagebreak %}\n\n<!-- 5. REGIONS (nested data, colspan, totals) -->\n<h2>Sales by region</h2>\n<table>\n  <thead><tr><th>Region</th><th>Branch</th><th class=\"r\">Orders</th><th class=\"r\">Revenue</th><th class=\"c\">Status</th></tr></thead>\n  <tbody>\n  {% for r in regions %}\n    <tr><td colspan=\"5\" style=\"background:var(--soft);font-weight:bold\">{{ r.name }}</td></tr>\n    {% for b in r.branches %}\n    <tr><td></td><td>{{ b.name }}</td><td class=\"r\">{{ b.orders }}</td><td class=\"r\">{{ money(b.revenue) }}</td><td class=\"c\">{{ badge(b.status) }}</td></tr>\n    {% endfor %}\n  {% endfor %}\n  </tbody>\n  <tfoot><tr><td colspan=\"2\">Total</td><td class=\"r\">{{ totals.orders }}</td><td class=\"r\">{{ money(totals.revenue) }}</td><td></td></tr></tfoot>\n</table>\n\n{% pagebreak %}\n\n<!-- 6. ORDER LEDGER (long table across pages) -->\n<h2>Order ledger ({{ orders|length }} rows)</h2>\n<table>\n  <thead><tr><th>#</th><th>Date</th><th>Customer</th><th>Reference</th><th class=\"r\">Amount</th><th class=\"c\">Status</th></tr></thead>\n  <tbody>\n  {% for o in orders %}\n    {% include \"order_row\" %}\n  {% endfor %}\n  </tbody>\n  <tfoot><tr><td colspan=\"4\">Ledger total</td><td class=\"r\">{{ money(totals.ledger) }}</td><td></td></tr></tfoot>\n</table>\n\n{% pagebreak %}\n\n<!-- 7. TEAM + SIGN-OFF -->\n<h2>Team</h2>\n<div class=\"grid\">\n  {% for t in team %}\n  <div class=\"kpi\"><div style=\"font-weight:bold\">{{ t.name }}</div><div class=\"muted\">{{ t.role }}</div><div class=\"mono\">{{ t.email }}</div></div>\n  {% endfor %}\n</div>\n<h3>Approval</h3>\n<div class=\"sig\"><div>{{ signers[0] }}<br><span class=\"muted\">Chief Financial Officer</span></div><div>{{ signers[1] }}<br><span class=\"muted\">Chief Executive Officer</span></div></div>\n<p style=\"margin-top:22px\" class=\"muted\">Generated by pdf-engine in your browser: layout, shaping, pagination, the barcodes and the charts are all drawn by the engine, and nothing was uploaded.</p>\n",
+    "data": {
+      "company": "Lands Horizon Corp.",
+      "title": "Annual Report",
+      "period": "FY 2026",
+      "prepared": "26 October 2026",
+      "report_no": "AR-2026-000417",
+      "sections": [
+        {
+          "name": "Key figures",
+          "note": "Page 3"
+        },
+        {
+          "name": "Management discussion",
+          "note": "Page 4"
+        },
+        {
+          "name": "Sales by region",
+          "note": "Page 5"
+        },
+        {
+          "name": "Order ledger",
+          "note": "Page 6+"
+        },
+        {
+          "name": "Team and approval",
+          "note": "Last page"
+        }
+      ],
+      "features": [
+        "Page numbers, headers and footers on every page (@page margin boxes)",
+        "CSS grid, flexbox, tables with colspan, multi-column text, counters",
+        "Inline SVG charts: bars, a line, and a donut",
+        "Vector QR code and Code 128 barcode on the cover",
+        "A 150-row ledger that flows across pages",
+        "Partials, macros, loops, conditions and filters",
+        "Filipino, Cyrillic, Greek and Vietnamese text in one font",
+        "Transforms, opacity, CSS variables and calc()"
+      ],
+      "kpis": [
+        {
+          "label": "Revenue",
+          "value": "₱48.2M",
+          "delta": "+12.4%",
+          "good": true,
+          "hl": true
+        },
+        {
+          "label": "Orders",
+          "value": "6,418",
+          "delta": "+8.1%",
+          "good": true,
+          "hl": false
+        },
+        {
+          "label": "Average order",
+          "value": "₱7,510",
+          "delta": "+3.9%",
+          "good": true,
+          "hl": false
+        },
+        {
+          "label": "Costs",
+          "value": "₱31.9M",
+          "delta": "+5.2%",
+          "good": false,
+          "hl": false
+        },
+        {
+          "label": "Profit",
+          "value": "₱16.3M",
+          "delta": "+27.0%",
+          "good": true,
+          "hl": true
+        },
+        {
+          "label": "Late payments",
+          "value": "4.6%",
+          "delta": "-1.1%",
+          "good": true,
+          "hl": false
+        }
+      ],
+      "months": [
+        {
+          "name": "Jan",
+          "revenue": 98,
+          "costs": 51,
+          "profit": 77
+        },
+        {
+          "name": "Feb",
+          "revenue": 108,
+          "costs": 69,
+          "profit": 69
+        },
+        {
+          "name": "Mar",
+          "revenue": 91,
+          "costs": 53,
+          "profit": 68
+        },
+        {
+          "name": "Apr",
+          "revenue": 127,
+          "costs": 56,
+          "profit": 101
+        },
+        {
+          "name": "May",
+          "revenue": 121,
+          "costs": 73,
+          "profit": 78
+        },
+        {
+          "name": "Jun",
+          "revenue": 106,
+          "costs": 73,
+          "profit": 63
+        },
+        {
+          "name": "Jul",
+          "revenue": 121,
+          "costs": 60,
+          "profit": 91
+        },
+        {
+          "name": "Aug",
+          "revenue": 118,
+          "costs": 74,
+          "profit": 74
+        },
+        {
+          "name": "Sep",
+          "revenue": 144,
+          "costs": 65,
+          "profit": 109
+        },
+        {
+          "name": "Oct",
+          "revenue": 138,
+          "costs": 67,
+          "profit": 101
+        },
+        {
+          "name": "Nov",
+          "revenue": 155,
+          "costs": 68,
+          "profit": 117
+        },
+        {
+          "name": "Dec",
+          "revenue": 140,
+          "costs": 76,
+          "profit": 94
+        }
+      ],
+      "donut": [
+        141.4,
+        94.2,
+        78.5,
+        235.6
+      ],
+      "quote": "We make a document in the time it takes to blink, on the customer's own device.",
+      "paragraphs": [
+        "The year began with cautious optimism and ended with record volumes. Demand from the regions grew faster than we planned for, and our teams adapted by moving work closer to customers and simplifying how documents are produced.",
+        "Revenue rose steadily through the second half. The largest gains came from repeat customers, while new accounts took longer to convert than in previous years, a pattern we expect to ease as onboarding improves.",
+        "Costs grew more slowly than revenue. Savings in document handling, printing and shipping offset higher wages, and the move to generating documents on the customer's own device removed a whole class of server work.",
+        "Looking ahead we will keep investing in speed and reliability. Every report in this pack, including this one, is produced in a few milliseconds, which lets us send documents the moment a customer asks for them.",
+        "Risks remain: supplier prices, currency movements and the pace of regional expansion. We hold reserves for each and review them every quarter with the board.",
+        "We thank our customers, partners and every member of the team for a year of steady, careful work."
+      ],
+      "regions": [
+        {
+          "name": "Luzon",
+          "branches": [
+            {
+              "name": "Manila",
+              "orders": 765,
+              "revenue": 1179630,
+              "status": "paid"
+            },
+            {
+              "name": "Quezon City",
+              "orders": 710,
+              "revenue": 1064290,
+              "status": "late"
+            },
+            {
+              "name": "Baguio",
+              "orders": 170,
+              "revenue": 322830,
+              "status": "paid"
+            },
+            {
+              "name": "Clark",
+              "orders": 167,
+              "revenue": 245490,
+              "status": "paid"
+            }
+          ]
+        },
+        {
+          "name": "Visayas",
+          "branches": [
+            {
+              "name": "Cebu",
+              "orders": 416,
+              "revenue": 552864,
+              "status": "paid"
+            },
+            {
+              "name": "Iloilo",
+              "orders": 673,
+              "revenue": 686460,
+              "status": "open"
+            },
+            {
+              "name": "Bacolod",
+              "orders": 693,
+              "revenue": 1202355,
+              "status": "paid"
+            },
+            {
+              "name": "Tacloban",
+              "orders": 225,
+              "revenue": 336375,
+              "status": "paid"
+            }
+          ]
+        },
+        {
+          "name": "Mindanao",
+          "branches": [
+            {
+              "name": "Davao",
+              "orders": 501,
+              "revenue": 500499,
+              "status": "paid"
+            },
+            {
+              "name": "Cagayan de Oro",
+              "orders": 697,
+              "revenue": 669817,
+              "status": "paid"
+            },
+            {
+              "name": "Zamboanga",
+              "orders": 628,
+              "revenue": 1002288,
+              "status": "late"
+            },
+            {
+              "name": "General Santos",
+              "orders": 441,
+              "revenue": 606816,
+              "status": "late"
+            }
+          ]
+        }
+      ],
+      "totals": {
+        "orders": 6086,
+        "revenue": 8369714,
+        "ledger": 3424524
+      },
+      "orders": [
+        {
+          "n": 1,
+          "date": "2026-05-08",
+          "customer": "Felix Castro",
+          "ref": "INV-26007",
+          "amount": 24196,
+          "status": "paid"
+        },
+        {
+          "n": 2,
+          "date": "2026-10-10",
+          "customer": "Paolo Mendoza",
+          "ref": "INV-26014",
+          "amount": 5864,
+          "status": "open"
+        },
+        {
+          "n": 3,
+          "date": "2026-10-03",
+          "customer": "Dante Aquino",
+          "ref": "INV-26021",
+          "amount": 19370,
+          "status": "open"
+        },
+        {
+          "n": 4,
+          "date": "2026-06-05",
+          "customer": "Paolo Torres",
+          "ref": "INV-26028",
+          "amount": 11310,
+          "status": "paid"
+        },
+        {
+          "n": 5,
+          "date": "2026-02-25",
+          "customer": "Karla Mendoza",
+          "ref": "INV-26035",
+          "amount": 44292,
+          "status": "paid"
+        },
+        {
+          "n": 6,
+          "date": "2026-08-19",
+          "customer": "Olga Reyes",
+          "ref": "INV-26042",
+          "amount": 39452,
+          "status": "paid"
+        },
+        {
+          "n": 7,
+          "date": "2026-08-23",
+          "customer": "Carla Santos",
+          "ref": "INV-26049",
+          "amount": 18190,
+          "status": "paid"
+        },
+        {
+          "n": 8,
+          "date": "2026-10-22",
+          "customer": "Olga Garcia",
+          "ref": "INV-26056",
+          "amount": 42910,
+          "status": "open"
+        },
+        {
+          "n": 9,
+          "date": "2026-06-01",
+          "customer": "Olga Mendoza",
+          "ref": "INV-26063",
+          "amount": 44320,
+          "status": "paid"
+        },
+        {
+          "n": 10,
+          "date": "2026-02-16",
+          "customer": "Ben Bautista",
+          "ref": "INV-26070",
+          "amount": 40537,
+          "status": "paid"
+        },
+        {
+          "n": 11,
+          "date": "2026-12-08",
+          "customer": "Maria Torres",
+          "ref": "INV-26077",
+          "amount": 8976,
+          "status": "open"
+        },
+        {
+          "n": 12,
+          "date": "2026-03-15",
+          "customer": "Maria Aquino",
+          "ref": "INV-26084",
+          "amount": 5780,
+          "status": "paid"
+        },
+        {
+          "n": 13,
+          "date": "2026-07-28",
+          "customer": "Iris Castro",
+          "ref": "INV-26091",
+          "amount": 9473,
+          "status": "open"
+        },
+        {
+          "n": 14,
+          "date": "2026-11-13",
+          "customer": "Hugo Cruz",
+          "ref": "INV-26098",
+          "amount": 24012,
+          "status": "paid"
+        },
+        {
+          "n": 15,
+          "date": "2026-03-08",
+          "customer": "Hugo Santos",
+          "ref": "INV-26105",
+          "amount": 12048,
+          "status": "open"
+        },
+        {
+          "n": 16,
+          "date": "2026-03-09",
+          "customer": "Jose Santos",
+          "ref": "INV-26112",
+          "amount": 39108,
+          "status": "paid"
+        },
+        {
+          "n": 17,
+          "date": "2026-09-12",
+          "customer": "Karla Cruz",
+          "ref": "INV-26119",
+          "amount": 27956,
+          "status": "late"
+        },
+        {
+          "n": 18,
+          "date": "2026-11-22",
+          "customer": "Ben Ramos",
+          "ref": "INV-26126",
+          "amount": 40974,
+          "status": "late"
+        },
+        {
+          "n": 19,
+          "date": "2026-07-13",
+          "customer": "Maria Reyes",
+          "ref": "INV-26133",
+          "amount": 26214,
+          "status": "open"
+        },
+        {
+          "n": 20,
+          "date": "2026-07-02",
+          "customer": "Gina Reyes",
+          "ref": "INV-26140",
+          "amount": 42068,
+          "status": "paid"
+        },
+        {
+          "n": 21,
+          "date": "2026-03-04",
+          "customer": "Karla Dizon",
+          "ref": "INV-26147",
+          "amount": 29376,
+          "status": "paid"
+        },
+        {
+          "n": 22,
+          "date": "2026-01-19",
+          "customer": "Elena Aquino",
+          "ref": "INV-26154",
+          "amount": 7209,
+          "status": "paid"
+        },
+        {
+          "n": 23,
+          "date": "2026-10-01",
+          "customer": "Carla Bautista",
+          "ref": "INV-26161",
+          "amount": 24329,
+          "status": "late"
+        },
+        {
+          "n": 24,
+          "date": "2026-03-21",
+          "customer": "Iris Mendoza",
+          "ref": "INV-26168",
+          "amount": 25156,
+          "status": "late"
+        },
+        {
+          "n": 25,
+          "date": "2026-08-04",
+          "customer": "Dante Ramos",
+          "ref": "INV-26175",
+          "amount": 24365,
+          "status": "open"
+        },
+        {
+          "n": 26,
+          "date": "2026-08-10",
+          "customer": "Carla Cruz",
+          "ref": "INV-26182",
+          "amount": 31983,
+          "status": "paid"
+        },
+        {
+          "n": 27,
+          "date": "2026-12-09",
+          "customer": "Paolo Castro",
+          "ref": "INV-26189",
+          "amount": 22954,
+          "status": "paid"
+        },
+        {
+          "n": 28,
+          "date": "2026-01-07",
+          "customer": "Luis Cruz",
+          "ref": "INV-26196",
+          "amount": 34338,
+          "status": "late"
+        },
+        {
+          "n": 29,
+          "date": "2026-09-10",
+          "customer": "Carla Castro",
+          "ref": "INV-26203",
+          "amount": 2272,
+          "status": "paid"
+        },
+        {
+          "n": 30,
+          "date": "2026-06-06",
+          "customer": "Luis Bautista",
+          "ref": "INV-26210",
+          "amount": 34473,
+          "status": "late"
+        },
+        {
+          "n": 31,
+          "date": "2026-09-11",
+          "customer": "Hugo Dizon",
+          "ref": "INV-26217",
+          "amount": 35992,
+          "status": "paid"
+        },
+        {
+          "n": 32,
+          "date": "2026-07-24",
+          "customer": "Hugo Bautista",
+          "ref": "INV-26224",
+          "amount": 16188,
+          "status": "late"
+        },
+        {
+          "n": 33,
+          "date": "2026-06-24",
+          "customer": "Ana Santos",
+          "ref": "INV-26231",
+          "amount": 32794,
+          "status": "paid"
+        },
+        {
+          "n": 34,
+          "date": "2026-05-07",
+          "customer": "Luis Ramos",
+          "ref": "INV-26238",
+          "amount": 31448,
+          "status": "paid"
+        },
+        {
+          "n": 35,
+          "date": "2026-02-08",
+          "customer": "Dante Bautista",
+          "ref": "INV-26245",
+          "amount": 24396,
+          "status": "open"
+        },
+        {
+          "n": 36,
+          "date": "2026-06-07",
+          "customer": "Paolo Dizon",
+          "ref": "INV-26252",
+          "amount": 13391,
+          "status": "late"
+        },
+        {
+          "n": 37,
+          "date": "2026-08-21",
+          "customer": "Luis Navarro",
+          "ref": "INV-26259",
+          "amount": 625,
+          "status": "paid"
+        },
+        {
+          "n": 38,
+          "date": "2026-02-13",
+          "customer": "Gina Ramos",
+          "ref": "INV-26266",
+          "amount": 43792,
+          "status": "paid"
+        },
+        {
+          "n": 39,
+          "date": "2026-11-11",
+          "customer": "Carla Castro",
+          "ref": "INV-26273",
+          "amount": 28937,
+          "status": "open"
+        },
+        {
+          "n": 40,
+          "date": "2026-07-24",
+          "customer": "Carla Castro",
+          "ref": "INV-26280",
+          "amount": 30853,
+          "status": "paid"
+        },
+        {
+          "n": 41,
+          "date": "2026-03-01",
+          "customer": "Elena Dizon",
+          "ref": "INV-26287",
+          "amount": 11641,
+          "status": "open"
+        },
+        {
+          "n": 42,
+          "date": "2026-03-20",
+          "customer": "Paolo Navarro",
+          "ref": "INV-26294",
+          "amount": 43482,
+          "status": "paid"
+        },
+        {
+          "n": 43,
+          "date": "2026-09-18",
+          "customer": "Elena Santos",
+          "ref": "INV-26301",
+          "amount": 10717,
+          "status": "paid"
+        },
+        {
+          "n": 44,
+          "date": "2026-02-17",
+          "customer": "Elena Torres",
+          "ref": "INV-26308",
+          "amount": 43077,
+          "status": "paid"
+        },
+        {
+          "n": 45,
+          "date": "2026-01-09",
+          "customer": "Gina Garcia",
+          "ref": "INV-26315",
+          "amount": 14330,
+          "status": "late"
+        },
+        {
+          "n": 46,
+          "date": "2026-10-11",
+          "customer": "Iris Aquino",
+          "ref": "INV-26322",
+          "amount": 16263,
+          "status": "open"
+        },
+        {
+          "n": 47,
+          "date": "2026-01-24",
+          "customer": "Luis Ramos",
+          "ref": "INV-26329",
+          "amount": 9090,
+          "status": "late"
+        },
+        {
+          "n": 48,
+          "date": "2026-07-27",
+          "customer": "Elena Aquino",
+          "ref": "INV-26336",
+          "amount": 34366,
+          "status": "paid"
+        },
+        {
+          "n": 49,
+          "date": "2026-09-01",
+          "customer": "Olga Cruz",
+          "ref": "INV-26343",
+          "amount": 34808,
+          "status": "late"
+        },
+        {
+          "n": 50,
+          "date": "2026-03-06",
+          "customer": "Elena Ramos",
+          "ref": "INV-26350",
+          "amount": 757,
+          "status": "late"
+        },
+        {
+          "n": 51,
+          "date": "2026-09-02",
+          "customer": "Karla Navarro",
+          "ref": "INV-26357",
+          "amount": 8386,
+          "status": "late"
+        },
+        {
+          "n": 52,
+          "date": "2026-09-16",
+          "customer": "Dante Aquino",
+          "ref": "INV-26364",
+          "amount": 35281,
+          "status": "paid"
+        },
+        {
+          "n": 53,
+          "date": "2026-04-09",
+          "customer": "Ben Reyes",
+          "ref": "INV-26371",
+          "amount": 16785,
+          "status": "late"
+        },
+        {
+          "n": 54,
+          "date": "2026-09-01",
+          "customer": "Carla Ramos",
+          "ref": "INV-26378",
+          "amount": 30133,
+          "status": "paid"
+        },
+        {
+          "n": 55,
+          "date": "2026-09-20",
+          "customer": "Gina Castro",
+          "ref": "INV-26385",
+          "amount": 40642,
+          "status": "paid"
+        },
+        {
+          "n": 56,
+          "date": "2026-09-18",
+          "customer": "Paolo Aquino",
+          "ref": "INV-26392",
+          "amount": 30144,
+          "status": "paid"
+        },
+        {
+          "n": 57,
+          "date": "2026-09-09",
+          "customer": "Gina Ramos",
+          "ref": "INV-26399",
+          "amount": 46323,
+          "status": "paid"
+        },
+        {
+          "n": 58,
+          "date": "2026-02-13",
+          "customer": "Olga Mendoza",
+          "ref": "INV-26406",
+          "amount": 27804,
+          "status": "paid"
+        },
+        {
+          "n": 59,
+          "date": "2026-04-14",
+          "customer": "Carla Bautista",
+          "ref": "INV-26413",
+          "amount": 44484,
+          "status": "paid"
+        },
+        {
+          "n": 60,
+          "date": "2026-03-23",
+          "customer": "Luis Cruz",
+          "ref": "INV-26420",
+          "amount": 8518,
+          "status": "paid"
+        },
+        {
+          "n": 61,
+          "date": "2026-08-08",
+          "customer": "Dante Torres",
+          "ref": "INV-26427",
+          "amount": 9495,
+          "status": "open"
+        },
+        {
+          "n": 62,
+          "date": "2026-11-27",
+          "customer": "Hugo Cruz",
+          "ref": "INV-26434",
+          "amount": 11168,
+          "status": "open"
+        },
+        {
+          "n": 63,
+          "date": "2026-07-11",
+          "customer": "Nico Bautista",
+          "ref": "INV-26441",
+          "amount": 34290,
+          "status": "paid"
+        },
+        {
+          "n": 64,
+          "date": "2026-02-24",
+          "customer": "Luis Santos",
+          "ref": "INV-26448",
+          "amount": 21374,
+          "status": "paid"
+        },
+        {
+          "n": 65,
+          "date": "2026-08-15",
+          "customer": "Ana Torres",
+          "ref": "INV-26455",
+          "amount": 36810,
+          "status": "paid"
+        },
+        {
+          "n": 66,
+          "date": "2026-10-10",
+          "customer": "Carla Reyes",
+          "ref": "INV-26462",
+          "amount": 34410,
+          "status": "paid"
+        },
+        {
+          "n": 67,
+          "date": "2026-02-09",
+          "customer": "Iris Santos",
+          "ref": "INV-26469",
+          "amount": 7366,
+          "status": "paid"
+        },
+        {
+          "n": 68,
+          "date": "2026-03-27",
+          "customer": "Nico Navarro",
+          "ref": "INV-26476",
+          "amount": 18223,
+          "status": "paid"
+        },
+        {
+          "n": 69,
+          "date": "2026-03-18",
+          "customer": "Paolo Castro",
+          "ref": "INV-26483",
+          "amount": 27104,
+          "status": "paid"
+        },
+        {
+          "n": 70,
+          "date": "2026-05-02",
+          "customer": "Felix Torres",
+          "ref": "INV-26490",
+          "amount": 6362,
+          "status": "paid"
+        },
+        {
+          "n": 71,
+          "date": "2026-01-21",
+          "customer": "Carla Garcia",
+          "ref": "INV-26497",
+          "amount": 18124,
+          "status": "paid"
+        },
+        {
+          "n": 72,
+          "date": "2026-04-03",
+          "customer": "Iris Reyes",
+          "ref": "INV-26504",
+          "amount": 40357,
+          "status": "open"
+        },
+        {
+          "n": 73,
+          "date": "2026-06-18",
+          "customer": "Nico Garcia",
+          "ref": "INV-26511",
+          "amount": 1256,
+          "status": "late"
+        },
+        {
+          "n": 74,
+          "date": "2026-01-17",
+          "customer": "Hugo Reyes",
+          "ref": "INV-26518",
+          "amount": 8968,
+          "status": "paid"
+        },
+        {
+          "n": 75,
+          "date": "2026-01-06",
+          "customer": "Gina Garcia",
+          "ref": "INV-26525",
+          "amount": 17663,
+          "status": "paid"
+        },
+        {
+          "n": 76,
+          "date": "2026-04-10",
+          "customer": "Olga Aquino",
+          "ref": "INV-26532",
+          "amount": 35305,
+          "status": "paid"
+        },
+        {
+          "n": 77,
+          "date": "2026-06-26",
+          "customer": "Ana Garcia",
+          "ref": "INV-26539",
+          "amount": 18228,
+          "status": "paid"
+        },
+        {
+          "n": 78,
+          "date": "2026-01-24",
+          "customer": "Gina Aquino",
+          "ref": "INV-26546",
+          "amount": 1505,
+          "status": "open"
+        },
+        {
+          "n": 79,
+          "date": "2026-08-04",
+          "customer": "Nico Navarro",
+          "ref": "INV-26553",
+          "amount": 16600,
+          "status": "open"
+        },
+        {
+          "n": 80,
+          "date": "2026-07-17",
+          "customer": "Jose Castro",
+          "ref": "INV-26560",
+          "amount": 36276,
+          "status": "paid"
+        },
+        {
+          "n": 81,
+          "date": "2026-06-07",
+          "customer": "Elena Torres",
+          "ref": "INV-26567",
+          "amount": 15544,
+          "status": "paid"
+        },
+        {
+          "n": 82,
+          "date": "2026-03-01",
+          "customer": "Carla Navarro",
+          "ref": "INV-26574",
+          "amount": 4064,
+          "status": "paid"
+        },
+        {
+          "n": 83,
+          "date": "2026-03-02",
+          "customer": "Carla Navarro",
+          "ref": "INV-26581",
+          "amount": 28729,
+          "status": "open"
+        },
+        {
+          "n": 84,
+          "date": "2026-11-10",
+          "customer": "Hugo Castro",
+          "ref": "INV-26588",
+          "amount": 33657,
+          "status": "paid"
+        },
+        {
+          "n": 85,
+          "date": "2026-08-06",
+          "customer": "Felix Garcia",
+          "ref": "INV-26595",
+          "amount": 3464,
+          "status": "open"
+        },
+        {
+          "n": 86,
+          "date": "2026-05-12",
+          "customer": "Karla Aquino",
+          "ref": "INV-26602",
+          "amount": 737,
+          "status": "paid"
+        },
+        {
+          "n": 87,
+          "date": "2026-01-10",
+          "customer": "Gina Mendoza",
+          "ref": "INV-26609",
+          "amount": 16520,
+          "status": "paid"
+        },
+        {
+          "n": 88,
+          "date": "2026-06-13",
+          "customer": "Carla Ramos",
+          "ref": "INV-26616",
+          "amount": 570,
+          "status": "paid"
+        },
+        {
+          "n": 89,
+          "date": "2026-11-07",
+          "customer": "Hugo Aquino",
+          "ref": "INV-26623",
+          "amount": 33449,
+          "status": "paid"
+        },
+        {
+          "n": 90,
+          "date": "2026-05-27",
+          "customer": "Carla Cruz",
+          "ref": "INV-26630",
+          "amount": 6454,
+          "status": "open"
+        },
+        {
+          "n": 91,
+          "date": "2026-01-13",
+          "customer": "Ana Garcia",
+          "ref": "INV-26637",
+          "amount": 38956,
+          "status": "paid"
+        },
+        {
+          "n": 92,
+          "date": "2026-04-03",
+          "customer": "Elena Navarro",
+          "ref": "INV-26644",
+          "amount": 41766,
+          "status": "late"
+        },
+        {
+          "n": 93,
+          "date": "2026-06-24",
+          "customer": "Paolo Cruz",
+          "ref": "INV-26651",
+          "amount": 26027,
+          "status": "paid"
+        },
+        {
+          "n": 94,
+          "date": "2026-10-21",
+          "customer": "Elena Santos",
+          "ref": "INV-26658",
+          "amount": 47958,
+          "status": "late"
+        },
+        {
+          "n": 95,
+          "date": "2026-07-24",
+          "customer": "Elena Aquino",
+          "ref": "INV-26665",
+          "amount": 41612,
+          "status": "late"
+        },
+        {
+          "n": 96,
+          "date": "2026-01-27",
+          "customer": "Hugo Reyes",
+          "ref": "INV-26672",
+          "amount": 37755,
+          "status": "paid"
+        },
+        {
+          "n": 97,
+          "date": "2026-03-21",
+          "customer": "Luis Reyes",
+          "ref": "INV-26679",
+          "amount": 3243,
+          "status": "open"
+        },
+        {
+          "n": 98,
+          "date": "2026-09-02",
+          "customer": "Ana Navarro",
+          "ref": "INV-26686",
+          "amount": 30082,
+          "status": "late"
+        },
+        {
+          "n": 99,
+          "date": "2026-04-16",
+          "customer": "Iris Santos",
+          "ref": "INV-26693",
+          "amount": 45108,
+          "status": "open"
+        },
+        {
+          "n": 100,
+          "date": "2026-12-17",
+          "customer": "Carla Navarro",
+          "ref": "INV-26700",
+          "amount": 5094,
+          "status": "late"
+        },
+        {
+          "n": 101,
+          "date": "2026-12-24",
+          "customer": "Paolo Garcia",
+          "ref": "INV-26707",
+          "amount": 4828,
+          "status": "paid"
+        },
+        {
+          "n": 102,
+          "date": "2026-04-24",
+          "customer": "Gina Bautista",
+          "ref": "INV-26714",
+          "amount": 17903,
+          "status": "open"
+        },
+        {
+          "n": 103,
+          "date": "2026-07-03",
+          "customer": "Paolo Navarro",
+          "ref": "INV-26721",
+          "amount": 32871,
+          "status": "paid"
+        },
+        {
+          "n": 104,
+          "date": "2026-10-21",
+          "customer": "Gina Reyes",
+          "ref": "INV-26728",
+          "amount": 3563,
+          "status": "late"
+        },
+        {
+          "n": 105,
+          "date": "2026-06-09",
+          "customer": "Jose Dizon",
+          "ref": "INV-26735",
+          "amount": 10161,
+          "status": "late"
+        },
+        {
+          "n": 106,
+          "date": "2026-01-16",
+          "customer": "Ben Ramos",
+          "ref": "INV-26742",
+          "amount": 9245,
+          "status": "paid"
+        },
+        {
+          "n": 107,
+          "date": "2026-02-23",
+          "customer": "Gina Navarro",
+          "ref": "INV-26749",
+          "amount": 44540,
+          "status": "open"
+        },
+        {
+          "n": 108,
+          "date": "2026-12-17",
+          "customer": "Jose Ramos",
+          "ref": "INV-26756",
+          "amount": 19561,
+          "status": "open"
+        },
+        {
+          "n": 109,
+          "date": "2026-02-18",
+          "customer": "Gina Garcia",
+          "ref": "INV-26763",
+          "amount": 31062,
+          "status": "paid"
+        },
+        {
+          "n": 110,
+          "date": "2026-01-10",
+          "customer": "Olga Reyes",
+          "ref": "INV-26770",
+          "amount": 31494,
+          "status": "late"
+        },
+        {
+          "n": 111,
+          "date": "2026-05-13",
+          "customer": "Gina Bautista",
+          "ref": "INV-26777",
+          "amount": 29955,
+          "status": "paid"
+        },
+        {
+          "n": 112,
+          "date": "2026-02-05",
+          "customer": "Iris Mendoza",
+          "ref": "INV-26784",
+          "amount": 38607,
+          "status": "paid"
+        },
+        {
+          "n": 113,
+          "date": "2026-11-17",
+          "customer": "Iris Reyes",
+          "ref": "INV-26791",
+          "amount": 40042,
+          "status": "paid"
+        },
+        {
+          "n": 114,
+          "date": "2026-08-16",
+          "customer": "Maria Santos",
+          "ref": "INV-26798",
+          "amount": 15663,
+          "status": "paid"
+        },
+        {
+          "n": 115,
+          "date": "2026-08-22",
+          "customer": "Olga Torres",
+          "ref": "INV-26805",
+          "amount": 735,
+          "status": "paid"
+        },
+        {
+          "n": 116,
+          "date": "2026-07-12",
+          "customer": "Maria Mendoza",
+          "ref": "INV-26812",
+          "amount": 9721,
+          "status": "paid"
+        },
+        {
+          "n": 117,
+          "date": "2026-01-11",
+          "customer": "Karla Torres",
+          "ref": "INV-26819",
+          "amount": 22213,
+          "status": "paid"
+        },
+        {
+          "n": 118,
+          "date": "2026-12-01",
+          "customer": "Jose Garcia",
+          "ref": "INV-26826",
+          "amount": 13328,
+          "status": "paid"
+        },
+        {
+          "n": 119,
+          "date": "2026-07-13",
+          "customer": "Carla Mendoza",
+          "ref": "INV-26833",
+          "amount": 4758,
+          "status": "open"
+        },
+        {
+          "n": 120,
+          "date": "2026-01-09",
+          "customer": "Dante Santos",
+          "ref": "INV-26840",
+          "amount": 18532,
+          "status": "paid"
+        },
+        {
+          "n": 121,
+          "date": "2026-03-08",
+          "customer": "Iris Torres",
+          "ref": "INV-26847",
+          "amount": 42112,
+          "status": "late"
+        },
+        {
+          "n": 122,
+          "date": "2026-04-25",
+          "customer": "Luis Torres",
+          "ref": "INV-26854",
+          "amount": 21183,
+          "status": "paid"
+        },
+        {
+          "n": 123,
+          "date": "2026-07-18",
+          "customer": "Gina Castro",
+          "ref": "INV-26861",
+          "amount": 41846,
+          "status": "paid"
+        },
+        {
+          "n": 124,
+          "date": "2026-12-14",
+          "customer": "Olga Dizon",
+          "ref": "INV-26868",
+          "amount": 3742,
+          "status": "paid"
+        },
+        {
+          "n": 125,
+          "date": "2026-05-16",
+          "customer": "Ben Aquino",
+          "ref": "INV-26875",
+          "amount": 42737,
+          "status": "paid"
+        },
+        {
+          "n": 126,
+          "date": "2026-08-14",
+          "customer": "Karla Garcia",
+          "ref": "INV-26882",
+          "amount": 11691,
+          "status": "paid"
+        },
+        {
+          "n": 127,
+          "date": "2026-12-24",
+          "customer": "Iris Torres",
+          "ref": "INV-26889",
+          "amount": 17260,
+          "status": "paid"
+        },
+        {
+          "n": 128,
+          "date": "2026-08-18",
+          "customer": "Maria Reyes",
+          "ref": "INV-26896",
+          "amount": 20215,
+          "status": "paid"
+        },
+        {
+          "n": 129,
+          "date": "2026-03-03",
+          "customer": "Gina Aquino",
+          "ref": "INV-26903",
+          "amount": 42653,
+          "status": "open"
+        },
+        {
+          "n": 130,
+          "date": "2026-04-15",
+          "customer": "Karla Ramos",
+          "ref": "INV-26910",
+          "amount": 36570,
+          "status": "open"
+        },
+        {
+          "n": 131,
+          "date": "2026-09-07",
+          "customer": "Hugo Reyes",
+          "ref": "INV-26917",
+          "amount": 9648,
+          "status": "paid"
+        },
+        {
+          "n": 132,
+          "date": "2026-09-03",
+          "customer": "Karla Bautista",
+          "ref": "INV-26924",
+          "amount": 22910,
+          "status": "paid"
+        },
+        {
+          "n": 133,
+          "date": "2026-10-07",
+          "customer": "Ana Castro",
+          "ref": "INV-26931",
+          "amount": 17431,
+          "status": "open"
+        },
+        {
+          "n": 134,
+          "date": "2026-07-24",
+          "customer": "Gina Torres",
+          "ref": "INV-26938",
+          "amount": 25589,
+          "status": "paid"
+        },
+        {
+          "n": 135,
+          "date": "2026-01-16",
+          "customer": "Iris Dizon",
+          "ref": "INV-26945",
+          "amount": 22664,
+          "status": "paid"
+        },
+        {
+          "n": 136,
+          "date": "2026-11-17",
+          "customer": "Gina Reyes",
+          "ref": "INV-26952",
+          "amount": 8749,
+          "status": "paid"
+        },
+        {
+          "n": 137,
+          "date": "2026-07-13",
+          "customer": "Olga Torres",
+          "ref": "INV-26959",
+          "amount": 16782,
+          "status": "paid"
+        },
+        {
+          "n": 138,
+          "date": "2026-03-02",
+          "customer": "Nico Castro",
+          "ref": "INV-26966",
+          "amount": 1929,
+          "status": "open"
+        },
+        {
+          "n": 139,
+          "date": "2026-08-01",
+          "customer": "Carla Torres",
+          "ref": "INV-26973",
+          "amount": 38981,
+          "status": "late"
+        },
+        {
+          "n": 140,
+          "date": "2026-08-08",
+          "customer": "Dante Bautista",
+          "ref": "INV-26980",
+          "amount": 31180,
+          "status": "paid"
+        },
+        {
+          "n": 141,
+          "date": "2026-09-22",
+          "customer": "Dante Castro",
+          "ref": "INV-26987",
+          "amount": 10465,
+          "status": "open"
+        },
+        {
+          "n": 142,
+          "date": "2026-09-25",
+          "customer": "Ben Santos",
+          "ref": "INV-26994",
+          "amount": 6070,
+          "status": "paid"
+        },
+        {
+          "n": 143,
+          "date": "2026-10-02",
+          "customer": "Jose Cruz",
+          "ref": "INV-27001",
+          "amount": 15742,
+          "status": "paid"
+        },
+        {
+          "n": 144,
+          "date": "2026-11-14",
+          "customer": "Dante Reyes",
+          "ref": "INV-27008",
+          "amount": 35119,
+          "status": "paid"
+        },
+        {
+          "n": 145,
+          "date": "2026-09-19",
+          "customer": "Gina Torres",
+          "ref": "INV-27015",
+          "amount": 20183,
+          "status": "paid"
+        },
+        {
+          "n": 146,
+          "date": "2026-10-01",
+          "customer": "Ana Aquino",
+          "ref": "INV-27022",
+          "amount": 15152,
+          "status": "paid"
+        },
+        {
+          "n": 147,
+          "date": "2026-05-11",
+          "customer": "Hugo Ramos",
+          "ref": "INV-27029",
+          "amount": 30691,
+          "status": "late"
+        },
+        {
+          "n": 148,
+          "date": "2026-09-08",
+          "customer": "Ana Torres",
+          "ref": "INV-27036",
+          "amount": 15885,
+          "status": "paid"
+        },
+        {
+          "n": 149,
+          "date": "2026-01-07",
+          "customer": "Paolo Navarro",
+          "ref": "INV-27043",
+          "amount": 4124,
+          "status": "open"
+        },
+        {
+          "n": 150,
+          "date": "2026-05-08",
+          "customer": "Nico Mendoza",
+          "ref": "INV-27050",
+          "amount": 5814,
+          "status": "paid"
+        }
+      ],
+      "team": [
+        {
+          "name": "Paolo Santos",
+          "role": "Sales",
+          "email": "user1@example.com"
+        },
+        {
+          "name": "Karla Castro",
+          "role": "Manager",
+          "email": "user2@example.com"
+        },
+        {
+          "name": "Luis Navarro",
+          "role": "Manager",
+          "email": "user3@example.com"
+        },
+        {
+          "name": "Gina Santos",
+          "role": "Designer",
+          "email": "user4@example.com"
+        },
+        {
+          "name": "Carla Bautista",
+          "role": "Manager",
+          "email": "user5@example.com"
+        },
+        {
+          "name": "Gina Garcia",
+          "role": "Engineer",
+          "email": "user6@example.com"
+        },
+        {
+          "name": "Hugo Ramos",
+          "role": "Engineer",
+          "email": "user7@example.com"
+        },
+        {
+          "name": "Iris Garcia",
+          "role": "Analyst",
+          "email": "user8@example.com"
+        },
+        {
+          "name": "Paolo Dizon",
+          "role": "Engineer",
+          "email": "user9@example.com"
+        },
+        {
+          "name": "Hugo Ramos",
+          "role": "Manager",
+          "email": "user10@example.com"
+        },
+        {
+          "name": "Ben Dizon",
+          "role": "Engineer",
+          "email": "user11@example.com"
+        },
+        {
+          "name": "Maria Santos",
+          "role": "Engineer",
+          "email": "user12@example.com"
+        },
+        {
+          "name": "Ana Dizon",
+          "role": "Engineer",
+          "email": "user13@example.com"
+        },
+        {
+          "name": "Nico Santos",
+          "role": "Sales",
+          "email": "user14@example.com"
+        },
+        {
+          "name": "Ben Cruz",
+          "role": "Manager",
+          "email": "user15@example.com"
+        },
+        {
+          "name": "Olga Castro",
+          "role": "Designer",
+          "email": "user16@example.com"
+        },
+        {
+          "name": "Dante Reyes",
+          "role": "Engineer",
+          "email": "user17@example.com"
+        },
+        {
+          "name": "Karla Bautista",
+          "role": "Engineer",
+          "email": "user18@example.com"
+        }
+      ],
+      "signers": [
+        "Ana Reyes",
+        "Dante Santos"
+      ]
+    },
+    "partials": {
+      "kpi": "<div class=\"kpi{% if k.hl %} hl{% endif %}\"><div class=\"l\">{{ k.label }}</div><div class=\"v\">{{ k.value }}</div><div class=\"d\">{% if k.good %}<span class=\"tag good\">{{ k.delta }}</span>{% else %}<span class=\"tag bad\">{{ k.delta }}</span>{% endif %} <span class=\"muted\">vs last year</span></div></div>",
+      "order_row": "<tr><td class=\"mono\">{{ o.n }}</td><td>{{ o.date }}</td><td>{{ o.customer }}</td><td class=\"mono\">{{ o.ref }}</td><td class=\"r\">₱{{ o.amount }}</td><td class=\"c\">{% if o.status == \"paid\" %}<span class=\"tag good\">PAID</span>{% elif o.status == \"late\" %}<span class=\"tag bad\">LATE</span>{% else %}<span class=\"tag warn\">OPEN</span>{% endif %}</td></tr>"
+    }
+  },
   "invoice": {
     "label": "Invoice (loop, table, logo)",
     "options": {},
-    "template": "<style>\n  body { font-family: sans-serif; color: #1f2937; padding: 36px; font-size: 13px; }\n  .top { display: flex; justify-content: space-between; align-items: center; }\n  h1 { margin: 0; font-size: 26px; color: #2563eb; }\n  table { width: 100%; border-collapse: collapse; margin-top: 24px; }\n  th { text-align: left; background: #eff4ff; padding: 8px; }\n  td { padding: 8px; border-bottom: 1px solid #e5e7eb; }\n  .r { text-align: right; }\n  .total { margin-top: 16px; text-align: right; font-size: 18px; font-weight: bold; }\n</style>\n\n<div class=\"top\">\n  <div>\n    <h1>Invoice {{ no }}</h1>\n    <div>{{ customer }}</div>\n  </div>\n  <img src=\"logo\" width=\"72\">\n</div>\n\n<table>\n  <tr><th>Item</th><th class=\"r\">Qty</th><th class=\"r\">Price</th><th class=\"r\">Amount</th></tr>\n  {% for item in items %}\n  <tr>\n    <td>{{ item.name }}</td>\n    <td class=\"r\">{{ item.qty }}</td>\n    <td class=\"r\">\u20b1{{ item.price }}</td>\n    <td class=\"r\">\u20b1{{ item.qty * item.price }}</td>\n  </tr>\n  {% endfor %}\n</table>\n\n<div class=\"total\">Total \u20b1{{ total }}</div>",
+    "template": "<style>\n  body { font-family: sans-serif; color: #1f2937; padding: 36px; font-size: 13px; }\n  .top { display: flex; justify-content: space-between; align-items: center; }\n  h1 { margin: 0; font-size: 26px; color: #2563eb; }\n  table { width: 100%; border-collapse: collapse; margin-top: 24px; }\n  th { text-align: left; background: #eff4ff; padding: 8px; }\n  td { padding: 8px; border-bottom: 1px solid #e5e7eb; }\n  .r { text-align: right; }\n  .total { margin-top: 16px; text-align: right; font-size: 18px; font-weight: bold; }\n</style>\n\n<div class=\"top\">\n  <div>\n    <h1>Invoice {{ no }}</h1>\n    <div>{{ customer }}</div>\n  </div>\n  <img src=\"logo\" width=\"72\">\n</div>\n\n<table>\n  <tr><th>Item</th><th class=\"r\">Qty</th><th class=\"r\">Price</th><th class=\"r\">Amount</th></tr>\n  {% for item in items %}\n  <tr>\n    <td>{{ item.name }}</td>\n    <td class=\"r\">{{ item.qty }}</td>\n    <td class=\"r\">₱{{ item.price }}</td>\n    <td class=\"r\">₱{{ item.qty * item.price }}</td>\n  </tr>\n  {% endfor %}\n</table>\n\n<div class=\"total\">Total ₱{{ total }}</div>",
     "data": {
       "no": "2026-0042",
       "customer": "Juan dela Cruz, Manila",
@@ -37,7 +1610,7 @@
       "width": "80mm",
       "height": "170mm"
     },
-    "template": "<style>\n  body { font-family: sans-serif; font-size: 12px; padding: 6px 10px; color: #000; }\n  .c { text-align: center; }\n  .row { display: flex; justify-content: space-between; margin: 2px 0; }\n  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0; }\n  .big { font-size: 15px; font-weight: bold; }\n</style>\n<div class=\"c\"><img src=\"logo\" width=\"44\"><div class=\"big\">{{ store }}</div><div>{{ address }}</div></div>\n<hr>\n{% for i in lines %}\n<div class=\"row\"><span>{{ i.qty }} x {{ i.name }}</span><span>\u20b1{{ i.qty * i.price }}</span></div>\n{% endfor %}\n<hr>\n<div class=\"row big\"><span>TOTAL</span><span>\u20b1{{ total }}</span></div>\n<div class=\"row\"><span>Cash</span><span>\u20b1{{ cash }}</span></div>\n<div class=\"row\"><span>Change</span><span>\u20b1{{ cash - total }}</span></div>\n<hr>\n<div class=\"c\">Thank you! Salamat po!</div>\n<div class=\"c\" style=\"margin-top:8px\"><barcode value=\"{{ no }}\" type=\"code128\" width=\"200\" height=\"40\" /></div>",
+    "template": "<style>\n  body { font-family: sans-serif; font-size: 12px; padding: 6px 10px; color: #000; }\n  .c { text-align: center; }\n  .row { display: flex; justify-content: space-between; margin: 2px 0; }\n  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0; }\n  .big { font-size: 15px; font-weight: bold; }\n</style>\n<div class=\"c\"><img src=\"logo\" width=\"44\"><div class=\"big\">{{ store }}</div><div>{{ address }}</div></div>\n<hr>\n{% for i in lines %}\n<div class=\"row\"><span>{{ i.qty }} x {{ i.name }}</span><span>₱{{ i.qty * i.price }}</span></div>\n{% endfor %}\n<hr>\n<div class=\"row big\"><span>TOTAL</span><span>₱{{ total }}</span></div>\n<div class=\"row\"><span>Cash</span><span>₱{{ cash }}</span></div>\n<div class=\"row\"><span>Change</span><span>₱{{ cash - total }}</span></div>\n<hr>\n<div class=\"c\">Thank you! Salamat po!</div>\n<div class=\"c\" style=\"margin-top:8px\"><barcode value=\"{{ no }}\" type=\"code128\" width=\"200\" height=\"40\" /></div>",
     "data": {
       "store": "Sari-Sari Corner",
       "address": "12 Rizal St, Quezon City",
@@ -429,7 +2002,7 @@
       "width": "120mm",
       "height": "160mm"
     },
-    "template": "<style>\n  body { font-family: sans-serif; padding: 18px; text-align: center; color: #111; }\n  .box { border: 2px solid #2563eb; border-radius: 12px; padding: 16px; }\n  h1 { margin: 6px 0; color: #2563eb; }\n</style>\n<div class=\"box\">\n  <img src=\"logo\" width=\"52\">\n  <h1>{{ event }}</h1>\n  <div>{{ name }} \u00b7 seat {{ seat }}</div>\n  <p><barcode value=\"https://example.com/ticket/{{ code }}\" type=\"qr\" width=\"150\" /></p>\n  <p><barcode value=\"{{ code }}\" type=\"code128\" width=\"240\" height=\"50\" /></p>\n  <small>EAN-13: </small><barcode value=\"750103131130\" type=\"ean13\" width=\"150\" height=\"46\" />\n</div>\n<p style=\"color:#666;font-size:11px\">These are vector shapes: zoom in, they stay sharp, and they scan from the screen.</p>",
+    "template": "<style>\n  body { font-family: sans-serif; padding: 18px; text-align: center; color: #111; }\n  .box { border: 2px solid #2563eb; border-radius: 12px; padding: 16px; }\n  h1 { margin: 6px 0; color: #2563eb; }\n</style>\n<div class=\"box\">\n  <img src=\"logo\" width=\"52\">\n  <h1>{{ event }}</h1>\n  <div>{{ name }} · seat {{ seat }}</div>\n  <p><barcode value=\"https://example.com/ticket/{{ code }}\" type=\"qr\" width=\"150\" /></p>\n  <p><barcode value=\"{{ code }}\" type=\"code128\" width=\"240\" height=\"50\" /></p>\n  <small>EAN-13: </small><barcode value=\"750103131130\" type=\"ean13\" width=\"150\" height=\"46\" />\n</div>\n<p style=\"color:#666;font-size:11px\">These are vector shapes: zoom in, they stay sharp, and they scan from the screen.</p>",
     "data": {
       "event": "Manila Tech Night",
       "name": "Maria Santos",
@@ -462,14 +2035,14 @@
       ]
     },
     "partials": {
-      "layout": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  header { border-bottom: 3px solid #2563eb; padding-bottom: 8px; margin-bottom: 18px; }\n  header h1 { margin: 0; color: #2563eb; }\n  footer { margin-top: 28px; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 6px; }\n  table { width: 100%; border-collapse: collapse; } td { padding: 7px; border-bottom: 1px solid #e5e7eb; } .r { text-align: right; }\n</style>\n<header><h1>{% block title %}{% endblock %}</h1></header>\n{% block body %}{% endblock %}\n<footer>Lands Horizon \u00b7 generated in the browser with pdf-engine</footer>",
-      "row": "<tr><td>{{ item.name }}</td><td class=\"r\">\u20b1{{ item.qty * item.price }}</td></tr>"
+      "layout": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  header { border-bottom: 3px solid #2563eb; padding-bottom: 8px; margin-bottom: 18px; }\n  header h1 { margin: 0; color: #2563eb; }\n  footer { margin-top: 28px; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 6px; }\n  table { width: 100%; border-collapse: collapse; } td { padding: 7px; border-bottom: 1px solid #e5e7eb; } .r { text-align: right; }\n</style>\n<header><h1>{% block title %}{% endblock %}</h1></header>\n{% block body %}{% endblock %}\n<footer>Lands Horizon · generated in the browser with pdf-engine</footer>",
+      "row": "<tr><td>{{ item.name }}</td><td class=\"r\">₱{{ item.qty * item.price }}</td></tr>"
     }
   },
   "languages": {
     "label": "Languages and the peso sign",
     "options": {},
-    "template": "<style>\n  body { font-family: \"Noto Sans\", sans-serif; padding: 36px; line-height: 1.6; }\n  h1 { color: #2563eb; } .l { color: #6b7280; font-size: 11px; }\n</style>\n<h1>One font, several scripts</h1>\n<p><span class=\"l\">English</span><br>Price: \u20b11,250.00</p>\n<p><span class=\"l\">Filipino</span><br>Magandang araw! Salamat po sa inyong pagbili.</p>\n<p><span class=\"l\">Cyrillic</span><br>\u041f\u0440\u0438\u0432\u0435\u0442, \u043c\u0438\u0440! \u042d\u0442\u043e PDF, \u0441\u0434\u0435\u043b\u0430\u043d\u043d\u044b\u0439 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435.</p>\n<p><span class=\"l\">Greek</span><br>\u0393\u03b5\u03b9\u03ac \u03c3\u03bf\u03c5 \u03ba\u03cc\u03c3\u03bc\u03b5! \u0391\u03c5\u03c4\u03cc \u03b5\u03af\u03bd\u03b1\u03b9 \u03ad\u03bd\u03b1 PDF \u03b1\u03c0\u03cc \u03c4\u03bf \u03c0\u03c1\u03cc\u03b3\u03c1\u03b1\u03bc\u03bc\u03b1 \u03c0\u03b5\u03c1\u03b9\u03ae\u03b3\u03b7\u03c3\u03b7\u03c2.</p>\n<p><span class=\"l\">Vietnamese</span><br>Xin ch\u00e0o th\u1ebf gi\u1edbi! \u0110\u00e2y l\u00e0 t\u1ec7p PDF t\u1ea1o trong tr\u00ecnh duy\u1ec7t.</p>\n<p class=\"l\">Chinese, Japanese, Korean, Arabic, Thai and others work too: add a font that has them (see the docs).</p>",
+    "template": "<style>\n  body { font-family: \"Noto Sans\", sans-serif; padding: 36px; line-height: 1.6; }\n  h1 { color: #2563eb; } .l { color: #6b7280; font-size: 11px; }\n</style>\n<h1>One font, several scripts</h1>\n<p><span class=\"l\">English</span><br>Price: ₱1,250.00</p>\n<p><span class=\"l\">Filipino</span><br>Magandang araw! Salamat po sa inyong pagbili.</p>\n<p><span class=\"l\">Cyrillic</span><br>Привет, мир! Это PDF, сделанный в браузере.</p>\n<p><span class=\"l\">Greek</span><br>Γειά σου κόσμε! Αυτό είναι ένα PDF από το πρόγραμμα περιήγησης.</p>\n<p><span class=\"l\">Vietnamese</span><br>Xin chào thế giới! Đây là tệp PDF tạo trong trình duyệt.</p>\n<p class=\"l\">Chinese, Japanese, Korean, Arabic, Thai and others work too: add a font that has them (see the docs).</p>",
     "data": {}
   },
   "images-base64": {

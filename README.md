@@ -17,6 +17,7 @@
 Print receipts and labels straight to the printer. No headless Chrome. Vector text, not screenshots.</p>
 
 <p align="center">
+  <a href="https://lands-horizon-corp.github.io/pdf-engine/"><strong>Live demo</strong></a> •
   <a href="#quick-start">Quick start</a> •
   <a href="#why-pdf-engine">Why</a> •
   <a href="#benchmarks">Benchmarks</a> •
@@ -27,6 +28,8 @@ Print receipts and labels straight to the printer. No headless Chrome. Vector te
   <a href="#documentation">Docs</a> •
   <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/issues">Issues</a>
 </p>
+
+**[Try it in your browser: edit a template and watch the PDF appear →](https://lands-horizon-corp.github.io/pdf-engine/)** No install, nothing uploaded: it runs the WebAssembly build, with a speed test.
 
 ---
 

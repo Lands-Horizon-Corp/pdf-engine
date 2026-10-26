@@ -11,12 +11,15 @@
 </p>
 
 <p align="center"><strong>Turn HTML templates into real PDFs, in the browser.</strong></p>
+<p align="center"><a href="https://lands-horizon-corp.github.io/pdf-engine/"><strong>Try the live playground →</strong></a></p>
 <p align="center">The pdf-engine renderer compiled to WebAssembly: no server, no headless Chrome, no network round trip.<br/>
 Vector text, not screenshots. The document never leaves the page.</p>
 
 ---
 
 ## Quick start
+
+> **Try it first:** the [live playground](https://lands-horizon-corp.github.io/pdf-engine/) lets you edit a template, change page size, compression and workers, and run a speed test in your browser.
 
 ```sh
 npm install @lands-horizon-corp/pdf-engine-wasm

@@ -21,7 +21,16 @@ async function startWorker() {
     };
   }
   // The literal form below is what bundlers (Vite, webpack, Rollup, Parcel) look for to include the worker file.
-  const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+  const url = new URL('./worker.js', import.meta.url);
+  let worker;
+  if (typeof location !== 'undefined' && /^https?:$/.test(url.protocol) && url.origin !== location.origin) {
+    // Loaded from a CDN: a page cannot start a worker from another origin, but a worker made from a same-origin
+    // blob can import a module from there (the CDN sends the CORS header that needs).
+    const blob = new Blob([`import ${JSON.stringify(url.href)};`], { type: 'text/javascript' });
+    worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
+  } else {
+    worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+  }
   return {
     post: (message, transfer) => worker.postMessage(message, transfer || []),
     on: (handlers) => {

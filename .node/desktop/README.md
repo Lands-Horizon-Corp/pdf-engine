@@ -1,5 +1,7 @@
 # pdf-engine for Node.js and Electron
 
+> **Try the templates first:** the [live playground](https://lands-horizon-corp.github.io/pdf-engine/) runs the same engine in your browser, so you can edit a template and see the PDF before writing any code.
+
 HTML to PDF. The Rust engine runs as a child process and talks to your code over stdin/stdout, so
 there is **no HTTP server, no port and no network call**; the PDF comes back as raw bytes.
 

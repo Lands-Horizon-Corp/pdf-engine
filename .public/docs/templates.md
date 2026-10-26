@@ -211,6 +211,9 @@ Known gaps and what to do instead:
 | `float`, `z-index`, `rowspan` | Flexbox or grid; reorder; nested tables |
 | `@page { size }`, `@media print` | `width` / `height`; unconditional rules |
 | `-webkit-background-clip: text` | A solid text color |
+| An inline `<svg>` wider than the space it sits in (even by 1 px) is not drawn at all | Give it `style="display:block;max-width:100%"`, or make it narrower. Text inside an SVG (`<text>`) may not show: put labels in HTML |
+| An `<img>` with a percentage CSS width and no height (`width: 100%`) is drawn at size zero | Give it a `width="520"` attribute, or a width and a height |
+| `<img>` or `background` that points at an SVG file | PNG, or paste the `<svg>` into the template |
 | Vertical padding on `display: inline-block` | `display: block` or flexbox |
 | JavaScript in templates | Compute values before calling `generate()` |
 

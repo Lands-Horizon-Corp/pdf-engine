@@ -18,6 +18,8 @@ mkdirSync(tmp, { recursive: true });
 
 const entries = {
   'pdf-engine (WebAssembly)': `import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm'; window.x = PDFEngine;`,
+  'ironpress': `import init, { HtmlConverter } from 'ironpress'; window.x = [init, HtmlConverter];`,
+  'dompdf.js': `import dompdf from 'dompdf.js'; window.x = dompdf;`,
   'html2pdf.js': `import html2pdf from 'html2pdf.js'; window.x = html2pdf;`,
   'jspdf-html2canvas': `import h from 'jspdf-html2canvas'; window.x = h;`,
 };
@@ -59,6 +61,12 @@ for (const [name, code] of Object.entries(entries)) {
     assetBytes += wasm.length;
     assetBrotli += brotli(wasm);
   }
+  if (name === 'ironpress') {
+    const wasm = readFileSync(resolve(here, 'node_modules/ironpress/ironpress_bg.wasm'));
+    assetBytes += wasm.length;
+    assetBrotli += brotli(wasm);
+  }
+  // dompdf.js carries its WebAssembly inside the JavaScript (base64), so it is already counted above.
   rows.push({ library: name, jsRaw: js.length, jsGzip: gzipSync(js, { level: 9 }).length, jsBrotli: brotli(js), dataRaw: assetBytes, dataBrotli: assetBrotli });
 }
 rmSync(tmp, { recursive: true, force: true });

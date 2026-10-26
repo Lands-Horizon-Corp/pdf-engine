@@ -1,6 +1,6 @@
 # Benchmarks
 
-Speed of pdf-engine against the other HTML-to-PDF packages (Puppeteer, html2pdf.js, jspdf-html2canvas, html-pdf, wkhtmltopdf), measured on your own machine. Plain Node
+Speed of pdf-engine against the other HTML-to-PDF packages (Puppeteer, dompdf.js, ironpress, html2pdf.js, jspdf-html2canvas, html-pdf, wkhtmltopdf), measured on your own machine. Plain Node
 scripts; the charts and tables in the main README come from them. Only speed is measured here.
 
 | Command | What it measures | Time |
@@ -88,6 +88,7 @@ library that draws a blank page or a picture is visible (`npm run check` shows t
 | `pdf-engine` | pdf-engine, native, over IPC | 8 documents in flight |
 | `wasm` | pdf-engine, WebAssembly | in Chromium, one at a time |
 | `puppeteer`, `puppeteer-shell` | Puppeteer with its default headless mode, and with `chrome-headless-shell` | 8 pages in flight |
+| `ironpress`, `dompdf` | ironpress (WebAssembly, one reused converter, generic font family), dompdf.js | in Chromium, one at a time |
 | `html2pdf`, `jspdf-html2canvas` | html2pdf.js, jspdf-html2canvas | in Chromium, one at a time |
 | `html-pdf` | html-pdf (PhantomJS) | 8 in flight |
 | `wkhtmltopdf` | wkhtmltopdf 0.12.6 (one process per document) | 8 in flight |

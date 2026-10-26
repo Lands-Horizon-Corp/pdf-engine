@@ -97,28 +97,35 @@ Turning HTML into a PDF on the web has always meant picking your trade-off:
 
 pdf-engine is a real layout engine (Blitz, Stylo, Taffy, Parley and Krilla, in Rust) compiled to WebAssembly. It runs
 **inside the page**: no server, no Chromium, no PhantomJS, no round trip, works offline. The PDF has real vector
-text, in 1 to 2 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
+text, in 1 to 3 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
 
-| HTML to PDF | pdf-engine | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Text stays text (selectable, searchable) | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
-| Runs in the browser, no server | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Nothing heavy to install (no Chromium, PhantomJS or binary) | ✅ | ❌ ~370 MB | ✅ | ✅ | ❌ PhantomJS | ❌ binary |
-| Maintained | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
-| Time for a receipt, in the browser<sup>1</sup> | **0.7 ms** | n/a | 87 ms | 73 ms | n/a | n/a |
-| Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| HTML to PDF | pdf-engine | dompdf.js | ironpress | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Text stays text (selectable, searchable) | ✅ | ✅ | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
+| Runs in the browser, no server | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Download in the browser (compressed) | 3.3 MB | **0.17 MB** | 4.7 MB | n/a | 0.26 MB | 0.25 MB | n/a | n/a |
+| Maintained | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
+| Time for a receipt, in the browser<sup>1</sup> | **1.3 ms** | 2.8 ms | 40 ms | n/a | 86 ms | 76 ms | n/a | n/a |
+| Time for a 30-line invoice, in the browser<sup>1</sup> | **3.0 ms** | 7.2 ms | 109 ms | n/a | 114 ms | 106 ms | n/a | n/a |
+| First PDF after the page loads<sup>1</sup> | 190 ms | **50 ms** | 165 ms | n/a | 130 ms | 110 ms | n/a | n/a |
+| Prints to receipt and label printers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-<sub>1. Chromium on an Apple M4, median after warm-up ([benchmarks](#benchmarks)). Puppeteer, html-pdf and wkhtmltopdf
-need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with Puppeteer (fastest mode),
-356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac, so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-engine does not run;
-see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
+<sub>1. Chromium on an Apple M4, median after warm-up ([benchmarks](#benchmarks)); WebKit gives the same order. dompdf.js
+starts faster and downloads far less than pdf-engine; pdf-engine makes each document 2 to 2.5 times faster once running.
+ironpress is run as WebAssembly with a generic font family, which is faster for it than a named font (a named font
+about doubles its time); its native Rust build is faster than its WebAssembly build and was not measured. Puppeteer,
+html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with
+Puppeteer (fastest mode), 356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac,
+so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including
+JavaScript, which pdf-engine does not run; ironpress also does math, `@font-face` and bookmarks, which pdf-engine does
+not; see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
 
 **What you get**
 
 - 📄 **Real PDFs.** Vector text in tens of KB. Flexbox, grid, tables, gradients, transforms, SVG, CSS variables,
   `calc()`, page breaks, multi-column, and `@page` margin boxes.
-- ⚡ **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice. [Numbers and graphs](#benchmarks), with the machine and
+- ⚡ **Fast.** About 1 ms per receipt and 3 ms per 30-line invoice. [Numbers and graphs](#benchmarks), with the machine and
   the conditions (PhantomJS and wkhtmltopdf run under Rosetta on the test Mac).
 - 🌍 **Every language.** About 150 Noto fonts on the server cover practically every living script (Chinese, Arabic,
   Hindi, Thai, emoji, ...); in the browser you add the font you need.
@@ -178,7 +185,9 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 | pdf-engine | 10,000 | 2.0 s | 5,047 | 1 |
 | pdf-engine (WebAssembly) | 10,000 | 7.0 s | 1,436 | 1 |
 | Puppeteer (headless shell) | 10,000 | 13 s | 753 | 1 |
+| dompdf.js | 10,000 | 32 s | 315 | 1 |
 | Puppeteer (default) | 10,000 | 1.2 min | 145 | 1 |
+| ironpress | 3,867 | 6.5 min (projected) | 26 | 1 |
 | wkhtmltopdf | 2,728 | 9.2 min (projected) | 18 | 1 |
 | jspdf-html2canvas | 2,173 | 11.5 min (projected) | 14 | 1 |
 | html2pdf.js | 1,798 | 13.9 min (projected) | 12 | 1 |
@@ -193,9 +202,11 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 | pdf-engine (WebAssembly) | 10,000 | 2.2 min | 76 | 7 |
 | Puppeteer (default) | 8,422 | 3.0 min (projected) | 56 | 7 |
 | wkhtmltopdf | 2,384 | 10.5 min (projected) | 16 | 7 |
+| dompdf.js | 1,993 | 12.5 min (projected) | 13 | 7 |
 | html-pdf (PhantomJS) | 1,117 | 22.4 min (projected) | 7 | 9 |
 | html2pdf.js | 566 | 44.2 min (projected) | 4 | 7 |
 | jspdf-html2canvas | 521 | 48.1 min (projected) | 3 | 7 |
+| ironpress | 153 | 2.7 h (projected) | 1 | 8 |
 
 **Multi-table statements** (5 tables of 35 lines, 4-6 pages)
 
@@ -205,12 +216,14 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 | Puppeteer (headless shell) | 10,000 | 57 s | 176 | 5 |
 | pdf-engine (WebAssembly) | 10,000 | 1.3 min | 125 | 5 |
 | Puppeteer (default) | 10,000 | 2.2 min | 77 | 5 |
+| dompdf.js | 3,166 | 7.9 min (projected) | 21 | 5 |
 | wkhtmltopdf | 2,520 | 9.9 min (projected) | 17 | 5 |
 | html-pdf (PhantomJS) | 1,165 | 21.6 min (projected) | 8 | 6 |
 | html2pdf.js | 797 | 31.4 min (projected) | 5 | 5 |
 | jspdf-html2canvas | 767 | 32.6 min (projected) | 5 | 5 |
+| ironpress | 257 | 1.6 h (projected) | 2 | 6 |
 
-Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-25.
+Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-26.
 
 </details>
 
@@ -395,6 +408,8 @@ The packages that turn **HTML into a PDF**. Figures are live from the npm regist
 | [puppeteer-core](https://www.npmjs.com/package/puppeteer-core) / [puppeteer](https://www.npmjs.com/package/puppeteer) | 14,783,400 / 7,126,067 | 2 days ago | Node | Drives headless Chrome | HTML + full CSS and JS |
 | [html2pdf.js](https://www.npmjs.com/package/html2pdf.js) | 755,107 | 10 months ago | Browser | Draws the page to an image (html2canvas), then jsPDF | HTML + CSS |
 | [jspdf-html2canvas](https://www.npmjs.com/package/jspdf-html2canvas) | 18,764 | 3 months ago | Browser | jsPDF + html2canvas | HTML + CSS |
+| [dompdf.js](https://www.npmjs.com/package/dompdf.js) | 372 | 26 days ago | Browser | Reads the page, draws vector text with its own WebAssembly engine | HTML + CSS |
+| [ironpress](https://www.npmjs.com/package/ironpress) | 34 | 40 days ago | Browser, Node (and Rust, C, .NET, Java, Python, Ruby) | Rust renderer, compiled to WebAssembly or native | HTML + CSS, Markdown, math |
 | [html-pdf](https://www.npmjs.com/package/html-pdf) | 74,278 | **deprecated** on npm | Node | PhantomJS (discontinued in 2018) | HTML + CSS |
 | [wkhtmltopdf](https://www.npmjs.com/package/wkhtmltopdf) | 34,949 | 4 years ago (the binary is archived) | Node | Wraps the wkhtmltopdf binary | HTML + CSS |
 | [@adobe/pdfservices-node-sdk](https://www.npmjs.com/package/@adobe/pdfservices-node-sdk) | 27,968 | 24 days ago | Node | Adobe's hosted service (account and network) | Via the service |

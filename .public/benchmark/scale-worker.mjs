@@ -14,7 +14,7 @@ const budgetMs = Number(budgetArg) * 1000;
 const scenario = scenarios[scenarioName];
 
 /** Libraries that only exist in a browser run in Chromium through Playwright. */
-const browserLibraries = { wasm: 'pdf-engine (WebAssembly)', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas' };
+const browserLibraries = { wasm: 'pdf-engine (WebAssembly)', ironpress: 'ironpress', dompdf: 'dompdf.js', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas' };
 
 async function inBrowser() {
   const { chromium } = await import('playwright');
@@ -33,7 +33,7 @@ async function inBrowser() {
   const r = await page.evaluate(([l, s, n, b]) => window.bench.batch(l, s, n, b), [browserLibraries[id], scenarioName, count, budgetMs]);
   await browser.close();
   server.close();
-  return { name: browserLibraries[id], kind: id === 'wasm' ? 'HTML to PDF' : 'HTML to PDF (a picture)', seconds: r.ms / 1000, completed: r.completed, errors: r.errors, firstError: r.firstError, first: r.first ? Buffer.from(r.first, 'base64') : null };
+  return { name: browserLibraries[id], kind: ['html2pdf', 'jspdf-html2canvas'].includes(id) ? 'HTML to PDF (a picture)' : 'HTML to PDF', seconds: r.ms / 1000, completed: r.completed, errors: r.errors, firstError: r.firstError, first: r.first ? Buffer.from(r.first, 'base64') : null };
 }
 
 async function inNode() {

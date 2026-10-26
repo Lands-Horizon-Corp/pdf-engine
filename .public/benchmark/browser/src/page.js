@@ -1,12 +1,17 @@
 // Runs inside the browser: renders the same documents with each library and reports timings.
-// The libraries: pdf-engine (WebAssembly), and the two that photograph the page, html2pdf.js and jspdf-html2canvas.
+// The libraries: pdf-engine and ironpress (WebAssembly), dompdf.js (reads the page), and the two that photograph it:
+// html2pdf.js and jspdf-html2canvas.
 import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
 import wasmUrl from '@lands-horizon-corp/pdf-engine-wasm/wasm?url';
 import html2pdf from 'html2pdf.js';
 import jsPDFHtml2canvas from 'jspdf-html2canvas';
+import dompdf from 'dompdf.js';
+import initIronpress, { HtmlConverter as IronpressConverter } from 'ironpress';
 import { scenarios } from '../../scenarios.js';
 
 const engine = new PDFEngine({ wasm: wasmUrl });
+await initIronpress();
+const ironpress = new IronpressConverter();   // made once and reused, like the engine above
 
 /** The document in the page, as the two screenshot libraries need it (they draw what is on screen). */
 function host(doc) {
@@ -19,6 +24,9 @@ function host(doc) {
 
 const libraries = {
   'pdf-engine (WebAssembly)': (doc) => engine.generate({ template: doc.html }),
+  // ironpress looks fonts up much faster with a generic family than with a named one ('Noto Sans'), so it gets that.
+  ironpress: async (doc) => ironpress.htmlToPdf(doc.html.replace("'Noto Sans', Arial, sans-serif", 'sans-serif')),
+  'dompdf.js': async (doc, el) => new Uint8Array(await (await dompdf(el, { format: 'letter', pagination: true, backgroundColor: '#ffffff' })).arrayBuffer()),
   'html2pdf.js': async (doc, el) =>
     new Uint8Array(await html2pdf().set({ margin: 0, jsPDF: { unit: 'in', format: 'letter' } }).from(el).outputPdf('arraybuffer')),
   'jspdf-html2canvas': async (doc, el) => {

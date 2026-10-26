@@ -1,6 +1,6 @@
 {
   "machine": {
-    "date": "2026-10-25",
+    "date": "2026-10-26",
     "cpu": "Apple M4",
     "cores": 10,
     "platform": "darwin arm64",
@@ -9,11 +9,27 @@
   "rows": [
     {
       "library": "pdf-engine (WebAssembly)",
-      "jsRaw": 27757,
-      "jsGzip": 9492,
-      "jsBrotli": 9010,
+      "jsRaw": 28056,
+      "jsGzip": 9583,
+      "jsBrotli": 9089,
       "dataRaw": 11710410,
-      "dataBrotli": 3347340
+      "dataBrotli": 3347182
+    },
+    {
+      "library": "ironpress",
+      "jsRaw": 6581,
+      "jsGzip": 2126,
+      "jsBrotli": 2011,
+      "dataRaw": 15758078,
+      "dataBrotli": 4807894
+    },
+    {
+      "library": "dompdf.js",
+      "jsRaw": 534409,
+      "jsGzip": 186725,
+      "jsBrotli": 168924,
+      "dataRaw": 0,
+      "dataBrotli": 0
     },
     {
       "library": "html2pdf.js",

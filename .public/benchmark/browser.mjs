@@ -21,8 +21,9 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 // The libraries that draw pages from code and pdf-engine take milliseconds, so they get many runs; the
 // two that photograph the page take a second or more.
 const SLOW = new Set(['html2pdf.js', 'jspdf-html2canvas']);
-const runsFor = (library) => (SLOW.has(library) ? 8 : 100);
-const warmFor = (library) => (SLOW.has(library) ? 0 : 300);
+const MID = new Set(['ironpress', 'dompdf.js']);
+const runsFor = (library) => (SLOW.has(library) ? 8 : MID.has(library) ? 20 : 100);
+const warmFor = (library) => (SLOW.has(library) ? 0 : MID.has(library) ? 10 : 300);
 const results = [];
 
 for (const [name, type] of [['Chromium (Chrome, Edge, Brave)', chromium], ['WebKit (Safari)', webkit], ['Firefox', firefox]]) {

@@ -15,7 +15,7 @@ const arg = (name, fallback) => {
 const count = Number(arg('count', 10000));
 const budget = Number(arg('budget', 150));
 const scenarioNames = arg('scenarios', 'small,large,multitable').split(',');
-const all = ['pdf-engine', 'wasm', 'puppeteer-shell', 'puppeteer', 'html2pdf', 'jspdf-html2canvas', 'html-pdf', 'wkhtmltopdf'];
+const all = ['pdf-engine', 'wasm', 'ironpress', 'dompdf', 'puppeteer-shell', 'puppeteer', 'html2pdf', 'jspdf-html2canvas', 'html-pdf', 'wkhtmltopdf'];
 const libs = arg('libs', all.join(',')).split(',');
 const force = process.argv.includes('--force');
 

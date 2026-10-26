@@ -17,13 +17,15 @@
   "dependencies": {
     "@lands-horizon-corp/pdf-engine": "file:../../.node/desktop",
     "@lands-horizon-corp/pdf-engine-wasm": "file:../../.node/wasm",
+    "dompdf.js": "^2.0.7",
     "html-pdf": "^3.0.1",
     "html2pdf.js": "^0.14.0",
+    "ironpress": "^1.7.0",
     "jspdf-html2canvas": "^1.7.0",
     "pdfjs-dist": "^5.0.0",
+    "phantomjs-prebuilt": "^2.1.16",
     "playwright": "^1.64.1",
     "puppeteer": "^25.16.0",
-    "vite": "^8.3.4",
-    "phantomjs-prebuilt": "^2.1.16"
+    "vite": "^8.3.4"
   }
 }

@@ -172,13 +172,13 @@ if (existsSync(scalePath)) {
   const scale = JSON.parse(readFileSync(scalePath, 'utf8'));
   const label = {
     'pdf-engine': 'pdf-engine', 'puppeteer-shell': 'Puppeteer (headless shell)', puppeteer: 'Puppeteer (default)',
-    wasm: 'pdf-engine (WebAssembly)', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas',
+    wasm: 'pdf-engine (WebAssembly)', ironpress: 'ironpress (WebAssembly)', dompdf: 'dompdf.js', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas',
     'html-pdf': 'html-pdf', wkhtmltopdf: 'wkhtmltopdf',
   };
   const note = { 'html-pdf': 'PhantomJS, x86 under Rosetta', wkhtmltopdf: 'x86 under Rosetta' };
   const groupsOf = [
     ['HTML to PDF (native / server)', ['pdf-engine', 'puppeteer-shell', 'puppeteer', 'html-pdf', 'wkhtmltopdf']],
-    ['HTML to PDF in the browser', ['wasm', 'html2pdf', 'jspdf-html2canvas']],
+    ['HTML to PDF in the browser', ['wasm', 'ironpress', 'dompdf', 'html2pdf', 'jspdf-html2canvas']],
   ];
   const titles = { small: 'receipts (1 page)', large: 'large invoices (300 lines, 7-9 pages)', multitable: 'multi-table statements (5 tables, 4-6 pages)' };
   const counts = scale.count.toLocaleString('en-US');

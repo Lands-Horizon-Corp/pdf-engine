@@ -1,0 +1,533 @@
+{
+  "invoice": {
+    "label": "Invoice (loop, table, logo)",
+    "options": {},
+    "template": "<style>\n  body { font-family: sans-serif; color: #1f2937; padding: 36px; font-size: 13px; }\n  .top { display: flex; justify-content: space-between; align-items: center; }\n  h1 { margin: 0; font-size: 26px; color: #2563eb; }\n  table { width: 100%; border-collapse: collapse; margin-top: 24px; }\n  th { text-align: left; background: #eff4ff; padding: 8px; }\n  td { padding: 8px; border-bottom: 1px solid #e5e7eb; }\n  .r { text-align: right; }\n  .total { margin-top: 16px; text-align: right; font-size: 18px; font-weight: bold; }\n</style>\n\n<div class=\"top\">\n  <div>\n    <h1>Invoice {{ no }}</h1>\n    <div>{{ customer }}</div>\n  </div>\n  <img src=\"logo\" width=\"72\">\n</div>\n\n<table>\n  <tr><th>Item</th><th class=\"r\">Qty</th><th class=\"r\">Price</th><th class=\"r\">Amount</th></tr>\n  {% for item in items %}\n  <tr>\n    <td>{{ item.name }}</td>\n    <td class=\"r\">{{ item.qty }}</td>\n    <td class=\"r\">₱{{ item.price }}</td>\n    <td class=\"r\">₱{{ item.qty * item.price }}</td>\n  </tr>\n  {% endfor %}\n</table>\n\n<div class=\"total\">Total ₱{{ total }}</div>",
+    "data": {
+      "no": "2026-0042",
+      "customer": "Juan dela Cruz, Manila",
+      "items": [
+        {
+          "name": "Website hosting (12 months)",
+          "qty": 1,
+          "price": 1500
+        },
+        {
+          "name": "Domain name",
+          "qty": 1,
+          "price": 450
+        },
+        {
+          "name": "Design review",
+          "qty": 3,
+          "price": 800
+        },
+        {
+          "name": "Priority support",
+          "qty": 2,
+          "price": 250
+        }
+      ],
+      "total": 4850
+    }
+  },
+  "receipt": {
+    "label": "Receipt (80 mm paper)",
+    "options": {
+      "width": "80mm",
+      "height": "170mm"
+    },
+    "template": "<style>\n  body { font-family: sans-serif; font-size: 12px; padding: 6px 10px; color: #000; }\n  .c { text-align: center; }\n  .row { display: flex; justify-content: space-between; margin: 2px 0; }\n  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0; }\n  .big { font-size: 15px; font-weight: bold; }\n</style>\n<div class=\"c\"><img src=\"logo\" width=\"44\"><div class=\"big\">{{ store }}</div><div>{{ address }}</div></div>\n<hr>\n{% for i in lines %}\n<div class=\"row\"><span>{{ i.qty }} x {{ i.name }}</span><span>₱{{ i.qty * i.price }}</span></div>\n{% endfor %}\n<hr>\n<div class=\"row big\"><span>TOTAL</span><span>₱{{ total }}</span></div>\n<div class=\"row\"><span>Cash</span><span>₱{{ cash }}</span></div>\n<div class=\"row\"><span>Change</span><span>₱{{ cash - total }}</span></div>\n<hr>\n<div class=\"c\">Thank you! Salamat po!</div>\n<div class=\"c\" style=\"margin-top:8px\"><barcode value=\"{{ no }}\" type=\"code128\" width=\"200\" height=\"40\" /></div>",
+    "data": {
+      "store": "Sari-Sari Corner",
+      "address": "12 Rizal St, Quezon City",
+      "no": "000417",
+      "lines": [
+        {
+          "name": "Sardines",
+          "qty": 2,
+          "price": 25
+        },
+        {
+          "name": "Rice 1kg",
+          "qty": 1,
+          "price": 58
+        },
+        {
+          "name": "Coffee 3-in-1",
+          "qty": 5,
+          "price": 8
+        }
+      ],
+      "total": 148,
+      "cash": 200
+    }
+  },
+  "report": {
+    "label": "Report (page numbers, page break)",
+    "options": {},
+    "template": "<style>\n  @page {\n    margin: 22mm 18mm;\n    @top-left   { content: \"{{ company }}\"; font-size: 10px; color: #555; }\n    @top-right  { content: \"Quarterly report\"; font-size: 10px; color: #555; }\n    @bottom-center { content: \"Page \" counter(page) \" of \" counter(pages); font-size: 10px; color: #555; }\n  }\n  body { font-family: sans-serif; font-size: 12px; color: #222; }\n  h1 { color: #2563eb; } table { width: 100%; border-collapse: collapse; }\n  td, th { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }\n</style>\n<h1>Quarterly report</h1>\n<p>Every page has a header and a numbered footer from the <code>@page</code> rule above. The table below keeps going onto more pages.</p>\n<table>\n  <tr><th>#</th><th>Region</th><th>Orders</th></tr>\n  {% for r in rows %}<tr><td>{{ r.n }}</td><td>{{ r.region }}</td><td>{{ r.orders }}</td></tr>{% endfor %}\n</table>\n\n{% pagebreak %}\n\n<h1>Notes</h1>\n<p>{% pagebreak %} starts a new page, like this one.</p>",
+    "data": {
+      "company": "Lands Horizon",
+      "rows": [
+        {
+          "n": 1,
+          "region": "Luzon",
+          "orders": 120
+        },
+        {
+          "n": 2,
+          "region": "Visayas",
+          "orders": 157
+        },
+        {
+          "n": 3,
+          "region": "Mindanao",
+          "orders": 194
+        },
+        {
+          "n": 4,
+          "region": "Luzon",
+          "orders": 141
+        },
+        {
+          "n": 5,
+          "region": "Visayas",
+          "orders": 178
+        },
+        {
+          "n": 6,
+          "region": "Mindanao",
+          "orders": 125
+        },
+        {
+          "n": 7,
+          "region": "Luzon",
+          "orders": 162
+        },
+        {
+          "n": 8,
+          "region": "Visayas",
+          "orders": 199
+        },
+        {
+          "n": 9,
+          "region": "Mindanao",
+          "orders": 146
+        },
+        {
+          "n": 10,
+          "region": "Luzon",
+          "orders": 183
+        },
+        {
+          "n": 11,
+          "region": "Visayas",
+          "orders": 130
+        },
+        {
+          "n": 12,
+          "region": "Mindanao",
+          "orders": 167
+        },
+        {
+          "n": 13,
+          "region": "Luzon",
+          "orders": 204
+        },
+        {
+          "n": 14,
+          "region": "Visayas",
+          "orders": 151
+        },
+        {
+          "n": 15,
+          "region": "Mindanao",
+          "orders": 188
+        },
+        {
+          "n": 16,
+          "region": "Luzon",
+          "orders": 135
+        },
+        {
+          "n": 17,
+          "region": "Visayas",
+          "orders": 172
+        },
+        {
+          "n": 18,
+          "region": "Mindanao",
+          "orders": 209
+        },
+        {
+          "n": 19,
+          "region": "Luzon",
+          "orders": 156
+        },
+        {
+          "n": 20,
+          "region": "Visayas",
+          "orders": 193
+        },
+        {
+          "n": 21,
+          "region": "Mindanao",
+          "orders": 140
+        },
+        {
+          "n": 22,
+          "region": "Luzon",
+          "orders": 177
+        },
+        {
+          "n": 23,
+          "region": "Visayas",
+          "orders": 124
+        },
+        {
+          "n": 24,
+          "region": "Mindanao",
+          "orders": 161
+        },
+        {
+          "n": 25,
+          "region": "Luzon",
+          "orders": 198
+        },
+        {
+          "n": 26,
+          "region": "Visayas",
+          "orders": 145
+        },
+        {
+          "n": 27,
+          "region": "Mindanao",
+          "orders": 182
+        },
+        {
+          "n": 28,
+          "region": "Luzon",
+          "orders": 129
+        },
+        {
+          "n": 29,
+          "region": "Visayas",
+          "orders": 166
+        },
+        {
+          "n": 30,
+          "region": "Mindanao",
+          "orders": 203
+        },
+        {
+          "n": 31,
+          "region": "Luzon",
+          "orders": 150
+        },
+        {
+          "n": 32,
+          "region": "Visayas",
+          "orders": 187
+        },
+        {
+          "n": 33,
+          "region": "Mindanao",
+          "orders": 134
+        },
+        {
+          "n": 34,
+          "region": "Luzon",
+          "orders": 171
+        },
+        {
+          "n": 35,
+          "region": "Visayas",
+          "orders": 208
+        },
+        {
+          "n": 36,
+          "region": "Mindanao",
+          "orders": 155
+        },
+        {
+          "n": 37,
+          "region": "Luzon",
+          "orders": 192
+        },
+        {
+          "n": 38,
+          "region": "Visayas",
+          "orders": 139
+        },
+        {
+          "n": 39,
+          "region": "Mindanao",
+          "orders": 176
+        },
+        {
+          "n": 40,
+          "region": "Luzon",
+          "orders": 123
+        },
+        {
+          "n": 41,
+          "region": "Visayas",
+          "orders": 160
+        },
+        {
+          "n": 42,
+          "region": "Mindanao",
+          "orders": 197
+        },
+        {
+          "n": 43,
+          "region": "Luzon",
+          "orders": 144
+        },
+        {
+          "n": 44,
+          "region": "Visayas",
+          "orders": 181
+        },
+        {
+          "n": 45,
+          "region": "Mindanao",
+          "orders": 128
+        },
+        {
+          "n": 46,
+          "region": "Luzon",
+          "orders": 165
+        },
+        {
+          "n": 47,
+          "region": "Visayas",
+          "orders": 202
+        },
+        {
+          "n": 48,
+          "region": "Mindanao",
+          "orders": 149
+        },
+        {
+          "n": 49,
+          "region": "Luzon",
+          "orders": 186
+        },
+        {
+          "n": 50,
+          "region": "Visayas",
+          "orders": 133
+        },
+        {
+          "n": 51,
+          "region": "Mindanao",
+          "orders": 170
+        },
+        {
+          "n": 52,
+          "region": "Luzon",
+          "orders": 207
+        },
+        {
+          "n": 53,
+          "region": "Visayas",
+          "orders": 154
+        },
+        {
+          "n": 54,
+          "region": "Mindanao",
+          "orders": 191
+        },
+        {
+          "n": 55,
+          "region": "Luzon",
+          "orders": 138
+        },
+        {
+          "n": 56,
+          "region": "Visayas",
+          "orders": 175
+        },
+        {
+          "n": 57,
+          "region": "Mindanao",
+          "orders": 122
+        },
+        {
+          "n": 58,
+          "region": "Luzon",
+          "orders": 159
+        },
+        {
+          "n": 59,
+          "region": "Visayas",
+          "orders": 196
+        },
+        {
+          "n": 60,
+          "region": "Mindanao",
+          "orders": 143
+        },
+        {
+          "n": 61,
+          "region": "Luzon",
+          "orders": 180
+        },
+        {
+          "n": 62,
+          "region": "Visayas",
+          "orders": 127
+        },
+        {
+          "n": 63,
+          "region": "Mindanao",
+          "orders": 164
+        },
+        {
+          "n": 64,
+          "region": "Luzon",
+          "orders": 201
+        },
+        {
+          "n": 65,
+          "region": "Visayas",
+          "orders": 148
+        },
+        {
+          "n": 66,
+          "region": "Mindanao",
+          "orders": 185
+        },
+        {
+          "n": 67,
+          "region": "Luzon",
+          "orders": 132
+        },
+        {
+          "n": 68,
+          "region": "Visayas",
+          "orders": 169
+        },
+        {
+          "n": 69,
+          "region": "Mindanao",
+          "orders": 206
+        },
+        {
+          "n": 70,
+          "region": "Luzon",
+          "orders": 153
+        }
+      ]
+    }
+  },
+  "codes": {
+    "label": "Ticket (QR code and barcodes)",
+    "options": {
+      "width": "120mm",
+      "height": "160mm"
+    },
+    "template": "<style>\n  body { font-family: sans-serif; padding: 18px; text-align: center; color: #111; }\n  .box { border: 2px solid #2563eb; border-radius: 12px; padding: 16px; }\n  h1 { margin: 6px 0; color: #2563eb; }\n</style>\n<div class=\"box\">\n  <img src=\"logo\" width=\"52\">\n  <h1>{{ event }}</h1>\n  <div>{{ name }} · seat {{ seat }}</div>\n  <p><barcode value=\"https://example.com/ticket/{{ code }}\" type=\"qr\" width=\"150\" /></p>\n  <p><barcode value=\"{{ code }}\" type=\"code128\" width=\"240\" height=\"50\" /></p>\n  <small>EAN-13: </small><barcode value=\"750103131130\" type=\"ean13\" width=\"150\" height=\"46\" />\n</div>\n<p style=\"color:#666;font-size:11px\">These are vector shapes: zoom in, they stay sharp, and they scan from the screen.</p>",
+    "data": {
+      "event": "Manila Tech Night",
+      "name": "Maria Santos",
+      "seat": "B-14",
+      "code": "TKT20260042"
+    }
+  },
+  "partials": {
+    "label": "Partials and layouts",
+    "options": {},
+    "template": "{% extends \"layout\" %}\n{% block title %}Order confirmation{% endblock %}\n{% block body %}\n  <p>Hello {{ name }}, thank you for your order.</p>\n  <table>{% for item in items %}{% include \"row\" %}{% endfor %}</table>\n{% endblock %}",
+    "data": {
+      "name": "Ana",
+      "items": [
+        {
+          "name": "Website hosting (12 months)",
+          "qty": 1,
+          "price": 1500
+        },
+        {
+          "name": "Domain name",
+          "qty": 1,
+          "price": 450
+        },
+        {
+          "name": "Design review",
+          "qty": 3,
+          "price": 800
+        }
+      ]
+    },
+    "partials": {
+      "layout": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  header { border-bottom: 3px solid #2563eb; padding-bottom: 8px; margin-bottom: 18px; }\n  header h1 { margin: 0; color: #2563eb; }\n  footer { margin-top: 28px; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 6px; }\n  table { width: 100%; border-collapse: collapse; } td { padding: 7px; border-bottom: 1px solid #e5e7eb; } .r { text-align: right; }\n</style>\n<header><h1>{% block title %}{% endblock %}</h1></header>\n{% block body %}{% endblock %}\n<footer>Lands Horizon · generated in the browser with pdf-engine</footer>",
+      "row": "<tr><td>{{ item.name }}</td><td class=\"r\">₱{{ item.qty * item.price }}</td></tr>"
+    }
+  },
+  "languages": {
+    "label": "Languages and the peso sign",
+    "options": {},
+    "template": "<style>\n  body { font-family: \"Noto Sans\", sans-serif; padding: 36px; line-height: 1.6; }\n  h1 { color: #2563eb; } .l { color: #6b7280; font-size: 11px; }\n</style>\n<h1>One font, several scripts</h1>\n<p><span class=\"l\">English</span><br>Price: ₱1,250.00</p>\n<p><span class=\"l\">Filipino</span><br>Magandang araw! Salamat po sa inyong pagbili.</p>\n<p><span class=\"l\">Cyrillic</span><br>Привет, мир! Это PDF, сделанный в браузере.</p>\n<p><span class=\"l\">Greek</span><br>Γειά σου κόσμε! Αυτό είναι ένα PDF από το πρόγραμμα περιήγησης.</p>\n<p><span class=\"l\">Vietnamese</span><br>Xin chào thế giới! Đây là tệp PDF tạo trong trình duyệt.</p>\n<p class=\"l\">Chinese, Japanese, Korean, Arabic, Thai and others work too: add a font that has them (see the docs).</p>",
+    "data": {}
+  },
+  "images-base64": {
+    "label": "Images: base64 (data: URI)",
+    "options": {},
+    "template": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  h1 { color: #2563eb; } .row { display: flex; gap: 16px; align-items: center; margin: 14px 0; }\n  code { background: #f3f4f6; padding: 2px 5px; }\n</style>\n<h1>An image inside the template</h1>\n<p>The picture below is a PNG written as text in the data (a <code>data:</code> URI). It needs no network and no file, so it works everywhere.</p>\n<div class=\"row\">\n  <img src=\"{{ logo }}\" width=\"64\" height=\"64\">\n  <img src=\"{{ logo }}\" width=\"32\" height=\"32\">\n  <img src=\"{{ logo }}\" width=\"16\" height=\"16\">\n</div>\n<p>You can also write it straight into the HTML: <code>&lt;img src=\"data:image/png;base64,iVBOR...\"&gt;</code>.</p>\n<p>PNG, JPEG and GIF work. Tip: keep the picture small, because it travels inside the data.</p>",
+    "data": {
+      "logo": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAE6klEQVR4AexaTWwbRRR+bwN1nNZOGtuhDalQqZMiwYEDiHJAPXFAcKCBXkBIxA4I9YIQpagBLihQ4AKVQCARJyCEQEItJ0S48XNBCCEQrZAaRxQhaLGdqI1pG6vxTt/nNG28re3sZkb+Wa/84p3Zed973+cXz3h2LapxbB/9/6Z4IpMcTGaOxJPZY4OJTG4wmVUNaZLb5RyPxpOZxNDTC9Ea9KiiANsS2X4hPtmhLvzLzBNEPMxEtxNzhBr1kNwu57iHiVN2sfAfOMRH8rFKKV8jwM5ENjSYzI0HSKWF+AhTZZEqgTZKPxNZJQ68OCtCjA3sVUFnbg4BFBdZHSRSL4njNYOdzk3TZgoJn9eC4bkxZ85lAsQT2UNMLAI4h7VKW70cT2TeWM3migC3juaGRaUXV19sxXNwjI/MPbrCrSQAvi0tW02tdLb8u2VP7Hgi3weeJQFUsTDOTGF0+MGYqNvasPgquFqxfZlNpGgEDV+ZcMaMZ4UL/BAxbfAVeZAVzktMD1pSDg+j7UcDd0uI7xLz5YsV3SkCqC062G+LWXT4mRB991YvnZiIGjFgIwZi6chZseqRfwEOrBdsY4Dpi7EeeuCuAG3tFU3XC1jBH9iIgViIWWGYm+4eLdk+cl8n9Ya0QK0pecRCzDUNrjKIiQNaso5v7agSxswlrzGd2WgRoHsjO3GNt8NdemJqEcA4W4MB2gIYFLcpoI1VgFJEz36Qp9ueytHQqDeDLzCAZUpNYwL8dOIiff1zgWzlPXX4AuO3P5e8g9TwNCbA9i36psaBqD4spx7GBOjrtujHtyP06YFu+uQFbwZfYETDeqY8J3m0jQkA8N4Q091DN9I9O70ZfIEBLFNmVABTSevEbQugU81mxDJaAdO/FOi9r87Tux4NvsAwKawxAf6Zsyl9qij7rd7TxxICGKfP2N5BangaE6Bnk76pKxzUh+XUw5gA2LFJ3t9Fw/d20p5d3gy+wOiSHSdn4mtt1xpnTAAEDspme79skd0csciLwRcYwDJlRgUwlbRO3LYAOtVsRiyjFYA5HHN5rXXA598vUm7B3FRX7YMxJoCbdUAub9Pvf5n7zV8XAdyuA2JhY59FNf5kLKqbdcDju4N0xy03VE3U1EVjAiBhzOGYy2utATZrXDUirhszKoCbROo1ti1AvZRvlLjtCmiUT6JeebQroF7Km4rrFldLBZw9h80rt6HXN37hvJ6YWgTAvt366Lj31hVTiwBHflikeflB456GNw/EQkxv3uVelhTS2fIu961zBUV7Xz9Tuht8at7cz1pg424xYiGm+0zLPcDdYkWny7u9tf7O2qXnAXYfmPf8PECt5wiAjecFEMtbluVe4G4ppl/Jpwe4SwXwtE/5Eyueti7aHd/6VQBwt05+tPmkUuobv4kAzuC+PA12dDyvFBX9IgK4smU9B74lAdIfRo5LY7+YX177Zyaif4BsSQCcpCdj79jEh3Heyial/ya4rnC8IgA6ZlMRKQsex3krmiJ1SMgfXM2tTACSiWEmFX1FKuFJubGfp1Y5FOXJpsfSqb4xEo606nAIsHxlNhX9WKnOHVIuU7JctJd7m/LvkuT/PrjMTMU+ux6D6wqAgempUDY92ZcocrBfSidJSn0pYMflfQ7XG8XK81A5pdQxInVU3keXODiQTsX2gUv5uKutSwAAAP//br9HIgAAAAZJREFUAwBj8nbSOAn5tQAAAABJRU5ErkJggg=="
+    }
+  },
+  "images-url": {
+    "label": "Images: from a URL",
+    "options": {},
+    "template": "<style>\n  body { font-family: sans-serif; padding: 28px; color: #1f2937; }\n  h1 { color: #2563eb; } img.banner { width: 100%; border-radius: 6px; }\n  .note { background: #fef3c7; padding: 8px 12px; margin-top: 14px; font-size: 12px; }\n</style>\n<img class=\"banner\" src=\"{{ banner }}\">\n<h1>An image from a web address</h1>\n<p>The browser downloads it when the PDF is made, so the host must allow it (CORS). GitHub's raw file host does.</p>\n<p>The address is a value in the data, so you can change it in the Data tab.</p>\n<div class=\"note\">If the image is missing, the PDF is still made: a broken image is skipped, never an error.</div>",
+    "data": {
+      "banner": "https://raw.githubusercontent.com/Lands-Horizon-Corp/pdf-engine/master/.public/demo/images/banner.png"
+    }
+  },
+  "images-mapped": {
+    "label": "Images: by name (your logo)",
+    "options": {},
+    "template": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  h1 { color: #2563eb; margin-bottom: 4px; }\n</style>\n<img src=\"logo\" width=\"90\">\n<h1>Your logo here</h1>\n<p>This page asked for <code>&lt;img src=\"logo\"&gt;</code>. The name <b>logo</b> is a file, Blob or bytes you pass in <code>images: { logo }</code>.\nUse the <b>Logo</b> button at the top to choose your own picture (PNG, JPEG or GIF) and watch it change.</p>\n<p>Passing images by name keeps big pictures out of the template and out of the data.</p>",
+    "data": {}
+  },
+  "images-svg": {
+    "label": "Images: inline SVG (vector)",
+    "options": {},
+    "template": "<style>\n  body { font-family: sans-serif; padding: 36px; color: #1f2937; }\n  h1 { color: #2563eb; }\n</style>\n<h1>Vector drawings</h1>\n<p>An <code>&lt;svg&gt;</code> element written in the template is drawn as shapes: sharp at any zoom, and the file stays small.</p>\n<svg width=\"260\" height=\"130\" viewBox=\"0 0 260 130\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"4\" y=\"4\" width=\"120\" height=\"120\" rx=\"14\" fill=\"#2563eb\"/>\n  <circle cx=\"190\" cy=\"64\" r=\"58\" fill=\"#f59e0b\" stroke=\"#111827\" stroke-width=\"3\"/>\n  <path d=\"M20 96 L64 32 L108 96 Z\" fill=\"#fff\"/>\n  <text x=\"150\" y=\"70\" fill=\"#111827\" font-size=\"22\" font-family=\"sans-serif\">SVG</text>\n</svg>\n<p style=\"font-size:12px;color:#6b7280\">Note: an &lt;img&gt; that points at an .svg file is not drawn yet. Paste the &lt;svg&gt; into the template, or use PNG.</p>",
+    "data": {}
+  },
+  "certificate": {
+    "label": "Certificate (landscape)",
+    "options": {
+      "orientation": "landscape"
+    },
+    "template": "<style>\n  body { font-family: serif; text-align: center; color: #1f2937; margin: 0; }\n  .frame { margin: 28px; border: 6px double #2563eb; padding: 36px 40px; }\n  h1 { font-size: 40px; color: #2563eb; margin: 8px 0; letter-spacing: 2px; }\n  .name { font-size: 34px; border-bottom: 1px solid #9ca3af; display: inline-block; padding: 4px 40px; margin: 14px 0; }\n  .sig { display: flex; justify-content: space-around; margin-top: 40px; font-size: 13px; }\n  .sig div { border-top: 1px solid #6b7280; padding-top: 4px; width: 200px; }\n</style>\n<div class=\"frame\">\n  <img src=\"logo\" width=\"64\">\n  <h1>CERTIFICATE OF COMPLETION</h1>\n  <div>This certifies that</div>\n  <div class=\"name\">{{ name }}</div>\n  <div>has completed <b>{{ course }}</b> on {{ date }}.</div>\n  <div class=\"sig\"><div>{{ signer }}</div><div>Date</div></div>\n</div>",
+    "data": {
+      "name": "Maria Santos",
+      "course": "Introduction to PDF Generation",
+      "date": "October 26, 2026",
+      "signer": "Lands Horizon Academy"
+    }
+  },
+  "label": {
+    "label": "Shipping label (4 x 6 in)",
+    "options": {
+      "width": "4in",
+      "height": "6in"
+    },
+    "template": "<style>\n  body { font-family: sans-serif; padding: 14px; color: #000; }\n  .box { border: 3px solid #000; padding: 10px; margin-bottom: 8px; }\n  .big { font-size: 26px; font-weight: bold; }\n  .small { font-size: 11px; color: #444; text-transform: uppercase; }\n  .c { text-align: center; }\n</style>\n<div class=\"box\"><div class=\"small\">Ship to</div><div class=\"big\">{{ to.name }}</div><div>{{ to.line1 }}</div><div>{{ to.city }}</div></div>\n<div class=\"box\"><div class=\"small\">From</div><div>{{ from }}</div></div>\n<div class=\"box c\"><barcode value=\"{{ tracking }}\" type=\"code128\" width=\"300\" height=\"70\" /><div style=\"font-family:monospace;margin-top:4px\">{{ tracking }}</div></div>\n<div class=\"c\"><barcode value=\"https://example.com/track/{{ tracking }}\" type=\"qr\" width=\"110\" /></div>",
+    "data": {
+      "to": {
+        "name": "Ana Reyes",
+        "line1": "45 Mabini St, Brgy. San Roque",
+        "city": "Cebu City 6000"
+      },
+      "from": "Lands Horizon, 12 Rizal Ave, Manila",
+      "tracking": "PH2026102600417"
+    }
+  }
+}

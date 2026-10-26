@@ -4,7 +4,7 @@ A checklist for releasing the browser package (`@lands-horizon-corp/pdf-engine-w
 it on the CDNs (jsDelivr, unpkg), with fresh benchmarks. Do the steps in order; each has a command and what
 "good" looks like.
 
-Not covered: the Node package (`@lands-horizon-corp/pdf-engine`) is **not published yet**. It needs the
+The browser package is published (1.2.0 is on npm, jsDelivr and unpkg). Not covered: the Node package (`@lands-horizon-corp/pdf-engine`) is **not published yet**. It needs the
 native binary built for each platform first (macOS, Linux, Windows; x64 and arm64). Do not run
 `npm publish` in `.node/desktop/` until that exists.
 
@@ -14,6 +14,9 @@ native binary built for each platform first (macOS, Linux, Windows; x64 and arm6
 - `npm login` and `npm whoami` show that account.
 - Rust with the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` at the version in
   `.node/wasm/rust/Cargo.lock`, and (optional, for speed) `wasm-opt` from binaryen. `.node/wasm/README.md` has the commands.
+- For releasing from GitHub (step 4b): an npm token of type **granular**, permission **Read and write (publish and
+  stage)** (not "stage only"), with **Bypass two-factor authentication (2FA)** ticked, for all packages or the
+  `@lands-horizon-corp` scope. Without the bypass the job fails with `EOTP`; a stage-only token cannot publish.
 - Playwright browsers for the checks: `cd .node/wasm/e2e && npx playwright install chromium webkit firefox`.
 
 ## 1. The version
@@ -29,6 +32,12 @@ The version is in four places and they should match (the engine reports the one 
 
 Follow [Semantic Versioning](https://semver.org/): new features = minor, fixes = patch. Then move the
 `[Unreleased]` entries of `CHANGELOG.md` under the new version and date.
+
+The demo page (`.public/demo/index.html`) pins the package from the CDN in its `VERSION` constant: change it to the
+new version once it is on npm (deploys to GitHub Pages on push).
+
+The README on the npm page is the one inside the published version, so a change to a README or the docs reaches npm
+only with a new version (a patch release).
 
 The links in the docs that pin a version (`@1`, `@1.1.1` in `.node/wasm/README.md`, `README.md`) should point at the
 release you are about to make.
@@ -95,7 +104,9 @@ Then read the results before trusting them:
 
 - `bench-check` shows the same page count and selectable text for every library.
 - In the README tables, any library that did not finish is marked **projected**.
-- Losses are shown as they are: the built-in-font libraries are faster per document, and the README says so.
+- Only HTML-to-PDF packages are measured (pdf-engine, Puppeteer, html2pdf.js, jspdf-html2canvas, html-pdf,
+  wkhtmltopdf). `make bench-setup` installs PhantomJS and wkhtmltopdf; on Apple Silicon they run under Rosetta and the
+  README says so. Losses are shown as they are.
   Do not edit a number by hand; if the README text claims something the charts no longer show, change the text.
 - `git diff --stat .public/benchmark/results README.md .public/benchmark/charts` should show only the numbers and charts changing.
 
@@ -110,13 +121,15 @@ Secrets and variables > Actions): `NPM_TOKEN` (an npm Automation token for an ac
 git tag v<version> && git push origin v<version>
 ```
 
-A plain version becomes npm's `latest`; a suffix (`v1.2.0-rc.1`) is published as `next`. The job stops if the tag,
+A plain version becomes npm's `latest`; a brand-new package can take a few minutes to appear after the job ends (npm may
+show a `0.0.0-stage` placeholder meanwhile); a suffix (`v1.2.0-rc.1`) is published as `next`. The job stops if the tag,
 `.node/wasm/package.json` and `Cargo.toml` disagree. Watch it under the repository's Actions tab, then do step 6
 (check it from the CDN). The manual way is steps 5 and 8.
 
 ## 5. Publish to npm (by hand)
 
-First as a pre-release tag, so nobody gets it by accident:
+This is what worked for 1.2.0 when the token in GitHub was not allowed to bypass 2FA. First as a pre-release tag, so
+nobody gets it by accident (or drop `--tag next` to publish `latest` directly):
 
 ```sh
 cd .node/wasm

@@ -69,7 +69,7 @@
     <select id="sample" aria-label="Example"></select>
   </label>
   <label>Logo <input type="file" id="logo" accept="image/png,image/jpeg,image/gif" aria-label="Your own logo image"></label>
-  <label><input type="checkbox" id="outlines" checked> Show box outlines</label>
+  <label title="Draws a thin red line around every box, to help you see the layout. It is only in the preview, never in the downloaded PDF."><input type="checkbox" id="outlines"> Show box outlines</label>
   <button id="download" class="primary" disabled>Download PDF</button>
   <button id="open" disabled>Open in a tab</button>
   <span class="status" id="status" aria-live="polite">Loading the engine…</span>
@@ -261,7 +261,7 @@ loadSample('invoice');
 try {
   const mod = await import(SRC);
   PDFEngineError = mod.PDFEngineError;
-  pdf = new mod.PDFEngine();
+  pdf = new mod.PDFEngine({ compression: 'balanced' });
   const t0 = performance.now();
   const { version } = await pdf.ping();
   status.textContent = `Engine ${version} ready (loaded in ${Math.round(performance.now() - t0)} ms)`;

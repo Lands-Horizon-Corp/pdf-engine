@@ -6,7 +6,8 @@ name: Release
 #
 # A plain version (v1.2.0) becomes npm's `latest`; one with a suffix (v1.2.0-rc.1) is published as `next`.
 # Add these repository secrets first (Settings > Secrets and variables > Actions):
-#   NPM_TOKEN            an npm "Automation" token of an account in the @lands-horizon-corp organisation
+#   npm: a Trusted Publisher on the package (npmjs.com > package > Settings > Trusted Publisher: GitHub Actions,
+#        Lands-Horizon-Corp / pdf-engine, workflow release.yml, no environment). No npm token is stored.
 #   DOCKERHUB_USERNAME   the Docker Hub account that owns the image
 #   DOCKERHUB_TOKEN     a Docker Hub access token with write permission
 # The Node/Electron package (@lands-horizon-corp/pdf-engine) is not published here: it needs the engine built
@@ -39,6 +40,8 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: A new enough npm for trusted publishing (11.5.1 or later)
+        run: npm install -g npm@latest && npm --version
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: wasm32-unknown-unknown }
       - uses: Swatinem/rust-cache@v2
@@ -63,8 +66,7 @@ jobs:
             *-*) npm publish --access public --provenance --tag next ;;
             *)   npm publish --access public --provenance ;;
           esac
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # No NODE_AUTH_TOKEN: npm signs in with the workflow's OIDC identity (the Trusted Publisher above).
 
   docker:
     name: Docker image

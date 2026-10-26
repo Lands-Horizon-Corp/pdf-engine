@@ -14,9 +14,10 @@ native binary built for each platform first (macOS, Linux, Windows; x64 and arm6
 - `npm login` and `npm whoami` show that account.
 - Rust with the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` at the version in
   `.node/wasm/rust/Cargo.lock`, and (optional, for speed) `wasm-opt` from binaryen. `.node/wasm/README.md` has the commands.
-- For releasing from GitHub (step 4b): an npm token of type **granular**, permission **Read and write (publish and
-  stage)** (not "stage only"), with **Bypass two-factor authentication (2FA)** ticked, for all packages or the
-  `@lands-horizon-corp` scope. Without the bypass the job fails with `EOTP`; a stage-only token cannot publish.
+- For releasing from GitHub (step 4b): a **Trusted Publisher** on the npm package (npmjs.com > the package > Settings >
+  Trusted Publisher > GitHub Actions: organisation `Lands-Horizon-Corp`, repository `pdf-engine`, workflow `release.yml`,
+  no environment). No npm token is stored in GitHub, and no 2FA code is needed. (A token-based setup also works, but
+  the token must be granular, "publish and stage", with Bypass 2FA ticked, or the job fails with `EOTP`.)
 - Playwright browsers for the checks: `cd .node/wasm/e2e && npx playwright install chromium webkit firefox`.
 
 ## 1. The version
@@ -113,9 +114,8 @@ Then read the results before trusting them:
 ## 4b. The quick way: let GitHub publish it
 
 `.github/workflows/release.yml` builds, tests and publishes the browser package to npm **and** the Docker image
-to Docker Hub (amd64 and arm64) when you push a version tag. Once, add three repository secrets (Settings >
-Secrets and variables > Actions): `NPM_TOKEN` (an npm Automation token for an account in the
-`@lands-horizon-corp` organisation), `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Then, after steps 1 to 4:
+to Docker Hub (amd64 and arm64) when you push a version tag. Once, add two repository secrets (Settings >
+Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, and set up the npm Trusted Publisher (step 0). Then, after steps 1 to 4:
 
 ```sh
 git tag v<version> && git push origin v<version>

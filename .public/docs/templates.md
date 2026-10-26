@@ -246,6 +246,22 @@ await pdf.generate({ template, data, accessible: true });
   own documents with one.
 - **Cost:** a little extra time and file size for the structure; leave it off for receipts and labels.
 
+## Repeating table headers
+
+A table with a `<thead>` shows its header rows again at the top of every page the table continues onto, like a browser
+printing a table. Put the header in `<thead>` (not in the first row of `<tbody>`):
+
+```html
+<table>
+  <thead><tr><th>#</th><th>Item</th><th>Amount</th></tr></thead>
+  <tbody> ...hundreds of rows... </tbody>
+</table>
+```
+
+- Several header rows repeat together. A table that fits on one page is not changed.
+- A table with a repeated header takes about one extra layout pass; a document without a `<thead>` pays nothing.
+- A `<tfoot>` is not repeated.
+
 ## Guard rails
 
 A template can only produce so much: output is capped (`TEMPLATE_MAX_OUTPUT_BYTES`) and execution has a budget
@@ -288,7 +304,6 @@ Known gaps and what to do instead:
 
 | Not supported | Use instead |
 | --- | --- |
-| `<thead>` repeating on later pages | Split long tables per page, or repeat the header yourself |
 | `background: url()`, `@import` | `<img>`; fonts: `@font-face` is supported ([Fonts](fonts-and-languages.md#font-face-a-font-a-document-brings-along)) |
 | `float`, `z-index` | Flexbox or grid; reorder |
 | `@page { size }` | `width` / `height` |

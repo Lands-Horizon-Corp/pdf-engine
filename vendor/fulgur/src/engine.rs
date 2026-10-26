@@ -467,7 +467,7 @@ impl Engine {
         // that stylo 0.8.0 gates behind its gecko engine. The side-table is
         // consumed first by the multicol layout hook (for column-fill) and
         // then by the convert pass (for column-rule wrapping).
-        let column_styles = crate::blitz_adapter::extract_column_style_table(&doc);
+        let mut column_styles = crate::blitz_adapter::extract_column_style_table(&doc);
         // Blitz treats multicol containers as plain blocks; route them
         // through fulgur's Taffy hook so columns balance and siblings
         // shift in lockstep. The returned geometry table captures per-
@@ -476,7 +476,7 @@ impl Engine {
         // containers with the rule spec + geometry they need to render.
         // See docs/plans/2026-04-20-css-multicol-design.md and
         // docs/plans/2026-04-21-fulgur-v7a-column-rule.md.
-        let multicol_geometry = crate::multicol_layout::run_pass(doc.deref_mut(), &column_styles);
+        let mut multicol_geometry = crate::multicol_layout::run_pass(doc.deref_mut(), &column_styles);
 
         // Run the pagination_layout fragmenter (fulgur-4cbc). Walks
         // body's children's existing `final_layout` (populated by
@@ -527,6 +527,32 @@ impl Engine {
             &column_styles,
             &running_store,
         );
+
+        // pdf-engine patch (PATCHES.md #10): a table's `<thead>` repeats on every page the table continues onto. Each pass
+        // puts a copy of the header in front of the rows that start a page, then lays the document out again.
+        for _ in 0..crate::table_header::MAX_PASSES {
+            if crate::table_header::repeat_table_headers(
+                doc.deref_mut(),
+                &pagination_geometry,
+                resolved_content_height_px,
+            ) == 0 {
+                break;
+            }
+            crate::blitz_adapter::resolve(&mut doc);
+            crate::blitz_adapter::relayout_position_fixed(
+                &mut doc,
+                resolved_content_width_px,
+                resolved_content_height_px,
+            );
+            column_styles = crate::blitz_adapter::extract_column_style_table(&doc);
+            multicol_geometry = crate::multicol_layout::run_pass(doc.deref_mut(), &column_styles);
+            pagination_geometry = crate::pagination_layout::run_pass_with_break_and_running(
+                doc.deref_mut(),
+                resolved_content_height_px,
+                &column_styles,
+                &running_store,
+            );
+        }
 
         // fulgur-rpvu: append per-page fragments for every `position:
         // fixed` element so v2's geometry-driven dispatch repeats them

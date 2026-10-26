@@ -543,7 +543,7 @@ Planned, not built yet:
 - [ ] Publish the Node/Electron package with the engine binary for every platform
 - [ ] Verify printing on physical receipt, label and office printers
 - [x] Reusable template **partials**, `{% pagebreak %}`, and `<barcode>` / QR tags drawn as vector shapes
-- [ ] Repeating `<thead>` on later pages
+- [x] Repeating `<thead>` on later pages
 - [x] `rowspan` and `@font-face`
 - [x] Markdown (`{{ text|markdown }}`) and LaTeX math (`<math>`) in templates
 - [ ] `float`

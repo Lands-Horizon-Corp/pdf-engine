@@ -63,7 +63,7 @@ really working", "fonts shifting", "gaps at the end of the page with a big parag
 | **Page breaks with dynamic content.** | ✅ | `page-break-before/after/inside`, `break-*`, and `{% pagebreak %}` in templates. Table rows and paragraphs split at line and row edges, never in the middle of a line ([Templates](templates.md#page-breaks)). Orphan and widow control is fixed at two lines (the CSS properties are not read yet). |
 | **Gaps at the bottom of a page when something big will not fit.** | 🟡 | A paragraph splits across pages, so it does not leave a gap. A box that cannot split (a picture, `break-inside: avoid`) moves to the next page and leaves the space, as in any browser. |
 | **Page numbers, headers and footers, "page X of Y".** | ✅ | `@page` margin boxes with `counter(page)` and `counter(pages)`, with text from your data. The demo's report example shows it. [Templates](templates.md#page-numbers-headers-and-footers) |
-| **A table header that repeats on every page.** | 🔴 | Not repeated yet (checked: the header row appears only on the first page). A long table has to repeat the header by hand. This is the first item on the plan. |
+| **A table header that repeats on every page.** | ✅ | A `<thead>` repeats at the top of every page the table continues onto ([Repeating table headers](templates.md#repeating-table-headers)). |
 | **Floats (`float: left`), text wrapping around an image.** | 🔴 | Not supported: a floated box is laid out as a block. The layout engine has no float support at all, so this is a large change. Plan: first an approximation (side-by-side boxes), then real text wrapping. |
 | **Modern CSS, because old engines (wkhtmltopdf, PhantomJS) lack it.** | ✅ | Flexbox, grid, tables (with `rowspan` and `colspan`), CSS variables, `calc()`, multi-column, transforms, opacity, rounded corners, `box-shadow`, gradients, `@font-face`, `@page`. [CSS](templates.md#css) |
 | **CSS the engine ignores.** | 🔴 / 🟡 | Checked: `outline` and `filter` (blur) are not drawn; `position: sticky` is ignored. The list is in [Known gaps](templates.md#css). |
@@ -131,7 +131,7 @@ Many answers in the discussion say: *push back*. That is often right, and pdf-en
 
 Ordered by how often the concern comes up and how much it blocks real documents.
 
-1. **Repeat table headers on every page** (`<thead>`). Common in invoices and reports.
+1. ~~Repeat table headers on every page (`<thead>`).~~ **Done.**
 2. **`pdf.fromElement(element)`**: export what is on screen without writing a template.
 3. ~~Apply `@media print`~~ **Done:** a PDF is print media.
 4. **`float`**, starting with side-by-side boxes, then text wrapping.

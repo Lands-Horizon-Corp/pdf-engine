@@ -15,6 +15,7 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 7 | `src/blitz_adapter.rs` | A generic family (`sans-serif`, `serif`, `monospace`, `system-ui`, ...) with no installed font uses the first supplied font (Noto Sans when present) | In the browser build the only fonts are the ones supplied, so `font-family: Arial, sans-serif` drew no text at all |
 | 8 | `src/blitz_adapter.rs`, `src/lib.rs` | `with_doc_font_faces`: fonts from a document's `@font-face` rules join that one render's font context, under the CSS family name | Blitz resolves `@font-face` through a network provider that the engine does not have, so such rules were ignored |
 | 9 | `src/pagination_layout.rs` | A multi-line paragraph records geometry for the boxes inside it on every page it covers | `inline-block`, `inline-flex` and similar boxes inside a paragraph that wrapped onto a second line were never drawn |
+| 10 | `src/table_header.rs`, `src/engine.rs` | A table's `<thead>` rows are copied in front of every body row that starts a page after the first, then the document is laid out again | Long tables showed their header only on the first page. The first pass predicts all the page starts from the row heights, so a table costs about one extra layout; documents without a `<thead>` pay nothing |
 
 ## Upgrading fulgur
 

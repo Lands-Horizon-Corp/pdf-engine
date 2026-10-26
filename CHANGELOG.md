@@ -8,6 +8,7 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Added
 
+- **Repeating table headers:** a table's `<thead>` is drawn again at the top of every page the table continues onto.
 - **`accessible: true`**: a tagged PDF (structure tree, document language, title), declared PDF/UA when the document has
   headings. In the browser package, the Node package, the HTTP form field `accessible` and the IPC `render` op.
 

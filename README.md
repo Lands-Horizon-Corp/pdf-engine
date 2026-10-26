@@ -2,6 +2,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/v/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=npm%20(browser)" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/dm/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=downloads" alt="npm downloads per month" /></a>
+  <a href="https://lands-horizon-corp.github.io/pdf-engine/"><img src="https://img.shields.io/badge/live%20demo-try%20it-2563EB?style=flat-square" alt="live demo" /></a>
   <a href="https://hub.docker.com/r/zalven88/pdf-engine"><img src="https://img.shields.io/docker/v/zalven88/pdf-engine?style=flat-square&color=0db7ed&label=docker" alt="docker image" /></a>
   <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/actions"><img src="https://img.shields.io/github/actions/workflow/status/Lands-Horizon-Corp/pdf-engine/ci.yml?branch=master&style=flat-square&label=CI" alt="CI status" /></a>
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS, Linux, Windows" />
@@ -550,9 +552,15 @@ Planned, not built yet:
 
 ## Keywords
 
-`pdf` `html-to-pdf` `pdf-generator` `invoice` `receipt` `thermal-printer` `escpos` `zpl` `label-printer` `wasm`
-`webassembly` `rust` `electron` `tauri` `react` `vue` `svelte` `nextjs` `templates` `puppeteer-alternative`
-`html2pdf-alternative` `jspdf-alternative` `no-chromium` `docker` `offline`
+**HTML to PDF** for **Node.js** and the **browser**: a **PDF generator** in **Rust** and **WebAssembly** with no server and no
+Chromium. A **Puppeteer alternative**, **html2pdf.js alternative** and **jsPDF alternative** for **invoices**,
+**receipts**, reports, labels and certificates, with **Markdown to PDF**, **LaTeX math**, **QR codes**, `@font-face`,
+**thermal receipt printing** (ESC/POS, ZPL), and **React**, **Vue**, **Svelte**, **Next.js**, **Electron** and **Tauri** support.
+
+`pdf` `html-to-pdf` `html2pdf` `pdf-generator` `pdf-generation` `nodejs` `javascript` `typescript` `wasm` `webassembly` `rust`
+`browser` `client-side` `serverless` `offline` `invoice` `receipt` `thermal-printer` `escpos` `zpl` `qr-code` `barcode`
+`markdown-to-pdf` `latex` `math` `puppeteer-alternative` `html2pdf-alternative` `jspdf-alternative`
+`headless-chrome-alternative` `no-chromium` `react` `vue` `svelte` `nextjs` `electron` `tauri` `docker`
 
 ---
 

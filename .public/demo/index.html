@@ -3,8 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>pdf-engine live demo</title>
-<meta name="description" content="Edit an HTML template and watch it become a real PDF, in your browser, with WebAssembly. No server, no Chromium.">
+<title>pdf-engine: HTML to PDF in the browser (WebAssembly, no server)</title>
+<meta name="description" content="Free HTML to PDF in Rust + WebAssembly. Runs in the browser and Node.js, no server, no Chromium. Markdown, LaTeX math, QR codes. Try the live demo.">
+<meta name="keywords" content="html to pdf, pdf generator, html2pdf, webassembly pdf, rust pdf, nodejs pdf, javascript pdf generator, invoice pdf, receipt printer, markdown to pdf, latex to pdf, puppeteer alternative, client-side pdf, jspdf alternative">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#2563eb">
+<link rel="canonical" href="https://lands-horizon-corp.github.io/pdf-engine/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pdf-engine">
+<meta property="og:title" content="pdf-engine: HTML to PDF in your browser">
+<meta property="og:description" content="Rust + WebAssembly. No server, no Chromium. Vector text, Markdown, LaTeX math, QR codes. Edit a template and watch the PDF appear.">
+<meta property="og:url" content="https://lands-horizon-corp.github.io/pdf-engine/">
+<meta property="og:image" content="https://lands-horizon-corp.github.io/pdf-engine/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="pdf-engine: HTML to PDF in your browser, with a report page and a page of formulas">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="pdf-engine: HTML to PDF in your browser">
+<meta name="twitter:description" content="Rust + WebAssembly. No server, no Chromium. Try the live demo.">
+<meta name="twitter:image" content="https://lands-horizon-corp.github.io/pdf-engine/og-image.png">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "pdf-engine", "applicationCategory": "DeveloperApplication", "operatingSystem": "Any (web browser, Node.js, Electron, Tauri, Docker)", "description": "HTML to PDF generator in Rust and WebAssembly. Runs in the browser and Node.js with no server and no Chromium. Markdown, LaTeX math, QR codes, receipt printing.", "url": "https://lands-horizon-corp.github.io/pdf-engine/", "downloadUrl": "https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm", "codeRepository": "https://github.com/Lands-Horizon-Corp/pdf-engine", "license": "https://opensource.org/licenses/MIT", "programmingLanguage": ["Rust", "JavaScript", "TypeScript"], "softwareVersion": "1.3.0", "image": "https://lands-horizon-corp.github.io/pdf-engine/og-image.png", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@type": "Organization", "name": "Lands Horizon", "url": "https://github.com/Lands-Horizon-Corp"}}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does pdf-engine need a server?", "acceptedAnswer": {"@type": "Answer", "text": "No. The browser build runs entirely in the page with WebAssembly, so the document is never uploaded and it works offline. The same engine also runs natively in Node.js, Electron, Tauri and Docker when you want a server."}}, {"@type": "Question", "name": "Is it a replacement for Puppeteer or headless Chrome?", "acceptedAnswer": {"@type": "Answer", "text": "For documents built from HTML templates (invoices, receipts, reports, labels, certificates), yes: it needs no browser and makes a receipt in about a millisecond. It does not run JavaScript in the page and supports a subset of CSS (no float yet), so a page that depends on scripts or on every CSS feature still needs a real browser."}}, {"@type": "Question", "name": "Does it work in Node.js?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The same package runs under Node.js (documents can be made in worker threads), and a native Node and Electron package talks to the Rust engine over stdin and stdout and can print to receipt and label printers."}}, {"@type": "Question", "name": "Is the text real text or a picture?", "acceptedAnswer": {"@type": "Answer", "text": "Real vector text that can be selected, searched and copied, in small files. Libraries that screenshot the page (html2pdf.js, jspdf-html2canvas) produce pictures of text."}}, {"@type": "Question", "name": "Can it do Markdown, math and QR codes?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Markdown with a filter, LaTeX formulas in math tags, and QR codes and barcodes as vector shapes, all built in, with no extra libraries to ship."}}, {"@type": "Question", "name": "How fast is it?", "acceptedAnswer": {"@type": "Answer", "text": "About 1.3 ms for a receipt and 3 ms for a 30-line invoice in the browser (Chromium on an Apple M4). Ten thousand receipts take about 13 seconds as WebAssembly and about 4 seconds natively. dompdf.js starts faster and downloads less (0.17 MB against 3.3 MB); pdf-engine makes each document two to two and a half times faster once running. The benchmark, with every library and its methods, is in the repository."}}, {"@type": "Question", "name": "Which license?", "acceptedAnswer": {"@type": "Answer", "text": "MIT. It is free for commercial use."}}]}]</script>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #fff; --text: #14181f; --muted: #5b6573; --line: #dde1e7;
@@ -17,10 +37,11 @@
     }
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; }
+  html { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; min-height: 100%; }
   header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
   header h1 { font-size: 17px; margin: 0; font-weight: 700; }
+  header h1 .sub { font-weight: 500; color: var(--muted); font-size: 13px; margin-left: 8px; }
   header .tag { color: var(--muted); font-size: 13px; flex: 1 1 280px; }
   header nav { display: flex; gap: 14px; font-size: 14px; }
   a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
@@ -42,7 +63,7 @@
   #speedResult b { color: var(--ok); }
   .status { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .status b { color: var(--ok); }
-  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; padding: 12px 16px 16px; }
+  main { flex: none; height: max(520px, calc(100vh - 215px)); min-height: 0; display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; padding: 12px 16px 16px; }
   .col { min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .tabs { display: flex; border-bottom: 1px solid var(--line); }
   .tabs button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 9px 14px; border-bottom: 2px solid transparent; }
@@ -56,16 +77,29 @@
   .err[hidden] { display: none; }
   .note { color: var(--muted); font-size: 12px; padding: 6px 12px; border-top: 1px solid var(--line); }
   @media (max-width: 800px) {
-    body { height: auto; } html { height: auto; }
-    main { grid-template-columns: 1fr; }
+    html { height: auto; }
+    main { grid-template-columns: 1fr; height: auto; }
     .col { height: 70vh; }
     .status { margin-left: 0; width: 100%; }
   }
+  .bar label, .params label { min-width: 0; max-width: 100%; }
+  select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .about { max-width: 940px; width: 100%; margin: 12px auto 48px; padding: 0 16px; }
+  .about h2 { font-size: 24px; line-height: 1.25; margin: 28px 0 8px; }
+  .about h3 { font-size: 17px; margin: 24px 0 6px; }
+  .about code, .about pre { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; }
+  .about code { padding: 1px 5px; } .about pre { padding: 12px 14px; overflow: auto; } .about pre code { border: 0; padding: 0; background: none; }
+  .about table { width: 100%; border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+  .about th, .about td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; white-space: nowrap; } .about th { background: var(--panel); }
+  .about details { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin: 8px 0; padding: 2px 14px; }
+  .about summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+  .about .links { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; }
+  .about .small { color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>pdf-engine</h1>
+  <h1>pdf-engine<span class="sub">HTML to PDF in your browser</span></h1>
   <span class="tag">Edit the HTML, get a real PDF. It is made here, in your browser, by WebAssembly: no server, no Chromium, nothing uploaded.</span>
   <nav>
     <a href="https://github.com/Lands-Horizon-Corp/pdf-engine">GitHub</a>
@@ -142,6 +176,61 @@
     <div id="preview"><div class="empty">The PDF appears here</div></div>
   </section>
 </main>
+
+<section class="about" id="about" aria-labelledby="about-title">
+<h2 id="about-title">HTML to PDF in the browser, with no server and no Chromium</h2>
+<p><strong>pdf-engine</strong> is a free, open-source (MIT) HTML to PDF generator written in Rust and compiled to WebAssembly. It turns an HTML template and your data into a real PDF with selectable vector text, entirely on the user's own device: no backend, no headless Chrome, no Puppeteer, nothing uploaded. The same engine runs in <strong>Node.js</strong>, Electron, Tauri and Docker, and can print receipts and labels (ESC/POS, ZPL).</p>
+
+<h3>What you get</h3>
+<ul>
+<li><strong>Fast:</strong> about 1.3 ms for a receipt and 3 ms for a 30-line invoice in the browser; 10,000 receipts in about 13 seconds as WebAssembly.</li>
+<li><strong>Real PDFs:</strong> vector text you can select and search, flexbox, grid, tables (with <code>rowspan</code> and <code>colspan</code>), SVG, gradients, page numbers, headers and footers.</li>
+<li><strong>Built in:</strong> templates (loops, conditions, partials), Markdown, LaTeX math, QR codes and barcodes, <code>@font-face</code> fonts, password encryption.</li>
+<li><strong>Everywhere:</strong> browsers (Chromium, Firefox, Safari), Node.js, Electron, Tauri, React, Vue, Svelte, Next.js, or a Docker server.</li>
+</ul>
+
+<h3>Install</h3>
+<pre><code>npm install @lands-horizon-corp/pdf-engine-wasm</code></pre>
+<pre><code>import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
+
+const pdf = new PDFEngine();
+await pdf.download({
+  template: '&lt;h1&gt;Invoice {{ no }}&lt;/h1&gt;',
+  data: { no: '12345' },
+}, 'invoice.pdf');</code></pre>
+<p class="small">No bundler? Import it from a CDN: <code>https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1/index.js</code></p>
+
+<h3>How it compares</h3>
+<table>
+<thead><tr><th></th><th>pdf-engine</th><th>dompdf.js</th><th>ironpress</th><th>html2pdf.js</th></tr></thead>
+<tbody>
+<tr><td>Receipt, in the browser</td><td>1.3 ms</td><td>2.8 ms</td><td>39 ms</td><td>86 ms</td></tr>
+<tr><td>Text is real text</td><td>yes</td><td>yes</td><td>yes</td><td>no (a picture)</td></tr>
+<tr><td>Download (compressed)</td><td>3.3 MB</td><td>0.17 MB</td><td>4.7 MB</td><td>0.26 MB</td></tr>
+<tr><td>Math and Markdown built in</td><td>yes</td><td>no</td><td>yes</td><td>no</td></tr>
+<tr><td>Receipt and label printing</td><td>yes</td><td>no</td><td>no</td><td>no</td></tr>
+</tbody></table>
+<p class="small">Chromium on an Apple M4, median after warm-up. dompdf.js starts faster and downloads less; Puppeteer renders any web page, including JavaScript, which pdf-engine does not run. The full benchmark and its methods are in the <a href="https://github.com/Lands-Horizon-Corp/pdf-engine#benchmarks">repository</a>.</p>
+
+<h3>Frequently asked questions</h3>
+<details><summary>Does pdf-engine need a server?</summary><p>No. The browser build runs entirely in the page with WebAssembly, so the document is never uploaded and it works offline. The same engine also runs natively in Node.js, Electron, Tauri and Docker when you want a server.</p></details>
+<details><summary>Is it a replacement for Puppeteer or headless Chrome?</summary><p>For documents built from HTML templates (invoices, receipts, reports, labels, certificates), yes: it needs no browser and makes a receipt in about a millisecond. It does not run JavaScript in the page and supports a subset of CSS (no float yet), so a page that depends on scripts or on every CSS feature still needs a real browser.</p></details>
+<details><summary>Does it work in Node.js?</summary><p>Yes. The same package runs under Node.js (documents can be made in worker threads), and a native Node and Electron package talks to the Rust engine over stdin and stdout and can print to receipt and label printers.</p></details>
+<details><summary>Is the text real text or a picture?</summary><p>Real vector text that can be selected, searched and copied, in small files. Libraries that screenshot the page (html2pdf.js, jspdf-html2canvas) produce pictures of text.</p></details>
+<details><summary>Can it do Markdown, math and QR codes?</summary><p>Yes. Markdown with a filter, LaTeX formulas in math tags, and QR codes and barcodes as vector shapes, all built in, with no extra libraries to ship.</p></details>
+<details><summary>How fast is it?</summary><p>About 1.3 ms for a receipt and 3 ms for a 30-line invoice in the browser (Chromium on an Apple M4). Ten thousand receipts take about 13 seconds as WebAssembly and about 4 seconds natively. dompdf.js starts faster and downloads less (0.17 MB against 3.3 MB); pdf-engine makes each document two to two and a half times faster once running. The benchmark, with every library and its methods, is in the repository.</p></details>
+<details><summary>Which license?</summary><p>MIT. It is free for commercial use.</p></details>
+
+<div class="links">
+<a href="https://github.com/Lands-Horizon-Corp/pdf-engine">GitHub</a>
+<a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm">npm package</a>
+<a href="https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/getting-started.md">Getting started</a>
+<a href="https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md">Template guide</a>
+<a href="https://hub.docker.com/r/zalven88/pdf-engine">Docker image</a>
+<a href="https://github.com/Lands-Horizon-Corp/pdf-engine/issues">Report an issue</a>
+</div>
+</section>
+<noscript><p style="padding:16px;text-align:center">This demo runs the pdf-engine WebAssembly engine in your browser, so it needs JavaScript.</p></noscript>
 
 <script type="module">
 // The package from the CDN, pinned to a version so the files and the engine always match.

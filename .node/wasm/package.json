@@ -1,7 +1,7 @@
 {
   "name": "@lands-horizon-corp/pdf-engine-wasm",
   "version": "1.3.0",
-  "description": "HTML to PDF in the browser (React, Vue, Svelte and more): the pdf-engine renderer compiled to WebAssembly. No server.",
+  "description": "HTML to PDF for the browser and Node.js: a Rust layout engine compiled to WebAssembly. Real vector text, Markdown, LaTeX math, QR codes. No server, no Chromium, no Puppeteer. Works in React, Vue, Svelte and Next.js.",
   "type": "module",
   "main": "index.js",
   "module": "index.js",
@@ -69,13 +69,45 @@
   "keywords": [
     "pdf",
     "html-to-pdf",
+    "html2pdf",
+    "pdf-generator",
+    "pdf-generation",
+    "generate-pdf",
+    "create-pdf",
+    "nodejs",
+    "node",
+    "browser",
+    "client-side",
     "wasm",
     "webassembly",
+    "rust",
+    "typescript",
+    "javascript",
     "invoice",
     "receipt",
+    "thermal-printer",
+    "escpos",
+    "zpl",
+    "qr-code",
+    "barcode",
+    "markdown-to-pdf",
+    "latex",
+    "math",
+    "puppeteer-alternative",
+    "html2pdf-alternative",
+    "jspdf-alternative",
+    "headless-chrome-alternative",
+    "no-chromium",
+    "serverless",
+    "offline",
     "react",
     "vue",
-    "svelte"
+    "svelte",
+    "nextjs",
+    "electron",
+    "tauri",
+    "template",
+    "report"
   ],
   "engines": {
     "node": ">=18"
@@ -92,5 +124,10 @@
     "vue": {
       "optional": true
     }
-  }
+  },
+  "homepage": "https://lands-horizon-corp.github.io/pdf-engine/",
+  "bugs": {
+    "url": "https://github.com/Lands-Horizon-Corp/pdf-engine/issues"
+  },
+  "author": "Lands Horizon <https://github.com/Lands-Horizon-Corp>"
 }

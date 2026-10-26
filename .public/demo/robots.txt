@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lands-horizon-corp.github.io/pdf-engine/sitemap.xml

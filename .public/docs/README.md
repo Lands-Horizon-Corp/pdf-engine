@@ -37,7 +37,7 @@ options such as page size and password; they return the **PDF bytes**.
 - **Layout and CSS:** flexbox, grid, tables, gradients, transforms, SVG, CSS variables, `calc()`, page breaks,
   multi-column, Unicode and right-to-left text. [Templates](templates.md#css)
 - **Page setup:** any size (`8.5in`, `210mm`, `80mm` receipts), portrait or landscape, password encryption.
-- **Images:** PNG, JPEG, GIF and SVG from URLs, files, data URIs or bytes you pass in. [Images](templates.md#images)
+- **Images:** PNG, JPEG and GIF (and inline `<svg>`) from URLs, files, data URIs or bytes you pass in. [Images](templates.md#images)
 - **Languages:** practically every script when fonts are available. [Fonts](fonts-and-languages.md)
 - **Where it runs:** in the page, on your server, or both with automatic fallback. [Browser reference](browser-api.md#choosing-where-documents-are-made)
 - **Printing:** receipt (ESC/POS), label (ZPL) and office printers; USB, network and system queues. [Printing](printing.md)

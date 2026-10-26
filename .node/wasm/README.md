@@ -91,7 +91,7 @@ here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-e
   anything else.
 - 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros, partials; HTML-escaped by default.
 - 🧾 **Page numbers, page breaks, QR codes and barcodes**, drawn as vectors.
-- 🖼️ **Images.** PNG, JPEG, GIF and SVG from URLs, files, `data:` URIs or bytes. A bad image is skipped, never an error.
+- 🖼️ **Images.** PNG, JPEG and GIF from URLs, files, `data:` URIs or bytes (and inline `<svg>` elements). A bad image is skipped, never an error.
 - 🔀 **Browser or server, your choice.** Several servers with failover, `pick: 'auto'` by size, and a fallback to
   WebAssembly when offline.
 - 🔐 **Password encryption.** Set `password` and the PDF is encrypted.
@@ -390,5 +390,5 @@ Codes are listed in `index.d.ts`; they match the native engine's (`MISSING_FIELD
   1 ms and a 30-line invoice about 2 ms (the first few hundred documents run a little slower while the browser
   optimises the module). `generate()` runs on the calling thread by default; use [`workers`](#workers) to keep a
   page smooth while large documents are made.
-- **Images:** PNG, JPEG, GIF and SVG, with or without a width and height. See [Images](#images).
+- **Images:** PNG, JPEG and GIF, with or without a width and height; inline `<svg>` elements are drawn, but an `<img>` that points at an SVG file is not drawn yet. See [Images](#images).
 - **Same engine as the server:** templates, CSS support and error codes match the native engine.

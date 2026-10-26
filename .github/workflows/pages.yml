@@ -1,0 +1,33 @@
+name: Demo page
+
+# Publishes .public/demo (a static page that imports the package from the CDN) to GitHub Pages
+# whenever it changes on master. Needs Settings > Pages > Source: "GitHub Actions" (set once).
+on:
+  push:
+    branches: [master]
+    paths: [".public/demo/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .public/demo
+      - id: deployment
+        uses: actions/deploy-pages@v4

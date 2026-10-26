@@ -224,8 +224,10 @@ Tips:
 
 ## Images
 
-`<img src="...">` accepts PNG, JPEG, GIF and SVG. An image with no size, or only a width or height, keeps its
-proportions.
+`<img src="...">` accepts PNG, JPEG and GIF. An image with no size, or only a width or height, keeps its
+proportions. An inline `<svg>` element is drawn as vector shapes; an `<img>` or CSS background that points at an SVG
+file or `data:image/svg+xml` is **not drawn yet** (it is skipped without an error), so use PNG for logos or paste the
+`<svg>` into the template.
 
 | `src` | Where it works |
 | --- | --- |

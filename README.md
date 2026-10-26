@@ -120,7 +120,7 @@ see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no 
 - 🌍 **Every language.** About 150 Noto fonts on the server cover practically every living script (Chinese, Arabic,
   Hindi, Thai, emoji, ...); in the browser you add the font you need.
 - 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros; HTML-escaped by default.
-- 🖼️ **Images.** PNG, JPEG, GIF and SVG from URLs, files, `data:` URIs or bytes. A bad image is skipped, never an error.
+- 🖼️ **Images.** PNG, JPEG and GIF from URLs, files, `data:` URIs or bytes (and inline `<svg>` elements). A bad image is skipped, never an error.
 - 🖨️ **Printing.** Receipts as ESC/POS, labels as ZPL, documents as PDF; through the system queue, a network socket or
   USB. Electron, Node and Tauri.
 - 🔀 **Browser or server, your choice.** Several servers with failover, `pick: 'auto'` by size, and a fallback to

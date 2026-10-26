@@ -40,6 +40,15 @@ fn new_env() -> Environment<'static> {
     env.add_filter("markdown", |text: &str| {
         Value::from_safe_string(crate::markdown::to_html(text))
     });
+    // `{{ "x^2"|math }}` (inline) and `{{ formula|math(display=true) }}`: LaTeX math as laid-out HTML (see math.rs).
+    env.add_filter(
+        "math",
+        |text: &str, kwargs: minijinja::value::Kwargs| -> Result<Value, minijinja::Error> {
+            let display = kwargs.get::<Option<bool>>("display")?.unwrap_or(false);
+            kwargs.assert_all_used()?;
+            Ok(Value::from_safe_string(crate::math::to_html(text, display)))
+        },
+    );
     env.set_fuel(Some(*FUEL));
     env
 }
@@ -238,11 +247,12 @@ fn render_inner(
         let tmpl = env.template_from_str(&source)?;
         run(&tmpl, ctx, template_str.len(), limit)?
     };
-    // `<barcode>` tags become vector shapes after the values are in.
-    Ok(match crate::barcode::expand(&html)? {
+    // `<barcode>` tags become vector shapes, and `<math>` tags laid-out formulas, after the values are in.
+    let html = match crate::barcode::expand(&html)? {
         std::borrow::Cow::Borrowed(_) => html,
         std::borrow::Cow::Owned(expanded) => expanded,
-    })
+    };
+    Ok(crate::math::expand(&html).unwrap_or(html))
 }
 
 fn run(

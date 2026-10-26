@@ -13,6 +13,7 @@ pub mod handlers;
 pub mod image_util;
 pub mod ipc;
 pub mod markdown;
+pub mod math;
 pub mod models;
 pub mod pdf;
 pub mod pdf_encrypt;

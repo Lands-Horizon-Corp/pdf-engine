@@ -6,6 +6,8 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-26
+
 ### Added
 
 - **`rowspan`** in tables (with `colspan`, across pages, and clamped at the last row).
@@ -14,8 +16,16 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
   the browser package the page fetches URL fonts (`onImageError` reports failures). A font that cannot be loaded is
   skipped; the document is still made.
 
+- **Math** in templates: LaTeX in `<math>...</math>` (inline) and `<math display>...</math>`, or `{{ f|math }}` and
+  `{{ f|math(display=true) }}`. Fractions, roots, scripts, sums and integrals with limits, matrices, `cases`, accents,
+  Greek and about 150 symbols, drawn as text with a built-in Noto Sans Math (about 50 KB compressed).
 - **Markdown** in templates: `{{ text|markdown }}` and `{% filter markdown %}...{% endfilter %}` (CommonMark, tables,
   strikethrough, task lists). Raw HTML in the text is shown as text and unsafe link schemes are removed.
+
+### Fixed
+
+- **`inline-block`, `inline-flex` and similar boxes in a paragraph that wraps onto a second line were not drawn** (a
+  badge, a formula, a small box in running text). They are now.
 
 ### Changed
 

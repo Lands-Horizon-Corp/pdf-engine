@@ -192,6 +192,35 @@ This is **Markdown**, with a [link](https://example.com), `code`, lists and tabl
   allowed host).
 - **Limit:** 2 MB of Markdown per use; more is cut.
 
+## Math
+
+Write a formula in LaTeX, between `<math>` tags, or from a value with the `math` filter. The formula is laid out with
+the document's own text engine, as real text (vector, selectable), not as a picture.
+
+```html
+<p>Energy is <math>E = mc^2</math>, and the roots are</p>
+<math display>x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}</math>
+
+{{ formula|math }}                      <!-- inline, from the data -->
+{{ formula|math(display=true) }}        <!-- on a line of its own -->
+```
+
+`<math>` sits in the text; `<math display>` is centred on its own line and sets big operators with their limits above
+and below. Inside the tag, write `<` as `&lt;` (a template value already is).
+
+- **Reads:** letters, numbers, `+ - = < >` and the usual symbols, Greek (`\alpha` ... `\Omega`), `\frac`, `\binom`,
+  `\sqrt` and `\sqrt[n]`, `^` and `_` (also both together, and `'` for a prime), `\sum \prod \int \iint \oint \lim`
+  and friends with limits, `\left ... \right`, matrices (`pmatrix`, `bmatrix`, `vmatrix`, `matrix`), `cases`,
+  `\text{...}`, `\mathbf`, `\mathbb` (ℝ ℕ ℤ ...), `\mathcal`, `\hat \bar \vec \tilde \dot`, `\overline`, `\underline`,
+  `\boxed`, the spacing commands (`\, \; \quad \qquad`), and about 150 symbols: relations, arrows, set and logic
+  symbols (`\leq \neq \approx \in \subset \forall \exists \Rightarrow \to \infty \partial \nabla ...`).
+- **Fonts:** the symbols come from Noto Sans Math, which is built into the engine (cut down to the symbols it uses,
+  about 50 KB), so a formula looks the same in the browser, on the server and in Electron. Letters use Noto Sans.
+- **What it is not:** this is not TeX. Spacing and the height of brackets, roots and big operators are approximations;
+  a formula with very tall parts can look looser than in a TeX document. No `\newcommand`, no `align` environments
+  with several alignment points, no `\color`. A command it does not know is shown as written (`\foo`), never an error.
+- **Limits:** a formula of up to 20,000 characters and 24 levels of nesting.
+
 ## Guard rails
 
 A template can only produce so much: output is capped (`TEMPLATE_MAX_OUTPUT_BYTES`) and execution has a budget

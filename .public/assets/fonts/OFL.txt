@@ -1,6 +1,7 @@
 Noto Sans fonts: Copyright 2010, 2012-2020 Google Inc.; 2015-2020 Google LLC.
 This Font Software is licensed under the SIL Open Font License, Version 1.1, reproduced below.
 Source: https://github.com/notofonts and https://fonts.google.com/noto
+Also included, cut down to the symbols pdf-engine's math support uses: Noto Sans Math (src/NotoSansMath-Subset.ttf), under the same licence.
 
 PREAMBLE
 

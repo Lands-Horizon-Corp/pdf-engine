@@ -23,7 +23,7 @@ writing HTTP by hand.
 
 | Method and path | Auth | Does |
 | --- | --- | --- |
-| `GET /health` | none | `{ "status": "ok", "version": "1.2.1" }` for load balancers and health checks |
+| `GET /health` | none | `{ "status": "ok", "version": "1.3.0" }` for load balancers and health checks |
 | `POST /api/to-bytes` | Bearer | Renders and answers with the PDF (`application/pdf`) |
 | `POST /api/to-s3` | Bearer | Renders, uploads to S3-compatible storage and answers with a link |
 | `POST /api/fonts/reload` | Bearer | Rediscovers fonts without restarting: `{ "status": "reloaded", "took_ms": 12 }` |

@@ -70,6 +70,9 @@ text, in 1 to 3 ms. The same engine also runs natively in Electron, Tauri and Do
 | Runs in the browser, no server | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | Download in the browser (compressed) | 3.3 MB | **0.17 MB** | 4.7 MB | n/a | 0.26 MB | 0.25 MB | n/a | n/a |
 | Maintained | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
+| Fonts you bring (`@font-face`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Math (LaTeX) built in | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Markdown built in | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Time for a receipt, in the browser<sup>1</sup> | **1.3 ms** | 2.8 ms | 40 ms | n/a | 86 ms | 76 ms | n/a | n/a |
 | Time for a 30-line invoice, in the browser<sup>1</sup> | **3.0 ms** | 7.2 ms | 109 ms | n/a | 114 ms | 106 ms | n/a | n/a |
 | First PDF after the page loads<sup>1</sup> | 190 ms | **50 ms** | 165 ms | n/a | 130 ms | 110 ms | n/a | n/a |
@@ -82,7 +85,7 @@ about doubles its time); its native Rust build is faster than its WebAssembly bu
 html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with
 Puppeteer (fastest mode), 356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac,
 so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including
-JavaScript, which pdf-engine does not run; ironpress also does math and bookmarks, which pdf-engine does
+JavaScript, which pdf-engine does not run; ironpress also does PDF bookmarks, which pdf-engine does
 not; see the [CSS gaps](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
 
 <picture>
@@ -98,6 +101,7 @@ not; see the [CSS gaps](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/ma
 - 🌍 **Every language.** Bundled Noto Sans covers Latin, Cyrillic, Greek and Vietnamese; add the font you need for
   anything else.
 - 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros, partials; HTML-escaped by default.
+- ➗ **Math and Markdown built in.** LaTeX formulas in `<math>` tags (fractions, roots, sums, matrices, Greek), and `{{ text|markdown }}` for Markdown, with no extra libraries to ship.
 - 🧾 **Page numbers, page breaks, QR codes and barcodes**, drawn as vectors.
 - 🖼️ **Images.** PNG, JPEG and GIF from URLs, files, `data:` URIs or bytes (and inline `<svg>` elements). A bad image is skipped, never an error.
 - 🔀 **Browser or server, your choice.** Several servers with failover, `pick: 'auto'` by size, and a fallback to
@@ -263,7 +267,7 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 </script>
 ```
 
-- Pin a version (`@1.2.1`) so the files and the module always match. Module scripts run after the page has
+- Pin a version (`@1.3.0`) so the files and the module always match. Module scripts run after the page has
   parsed, so there is nothing to wait for; use `await pdf.ping()` to load the engine ahead of the first click.
 - The template language is `{{ value }}` and `{% for %}` / `{% if %}` (not Handlebars `{{#each}}`).
 - Open the page from a web server (`http://` or `https://`), not as a `file://` file: browsers do not load

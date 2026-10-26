@@ -30,6 +30,14 @@ pub const MAX_FONT_FACES: usize = 16;
 
 /// Every usable `@font-face` rule in `html`, in document order, at most [`MAX_FONT_FACES`].
 pub fn font_face_decls(html: &str) -> Vec<FontFaceDecl> {
+    // Most documents have no such rule: look for one without copying the document.
+    if !html
+        .as_bytes()
+        .windows(10)
+        .any(|w| w.eq_ignore_ascii_case(b"@font-face"))
+    {
+        return Vec::new();
+    }
     let lower = html.to_ascii_lowercase();
     let mut out: Vec<FontFaceDecl> = Vec::new();
     let mut from = 0;

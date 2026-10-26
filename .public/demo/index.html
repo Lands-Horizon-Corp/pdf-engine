@@ -172,7 +172,13 @@ const defaultLogo = await makeLogo();
 const SAMPLES = await (await fetch('samples.json')).json();
 
 const sampleSelect = $('sample');
-for (const [key, s] of Object.entries(SAMPLES)) sampleSelect.add(new Option(s.label, key));
+const addSamples = (version) => {
+  // An example that needs a newer engine than the one loaded is left out (the demo pins a published package version).
+  const older = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
+  sampleSelect.length = 0;
+  for (const [key, s] of Object.entries(SAMPLES)) if (!s.minVersion || !version || !older(version, s.minVersion)) sampleSelect.add(new Option(s.label, key));
+};
+addSamples(null);
 
 const fields = { template: $('template'), data: $('data'), partials: $('partials') };
 let logo = defaultLogo;           // a PNG Blob, or the File the visitor chose
@@ -398,6 +404,9 @@ try {
   const t0 = performance.now();
   const { version } = await pdf.ping();
   status.textContent = `Engine ${version} ready (loaded in ${Math.round(performance.now() - t0)} ms)`;
+  const chosen = sampleSelect.value;
+  addSamples(version);
+  if ([...sampleSelect.options].some((o) => o.value === chosen)) sampleSelect.value = chosen;
   render();
 } catch (e) {
   status.textContent = 'The engine could not load: ' + e.message;

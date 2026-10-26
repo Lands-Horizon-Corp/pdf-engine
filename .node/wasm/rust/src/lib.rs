@@ -27,6 +27,8 @@ mod fulgur_engine;
 mod image_util;
 #[path = "../../../../src/markdown.rs"]
 mod markdown;
+#[path = "../../../../src/math.rs"]
+mod math;
 #[path = "../../../../src/pdf_encrypt.rs"]
 mod pdf_encrypt;
 #[path = "../../../../src/template.rs"]

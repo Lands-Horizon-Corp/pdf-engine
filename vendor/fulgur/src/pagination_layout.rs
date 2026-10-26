@@ -752,6 +752,7 @@ impl<'a> PaginationLayoutTree<'a> {
                     cursor_y = 0.0;
                 }
                 let para_x = layout.location.x;
+                let (start_page, start_y) = (page_index, cursor_y);
                 let (new_page_index, new_cursor_y, frag_count) = fragment_inline_root(
                     &mut self.geometry,
                     child_id,
@@ -762,6 +763,20 @@ impl<'a> PaginationLayoutTree<'a> {
                     self.page_height_px,
                     &line_metrics,
                 );
+                // pdf-engine patch (PATCHES.md #9): the boxes inside a multi-line paragraph (an `inline-block`,
+                // `inline-flex`, ...) need geometry on every page the paragraph covers, as they get when the
+                // paragraph is one line; without it they were never drawn.
+                for p in start_page..=new_page_index {
+                    record_subtree_descendants(
+                        &mut self.geometry,
+                        self.doc,
+                        child_id,
+                        p,
+                        start_y,
+                        body_x + para_x,
+                        0,
+                    );
+                }
                 page_index = new_page_index;
                 cursor_y = new_cursor_y;
                 emitted += frag_count;

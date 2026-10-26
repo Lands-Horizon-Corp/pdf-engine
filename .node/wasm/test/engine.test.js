@@ -387,7 +387,8 @@ test('@font-face: a font in a data: URI, or fetched from a URL, is used for that
   const ttf = fs.readFileSync(new URL('../fonts/NotoSans-Bold.ttf', import.meta.url));
   const uri = `data:font/ttf;base64,${ttf.toString('base64')}`;
   const text = `<p style="font-family: 'Brand Display'; font-size: 24px">Hello World</p>`;
-  // No bundled fonts: the only font there can be is the one the document brings.
+  // No bundled fonts: the only text font is the one the document brings (the engine's math font covers plain letters
+  // too, so it is the fallback, and the test looks for the bold Noto Sans that only the document supplies).
   const pdf = new PDFEngine({
     defaultFonts: false,
     fetch: async (url) => {
@@ -397,7 +398,7 @@ test('@font-face: a font in a data: URI, or fetched from a URL, is used for that
   });
   try {
     const none = await pdf.generate({ template: text });
-    assert.doesNotMatch(latin1(none), /NotoSans/, 'without the rule there is no font');
+    assert.doesNotMatch(latin1(none), /NotoSans-Bold/, 'without the rule the bold font is not there');
 
     const fromData = await pdf.generate({ template: `<style>@font-face { font-family: 'Brand Display'; src: url(${uri}) format('truetype'); }</style>${text}` });
     assert.match(latin1(fromData), /NotoSans-Bold/);
@@ -406,7 +407,7 @@ test('@font-face: a font in a data: URI, or fetched from a URL, is used for that
     assert.match(latin1(fromUrl), /NotoSans-Bold/);
 
     const after = await pdf.generate({ template: text });
-    assert.doesNotMatch(latin1(after), /NotoSans/, 'the font belongs to the document that declared it');
+    assert.doesNotMatch(latin1(after), /NotoSans-Bold/, 'the font belongs to the document that declared it');
 
     // A font that cannot be fetched never costs the document, and `onImageError` says why.
     const reasons = [];
@@ -433,6 +434,24 @@ test('markdown: a filter and a block turn Markdown into the document, and raw HT
     assert.ok(isPdf(md));
     assert.match(latin1(md), /NotoSans-Bold/, 'headings and bold text are set in bold');
     assert.ok(md.length > plain.length);
+  } finally {
+    pdf.close();
+  }
+});
+
+test('math: <math> tags and the math filter lay out formulas, with the symbols a math font provides', async () => {
+  const pdf = new PDFEngine();
+  try {
+    const plain = await pdf.generate({ template: '<p>x</p>' });
+    const bytes = await pdf.generate({
+      template: '<p>Inline <math>E = mc^2</math>.</p><math display>\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}, \\ \\int_0^\\infty e^{-x}\\,dx = 1, \\ \\forall x \\in \\mathbb{R}</math>{{ f|math(display=true) }}',
+      data: { f: '\\sqrt{a^2 + b^2}' },
+    });
+    assert.ok(isPdf(bytes) && bytes.length > plain.length);
+    // The symbols (∑ ∫ ∀ ∈ ℝ √) come from the bundled math font, not an empty box.
+    assert.match(latin1(bytes), /NotoSansMath/);
+    // A formula the converter cannot read is shown as written, never an error.
+    assert.ok(isPdf(await pdf.generate({ template: '<math>\\nosuchcommand{</math>' })));
   } finally {
     pdf.close();
   }

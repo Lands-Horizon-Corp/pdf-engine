@@ -93,7 +93,12 @@ pub trait InProcessRenderer: Send + Sync {
 /// Defaults a template can override: the font stack (at zero specificity, so any `body { font-family }` wins) and no
 /// page margin. The margin is set here, not on the engine, because a margin set on the engine would also switch off
 /// the template's own `@page` margins and margin boxes (page numbers, headers and footers).
-const BASE_CSS: &str = "@page { margin: 0; } :where(body) { font-family: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }";
+const BASE_CSS: &str = "@page { margin: 0; } :where(body) { font-family: 'Noto Sans', 'Noto Sans Math', 'Noto Sans CJK SC', 'Noto Color Emoji', sans-serif; }";
+
+/// Noto Sans Math (SIL Open Font License, see `.public/assets/fonts/OFL.txt`), cut down to the symbols the `math`
+/// converter and everyday text use: operators, relations, arrows, big operators, brackets, blackboard and script letters.
+/// It is always available, in the server, the Node client and the browser build alike.
+const MATH_FONT: &[u8] = include_bytes!("NotoSansMath-Subset.ttf");
 
 pub struct FulgurEngine {
     assets: AssetBundle,
@@ -103,7 +108,10 @@ impl Default for FulgurEngine {
     fn default() -> Self {
         let mut assets = AssetBundle::new();
         assets.add_css(BASE_CSS);
-        Self { assets }
+        let engine = Self { assets };
+        // The math font is there from the start; fonts the host adds later join it (see `set_extra_fonts`).
+        engine.set_extra_fonts(Vec::new());
+        engine
     }
 }
 
@@ -140,7 +148,8 @@ impl InProcessRenderer for FulgurEngine {
         fulgur::reload_system_fonts();
     }
 
-    fn set_extra_fonts(&self, fonts: Vec<Vec<u8>>) {
+    fn set_extra_fonts(&self, mut fonts: Vec<Vec<u8>>) {
+        fonts.push(MATH_FONT.to_vec());
         fulgur::set_extra_fonts(fonts);
     }
 }

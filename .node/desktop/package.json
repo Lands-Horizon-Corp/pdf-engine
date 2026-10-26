@@ -1,6 +1,6 @@
 {
   "name": "@lands-horizon-corp/pdf-engine",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "HTML to PDF for Node.js and Electron. Talks to the Rust engine over stdin/stdout: no HTTP, no port.",
   "main": "index.js",
   "types": "index.d.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@lands-horizon-corp/pdf-engine-wasm",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "HTML to PDF in the browser (React, Vue, Svelte and more): the pdf-engine renderer compiled to WebAssembly. No server.",
   "type": "module",
   "main": "index.js",

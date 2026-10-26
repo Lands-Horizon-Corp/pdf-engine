@@ -6,8 +6,13 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-26
+
 ### Added
 
+- **Live demo** (GitHub Pages): edit a template, change the page size, compression, workers and password, and run a
+  speed test in the browser. The package READMEs and docs are rewritten (comparison table, benchmarks, framework
+  helpers) and now say which images and SVG features are not drawn yet.
 - **Partials** (`partials` option, `partials` form field): named templates for `{% include %}`, `{% extends %}` and
   `{% import %}`. **`{% pagebreak %}`** starts a new page. **`<barcode>`** draws QR codes and Code 128, Code 39, EAN-13
   and EAN-8 barcodes as vector shapes (the tests decode a QR code back from the PDF).
@@ -18,6 +23,8 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Fixed
 
+- **Browser package:** `workers` now start when the package is loaded from a CDN (a page cannot start a worker from
+  another origin; a same-origin wrapper imports it).
 - **Page numbers, headers and footers** (`@page` margin boxes) were never drawn: the engine forced a zero page margin
   that switched them off. The default margin is now a zero-specificity CSS rule the template can override.
 - **No text in the browser** with `font-family: Arial, sans-serif`, `sans-serif`, `serif`, `monospace`, `system-ui`

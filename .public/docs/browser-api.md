@@ -47,6 +47,7 @@ Make a PDF and return its bytes.
 | `data` | any JSON value | Values for the template. `generate<MyData>()` checks its shape. |
 | `password` | `string` | Encrypts the PDF (open and owner password). Empty or missing: not encrypted. |
 | `accessible` | `boolean` | A tagged, accessible PDF (PDF/UA): a structure tree, the language and the title. [Accessible PDFs](templates.md#accessible-pdfs) |
+| `pdfA` | `'1b' \| '2b' \| '2u' \| '2a' \| '3b' \| '3a'` | Archival PDF/A output, checked against the standard. Not with `password`. [Archival PDF/A](templates.md#archival-pdfa) |
 | `partials` | `Record<string, string>` | Named templates for `{% include %}`, `{% extends %}`, `{% import %}`; merged over the constructor's. [Partials](templates.md#partials-headers-footers-rows-and-layouts) |
 | `width`, `height` | `string` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px`. Default Letter. |
 | `orientation` | `'portrait' \| 'landscape'` | Landscape swaps width and height. |

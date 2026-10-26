@@ -48,7 +48,7 @@ and an `op`:
 
 | `op` | Request fields | Answer |
 | --- | --- | --- |
-| `render` (default) | `template`, `data`, `width`, `height`, `orientation`, `password`, `accessible`, `partials`, `images` | Body: the PDF |
+| `render` (default) | `template`, `data`, `width`, `height`, `orientation`, `password`, `accessible`, `pdf_a`, `partials`, `images` | Body: the PDF |
 | `raster` | `template`, `data`, `height`, `partials`, `format` (`escpos` or `zpl`), `dots`, `dpi`, `cut`, `feed`, `dither`, `images` | Body: printer commands |
 | `printers` | `printers` (extra printers) | Header: `printers` (a list) |
 | `print` | `printerId`, `template`, `data`, `type`, `paper`, `language`, `cut`, `feed`, `dither`, `copies`, `width`, `height`, `orientation`, `printers`, `partials`, `images` | Header: `printerId`, `type`, `language`, `bytes`, `copies` |

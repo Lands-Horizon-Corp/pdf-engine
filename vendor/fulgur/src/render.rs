@@ -37,7 +37,10 @@ pub fn render_v2(
     implicit_href_by_page: &BTreeMap<usize, String>,
 ) -> Result<Vec<u8>> {
     let mut document = if config.effective_tagging() {
-        let configuration = if config.pdf_ua {
+        // pdf-engine patch: a PDF/A level takes the place of the PDF/UA validator (krilla checks one standard).
+        let configuration = if let Some(level) = config.pdf_a {
+            Configuration::new_with_validator(level.validator())
+        } else if config.pdf_ua {
             Configuration::new_with_validator(Validator::UA1)
         } else {
             Configuration::new()
@@ -45,6 +48,11 @@ pub fn render_v2(
         krilla::Document::new_with(SerializeSettings {
             enable_tagging: true,
             configuration,
+            ..serialize_settings
+        })
+    } else if let Some(level) = config.pdf_a {
+        krilla::Document::new_with(SerializeSettings {
+            configuration: Configuration::new_with_validator(level.validator()),
             ..serialize_settings
         })
     } else {
@@ -2647,9 +2655,9 @@ fn decode_image_for_v2(entry: &crate::drawables::ImageEntry) -> Option<krilla::i
     use krilla::image::Image;
     let data: krilla::Data = entry.image_data.clone().into();
     let image_result = match entry.format {
-        ImageFormat::Png => Image::from_png(data, true),
-        ImageFormat::Jpeg => Image::from_jpeg(data, true),
-        ImageFormat::Gif => Image::from_gif(data, true),
+        ImageFormat::Png => Image::from_png(data, crate::image_interpolation()),
+        ImageFormat::Jpeg => Image::from_jpeg(data, crate::image_interpolation()),
+        ImageFormat::Gif => Image::from_gif(data, crate::image_interpolation()),
     };
     image_result.ok()
 }

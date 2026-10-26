@@ -125,7 +125,7 @@ class PDFEngine {
     if (!options || typeof options !== 'object') {
       throw clientError('MISSING_FIELD', 'generate() needs an options object with a `template`.');
     }
-    const { template, data, password, width, height, orientation, accessible } = options;
+    const { template, data, password, width, height, orientation, accessible, pdfA } = options;
     const supplied = options.images ? await collectImages(options.images) : [];
     await this.#ensureStarted();
     const { body } = await this.#request(
@@ -135,6 +135,7 @@ class PDFEngine {
         data: data === undefined ? {} : data,
         password: password || undefined,
         accessible: accessible || undefined,
+        pdf_a: pdfA || undefined,
         width,
         height,
         orientation,
@@ -214,9 +215,17 @@ class PDFEngine {
 
   /** Use these font files or folders (in addition to the system fonts) from now on. */
   async loadFonts(paths) {
-    this.#options.fonts = [...paths].filter((f) => typeof f === 'string' && f.trim() !== '');
-    await this.#ensureStarted();
-    await this.#request({ op: 'load_fonts', paths: this.#options.fonts.map((p) => path.resolve(p)) });
+    const fonts = [...paths].filter((f) => typeof f === 'string' && f.trim() !== '');
+    const previous = this.#options.fonts;
+    // The engine reads these again whenever it restarts: a list that failed to load must not be kept.
+    this.#options.fonts = fonts;
+    try {
+      await this.#ensureStarted();
+      await this.#request({ op: 'load_fonts', paths: fonts.map((p) => path.resolve(p)) });
+    } catch (e) {
+      this.#options.fonts = previous;
+      throw e;
+    }
   }
 
   /** Pick up fonts that were installed or removed on the system. */
@@ -290,17 +299,26 @@ class PDFEngine {
     });
     child.stdin.on('error', () => {}); // a dead engine is reported through 'exit'
 
-    const hello = await this.#request({ op: 'ping' }, 30_000);
-    if (hello.header.protocol !== PROTOCOL_VERSION) {
+    try {
+      const hello = await this.#request({ op: 'ping' }, 30_000);
+      if (hello.header.protocol !== PROTOCOL_VERSION) {
+        throw clientError(
+          'PROTOCOL_MISMATCH',
+          `The engine speaks protocol ${hello.header.protocol} but this client speaks ${PROTOCOL_VERSION}.`,
+          'Install matching versions of the pdf-engine package and its binary.',
+        );
+      }
+      if (this.#options.fonts.length) {
+        await this.#request({ op: 'load_fonts', paths: this.#options.fonts.map((p) => path.resolve(p)) }, 60_000);
+      }
+    } catch (e) {
+      // A start that fails must not leave its process running (and lost): the next call would start another.
+      if (this.#child === child) {
+        this.#child = null;
+        this.#ready = false;
+      }
       child.kill();
-      throw clientError(
-        'PROTOCOL_MISMATCH',
-        `The engine speaks protocol ${hello.header.protocol} but this client speaks ${PROTOCOL_VERSION}.`,
-        'Install matching versions of the pdf-engine package and its binary.',
-      );
-    }
-    if (this.#options.fonts.length) {
-      await this.#request({ op: 'load_fonts', paths: this.#options.fonts.map((p) => path.resolve(p)) }, 60_000);
+      throw e;
     }
     this.#ready = true;
   }

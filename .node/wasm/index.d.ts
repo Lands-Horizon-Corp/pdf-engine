@@ -98,6 +98,12 @@ export interface GenerateOptions<T = unknown> {
    */
   accessible?: boolean;
   /**
+   * Archival PDF/A output at this level: `'2b'` (the usual choice), `'1b'`, `'2u'`, `'3b'`, or `'2a'` / `'3a'` (also tagged).
+   * Fonts are embedded and the file is checked against the standard; a document that cannot meet it is a
+   * `RENDER_FAILED` error naming the problem. Cannot be combined with `password` (PDF/A forbids encryption).
+   */
+  pdfA?: '1b' | '2b' | '2u' | '2a' | '3b' | '3a';
+  /**
    * Named templates the template can `{% include "name" %}`, `{% extends "name" %}` or `{% import "name" as x %}`,
    * for headers, footers, rows and layouts. Merged over the constructor's `partials`.
    */

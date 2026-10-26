@@ -41,6 +41,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut filename = "document.pdf".to_string();
     let mut password = None;
     let mut accessible = false;
+    let mut pdf_a = None;
     let mut partials = Vec::new();
     let mut budget = MAX_BODY_BYTES;
 
@@ -85,6 +86,11 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
                     "true" | "1" | "on" | "yes"
                 );
             }
+            "pdf_a" => {
+                pdf_a = field_text(&mut field, &mut budget)
+                    .await?
+                    .filter(|v| !v.trim().is_empty());
+            }
             "password" => {
                 let p = field_text(&mut field, &mut budget)
                     .await?
@@ -108,6 +114,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
         filename,
         password,
         accessible,
+        pdf_a,
         partials,
     })
 }

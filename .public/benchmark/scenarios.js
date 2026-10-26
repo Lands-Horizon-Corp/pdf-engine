@@ -49,7 +49,25 @@ function scenario(name, label, shape) {
   };
 }
 
+/** One document of exactly `pages` pages: each page a heading and 30 table rows, then a page break. */
+function pagesScenario(pages) {
+  const sheet = `body{font-family:'Noto Sans',Arial,sans-serif;font-size:12px;margin:0;padding:24px}.p{break-after:page;page-break-after:always}table{width:100%;border-collapse:collapse}td,th{padding:2px 6px;border-bottom:1px solid #ddd;text-align:left}`;
+  const page = (n) => `<div class="p"><h2>Page ${n}</h2><table>${Array.from({ length: 30 }, (_, r) => `<tr><td>Line ${r + 1}</td><td>Item ${n}-${r + 1}</td><td>₱${(n * 7 + r * 13) % 1000}</td></tr>`).join('')}</table></div>`;
+  return {
+    name: `pages${pages}`,
+    label: `${pages} page${pages === 1 ? '' : 's'}`,
+    rows: pages * 30,
+    render() {
+      const body = Array.from({ length: pages }, (_, i) => page(i + 1)).join('');
+      return { css: sheet, body, html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${sheet}</style></head><body>${body}</body></html>` };
+    },
+  };
+}
+
 export const scenarios = {
+  pages1: pagesScenario(1),
+  pages100: pagesScenario(100),
+  pages1000: pagesScenario(1000),
   small: scenario('small', 'Small: a receipt (8 lines, 1 page)', { title: 'RECEIPT', sections: [{ rows: rows(8) }] }),
   large: scenario('large', 'Large: one invoice of 300 lines (about 8 pages)', { title: 'INVOICE', sections: [{ rows: rows(300) }] }),
   multitable: scenario('multitable', 'Multi-table: 5 tables of 35 lines with subtotals (about 5 pages)', {

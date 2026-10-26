@@ -12,6 +12,8 @@ const [id, scenarioName, countArg, budgetArg] = process.argv.slice(2);
 const count = Number(countArg);
 const budgetMs = Number(budgetArg) * 1000;
 const scenario = scenarios[scenarioName];
+/** Documents rendered first and not counted (the memory benchmark sets WARMUP=0: one document, cold). */
+const warmup = Number(process.env.WARMUP ?? 3);
 
 /** Libraries that only exist in a browser run in Chromium through Playwright. */
 const browserLibraries = { wasm: 'pdf-engine (WebAssembly)', ironpress: 'ironpress', dompdf: 'dompdf.js', html2pdf: 'html2pdf.js', 'jspdf-html2canvas': 'jspdf-html2canvas' };
@@ -30,7 +32,7 @@ async function inBrowser() {
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.waitForFunction(() => window.benchReady);
-  const r = await page.evaluate(([l, s, n, b]) => window.bench.batch(l, s, n, b), [browserLibraries[id], scenarioName, count, budgetMs]);
+  const r = await page.evaluate(([l, s, n, b, w]) => window.bench.batch(l, s, n, b, w), [browserLibraries[id], scenarioName, count, budgetMs, warmup]);
   await browser.close();
   server.close();
   return { name: browserLibraries[id], kind: ['html2pdf', 'jspdf-html2canvas'].includes(id) ? 'HTML to PDF (a picture)' : 'HTML to PDF', seconds: r.ms / 1000, completed: r.completed, errors: r.errors, firstError: r.firstError, first: r.first ? Buffer.from(r.first, 'base64') : null };
@@ -39,7 +41,7 @@ async function inBrowser() {
 async function inNode() {
   const driver = await loadDriver(id);
   const handle = await driver.make();
-  for (let i = 0; i < 3; i++) await driver.render(handle, scenario.render(i)); // warm-up, not counted
+  for (let i = 0; i < warmup; i++) await driver.render(handle, scenario.render(i)); // warm-up, not counted
   let next = 0;
   let completed = 0;
   let errors = 0;

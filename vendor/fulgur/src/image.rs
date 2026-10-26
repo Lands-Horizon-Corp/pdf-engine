@@ -15,9 +15,9 @@ impl ImageFormat {
     #[allow(clippy::result_unit_err)]
     pub fn to_krilla_image(self, data: krilla::Data) -> Result<krilla::image::Image, ()> {
         match self {
-            ImageFormat::Png => krilla::image::Image::from_png(data, true).map_err(|_| ()),
-            ImageFormat::Jpeg => krilla::image::Image::from_jpeg(data, true).map_err(|_| ()),
-            ImageFormat::Gif => krilla::image::Image::from_gif(data, true).map_err(|_| ()),
+            ImageFormat::Png => krilla::image::Image::from_png(data, crate::image_interpolation()).map_err(|_| ()),
+            ImageFormat::Jpeg => krilla::image::Image::from_jpeg(data, crate::image_interpolation()).map_err(|_| ()),
+            ImageFormat::Gif => krilla::image::Image::from_gif(data, crate::image_interpolation()).map_err(|_| ()),
         }
     }
 }

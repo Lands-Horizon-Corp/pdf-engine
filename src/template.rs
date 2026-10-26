@@ -15,13 +15,21 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-/// Output cap in bytes (`TEMPLATE_MAX_OUTPUT_BYTES`, default 64 MiB).
+/// Output cap in bytes (`TEMPLATE_MAX_OUTPUT_BYTES`, default 5 GiB, 256 MiB in WebAssembly).
 static MAX_OUTPUT: LazyLock<usize> = LazyLock::new(|| {
     std::env::var("TEMPLATE_MAX_OUTPUT_BYTES")
         .ok()
         .and_then(|v| v.parse().ok())
-        // 5 GiB; capped at the platform's address space (4 GiB on 32-bit targets like wasm32).
-        .unwrap_or_else(|| usize::try_from(5u64 << 30).unwrap_or(usize::MAX))
+        // 5 GiB on 64-bit targets. On 32-bit ones (wasm32, 4 GiB of address space for everything) 256 MiB, so a runaway
+        // template is a TEMPLATE_OUTPUT_TOO_LARGE error instead of running the module out of memory.
+        .unwrap_or_else(|| {
+            usize::try_from(if cfg!(target_pointer_width = "32") {
+                256u64 << 20
+            } else {
+                5u64 << 30
+            })
+            .unwrap_or(usize::MAX)
+        })
 });
 
 /// Template instruction budget (`TEMPLATE_FUEL`, default 50 million).
@@ -252,7 +260,53 @@ fn render_inner(
         std::borrow::Cow::Borrowed(_) => html,
         std::borrow::Cow::Owned(expanded) => expanded,
     };
-    Ok(crate::math::expand(&html).unwrap_or(html))
+    let html = crate::math::expand(&html).unwrap_or(html);
+    check_depth(&html)?;
+    Ok(html)
+}
+
+/// Deepest element nesting accepted. Real documents stay under 50; the layout recurses once per level, so a few
+/// thousand levels would overflow the stack (a crash, and in WebAssembly an unusable module).
+const MAX_NESTING: usize = 512;
+
+/// Rejects HTML nested deeper than `MAX_NESTING` levels. A quick scan of the tags: void elements, self-closing tags,
+/// comments and doctypes do not count; an unclosed tag counts until the end, like a browser's parser would.
+fn check_depth(html: &str) -> Result<(), AppError> {
+    const VOID: [&str; 14] = [
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+        "source", "track", "wbr",
+    ];
+    let bytes = html.as_bytes();
+    let (mut depth, mut i) = (0usize, 0usize);
+    while let Some(off) = bytes[i..].iter().position(|&b| b == b'<') {
+        i += off + 1;
+        match bytes.get(i) {
+            Some(b'/') => depth = depth.saturating_sub(1),
+            Some(b'!' | b'?') => {}
+            Some(c) if c.is_ascii_alphabetic() => {
+                let end = bytes[i..]
+                    .iter()
+                    .position(|&b| b == b'>')
+                    .map_or(bytes.len(), |p| i + p);
+                let tag = &html[i..end];
+                let name = tag
+                    .split(|c: char| c.is_whitespace() || c == '/')
+                    .next()
+                    .unwrap_or("");
+                if !tag.ends_with('/') && !VOID.iter().any(|v| v.eq_ignore_ascii_case(name)) {
+                    depth += 1;
+                    if depth > MAX_NESTING {
+                        return Err(AppError::Template(minijinja::Error::new(
+                            ErrorKind::InvalidOperation,
+                            format!("the HTML is nested more than {MAX_NESTING} levels deep"),
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn run(

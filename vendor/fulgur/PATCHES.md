@@ -16,6 +16,8 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 8 | `src/blitz_adapter.rs`, `src/lib.rs` | `with_doc_font_faces`: fonts from a document's `@font-face` rules join that one render's font context, under the CSS family name | Blitz resolves `@font-face` through a network provider that the engine does not have, so such rules were ignored |
 | 9 | `src/pagination_layout.rs` | A multi-line paragraph records geometry for the boxes inside it on every page it covers | `inline-block`, `inline-flex` and similar boxes inside a paragraph that wrapped onto a second line were never drawn |
 | 10 | `src/table_header.rs`, `src/engine.rs` | A table's `<thead>` rows are copied in front of every body row that starts a page after the first, then the document is laid out again | Long tables showed their header only on the first page. The first pass predicts all the page starts from the row heights, so a table costs about one extra layout; documents without a `<thead>` pay nothing |
+| 11 | `src/config.rs`, `engine.rs`, `render.rs`, `lib.rs` | A `PdfA` conformance level (`1b`, `2b`, `2u`, `2a`, `3b`, `3a`) on the config and builder; the PDF writer validates against it (the `a` levels imply tagging) | PDF/A archival output |
+| 12 | `src/lib.rs`, `render.rs`, `image.rs` | `with_image_interpolation(on, f)`: images are drawn with the `/Interpolate` flag unless turned off for the thread | PDF/A forbids the flag, so the renderer turns it off for PDF/A documents |
 
 ## Upgrading fulgur
 

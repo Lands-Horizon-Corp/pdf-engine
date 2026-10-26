@@ -111,7 +111,7 @@ like garbage", "the PDFs were 15 MB", "blank spaces where the images should be (
 | Concern | Today | How it is handled, and what is missing |
 | --- | --- | --- |
 | **Tagged (accessible) PDFs, PDF/UA.** | 🟡 | `accessible: true` makes a tagged PDF with a structure tree, the document language and the title, and declares PDF/UA when the document has headings ([Accessible PDFs](templates.md#accessible-pdfs)). We have not run an external checker (veraPDF) or a screen reader over it yet, so we do not claim certification. |
-| **Archival PDF/A.** | 🔴 | Not supported yet. |
+| **Archival PDF/A.** | 🟡 | `pdfA: '2b'` (also 1b, 2u, 2a, 3b, 3a) makes a PDF/A file, checked by the PDF writer's own validator as it is made; a document that cannot conform is refused with the reason ([docs](templates.md#archival-pdfa)). Not yet checked with an external validator such as veraPDF. |
 | **Password protection.** | ✅ | The `password` option encrypts the PDF. |
 | **Digital signatures.** | ⚪ | Not in scope; sign the finished PDF with a signing tool. |
 
@@ -137,7 +137,7 @@ Ordered by how often the concern comes up and how much it blocks real documents.
 4. **`float`**: ~~side-by-side boxes~~ **Done**; text wrapping under a float is next.
 5. **Image fixes:** `<img>` of an SVG file, percentage widths without a height, inline SVG wider than its box.
 6. **`outline` and `filter`**, and a way to read the CSS `orphans` and `widows` properties.
-7. **Tagged (accessible) PDFs**: the option exists; next, check it with veraPDF and a screen reader, then PDF/A.
+7. **Tagged (accessible) PDFs**: the option exists; next, check it with veraPDF and a screen reader, then check the PDF/A output the same way.
 8. **Optional font packs** for the browser (CJK, Arabic, Thai, emoji), fetched on demand.
 9. **Short client examples** for PHP, Python, Go and C#, and a Gotenberg entry in the benchmark.
 

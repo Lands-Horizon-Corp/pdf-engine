@@ -23,6 +23,8 @@ pub struct PdfRequest {
     pub password: Option<String>,
     /// Make a tagged (accessible, PDF/UA) PDF: a structure tree, the document language and a title.
     pub accessible: bool,
+    /// Archival PDF/A output at this level (`1b`, `2b`, `2u`, `2a`, `3b`, `3a`); `None` for an ordinary PDF.
+    pub pdf_a: Option<String>,
     /// Named templates the main template can `{% include %}` or `{% extends %}`.
     pub partials: Vec<(String, String)>,
 }

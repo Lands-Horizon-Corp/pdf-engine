@@ -7,6 +7,7 @@ scripts; the charts and tables in the main README come from them. Only speed is 
 | --- | --- | --- |
 | `npm run check` | Renders one document of each kind with every library and prints pages, text and size, so you can see they all made the same document | 1 min |
 | `npm run bench` | **Time per document**: first call, warm median and 95th percentile, and throughput. In Chromium and WebKit, and in Node. Then redraws the charts | 10 min |
+| `npm run memory` | **Peak memory** of one PDF of 1, 100 and 1000 pages, each in a fresh process (the whole process tree, sampled every 20 ms) | 10–20 min |
 | `npm run scale` | **10,000 documents** per library and kind of document: time to finish | 30–90 min |
 | `npm run stats` | Live weekly downloads and last update of each package from the npm registry | seconds |
 | `npm run charts` | Redraws `charts/*.svg` and the README tables from `results/*.json` | seconds |

@@ -207,6 +207,36 @@ if (existsSync(scalePath)) {
   }
 }
 
+
+// ---- memory: one PDF of 1, 100 and 1000 pages -------------------------------------------------
+const memoryPath = resolve(here, 'results/memory.json');
+const memoryPages = { pages1: '1 page', pages100: '100 pages', pages1000: '1000 pages' };
+if (existsSync(memoryPath)) {
+  const memory = JSON.parse(readFileSync(memoryPath, 'utf8'));
+  const groupsOf = [
+    ['HTML to PDF (native / server)', ['pdf-engine', 'puppeteer-shell', 'puppeteer', 'html-pdf', 'wkhtmltopdf']],
+    ['HTML to PDF in the browser (the whole browser counts)', ['wasm', 'ironpress', 'dompdf', 'html2pdf', 'jspdf-html2canvas']],
+  ];
+  for (const scenario of Object.keys(memoryPages)) {
+    const groups = groupsOf
+      .map(([title, ids]) => ({
+        title,
+        rows: ids
+          .map((id) => {
+            const r = memory.rows.find((x) => x.id === id && x.scenario === scenario);
+            if (!r) return null;
+            const ours = id === 'pdf-engine' || id === 'wasm';
+            if (r.status !== 'ok') return { label: r.library || id, value: 0, text: 'failed', note: String(r.status).slice(0, 40), ours };
+            return { label: r.library, value: r.peakMb, ours };
+          })
+          .filter(Boolean)
+          .sort((a, b) => (a.value || Infinity) - (b.value || Infinity)),
+      }))
+      .filter((g) => g.rows.length);
+    if (groups.length) chart({ file: `memory-${scenario}`, title: `One PDF of ${memoryPages[scenario]}: peak memory`, subtitle: 'Shorter is better. Peak resident memory of the process and everything it starts, in a fresh process.', format: megabytes, groups, badge: 'least memory' });
+  }
+}
+
 // ---- the README block: charts and tables, regenerated from the results ------------------------
 const readmePath = resolve(here, '../../README.md');
 if (existsSync(readmePath) && readFileSync(readmePath, 'utf8').includes('<!-- bench:start -->')) {
@@ -242,6 +272,30 @@ if (existsSync(readmePath) && readFileSync(readmePath, 'utf8').includes('<!-- be
     const skipped = (scale.skipped || []).map((x) => `${x.id}: ${x.reason}`).join('; ');
     if (skipped) md += `Not run here: ${skipped}\n\n`;
     md += `Machine: ${scale.machine.cpu}, ${scale.machine.cores} cores, ${scale.machine.platform}, Node ${scale.machine.node}, ${scale.machine.date}.\n\n</details>\n\n`;
+  }
+
+  if (existsSync(memoryPath)) {
+    const memory = JSON.parse(readFileSync(memoryPath, 'utf8'));
+    md += `### Memory: one PDF of 1, 100 and 1000 pages\n\nEach library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms, including the cost of starting. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.\n\n`;
+    for (const scenario of Object.keys(memoryPages)) md += `${picture(`memory-${scenario}`, `Peak memory for one PDF of ${memoryPages[scenario]}`)}\n`;
+    const ids = [...new Set(memory.rows.map((r) => r.id))];
+    const cell = (id, sc) => {
+      const r = memory.rows.find((x) => x.id === id && x.scenario === sc);
+      if (!r) return 'n/a';
+      return r.status === 'ok' ? `${Math.round(r.peakMb).toLocaleString('en-US')} MB, ${duration(r.seconds)}` : `failed (${Math.round(r.peakMb).toLocaleString('en-US')} MB peak)`;
+    };
+    const wanted = { pages1: 1, pages100: 100, pages1000: 1000 };
+    const notes = [];
+    for (const sc of Object.keys(memoryPages)) {
+      const ok = memory.rows.filter((r) => r.scenario === sc && r.status === 'ok');
+      const least = [...ok].sort((a, b) => a.peakMb - b.peakMb)[0];
+      const ours = ok.find((r) => r.id === 'pdf-engine');
+      if (least && ours && least.id !== 'pdf-engine') notes.push(`for ${memoryPages[sc]}, ${least.library} used the least (${Math.round(least.peakMb)} MB against ${Math.round(ours.peakMb)} MB for pdf-engine)`);
+      for (const r of ok) if (r.pages && r.pages !== wanted[sc] && r.pages !== wanted[sc] + 1) notes.push(`${r.library} made ${r.pages} pages for ${memoryPages[sc]}`);
+      for (const r of memory.rows.filter((x) => x.scenario === sc && x.status !== 'ok')) notes.push(`${r.library} could not make ${memoryPages[sc]} (${String(r.status).slice(0, 80)})`);
+    }
+    if (notes.length) md += `Read it with these in mind: ${notes.join('; ')}. wkhtmltopdf and html-pdf are x86 builds run under Rosetta on this Mac, and they hold a document differently (they make one blank page more than asked). pdf-engine's native figure includes loading this Mac's system fonts. One run each.\n\n`;
+    md += '<details>\n<summary>All the numbers (peak memory, time to make the PDF)</summary>\n\n' + table(['Library', ...Object.values(memoryPages)], ids.map((id) => [memory.rows.find((x) => x.id === id).library || id, ...Object.keys(memoryPages).map((sc) => cell(id, sc))])) + `\nMachine: ${memory.machine.cpu}, ${memory.machine.cores} cores, ${memory.machine.platform}, Node ${memory.machine.node}, ${memory.machine.date}. One run each, so treat small differences as noise.\n\n</details>\n\n`;
   }
 
   md += `### Speed per document\n\n${picture('node-time', 'Node: time per invoice')}\n${picture('node-throughput', 'Node: invoices per second')}\n${picture('browser-time', 'Browser: time per invoice')}\n${picture('install-size', 'Install size')}\n`;

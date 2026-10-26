@@ -68,6 +68,12 @@ struct Request {
     /// Make a tagged (accessible, PDF/UA) PDF.
     #[serde(default)]
     accessible: bool,
+    /// Archival PDF/A output at this level (`2b`, ...).
+    #[serde(default)]
+    pdf_a: Option<String>,
+    /// The current time (ISO 8601): PDF/A needs a creation date and WebAssembly has no clock.
+    #[serde(default)]
+    date: Option<String>,
     /// Named templates the template can `{% include %}` or `{% extends %}`.
     #[serde(default)]
     partials: std::collections::BTreeMap<String, String>,
@@ -92,6 +98,8 @@ struct Prepared {
     page: PageMm,
     password: Option<String>,
     accessible: bool,
+    pdf_a: Option<fulgur::PdfA>,
+    date: Option<String>,
     /// The document's `@font-face` rules, for the fonts the page fetches.
     font_decls: Vec<font_face::FontFaceDecl>,
 }
@@ -207,6 +215,7 @@ impl Engine {
             req.orientation.as_deref().unwrap_or("portrait"),
         )?;
 
+        let pdf_a = fulgur_engine::parse_pdf_a(req.pdf_a.as_deref(), req.password.as_deref())?;
         let partials: Vec<(String, String)> = req.partials.into_iter().collect();
         let html = template::render_with(&template, req.data, &partials)?;
         let images = data_uri_images(&html);
@@ -218,6 +227,8 @@ impl Engine {
                 page,
                 password: req.password,
                 accessible: req.accessible,
+                pdf_a,
+                date: req.date,
                 font_decls,
             },
             images,
@@ -236,6 +247,7 @@ impl Engine {
             req.height.as_deref().unwrap_or("11in"),
             req.orientation.as_deref().unwrap_or("portrait"),
         )?;
+        let pdf_a = fulgur_engine::parse_pdf_a(req.pdf_a.as_deref(), req.password.as_deref())?;
         let partials: Vec<(String, String)> = req.partials.into_iter().collect();
         let html = template::render_with(&template, req.data, &partials)?;
         let sources: Vec<String> = image_util::image_sources(&html)
@@ -258,6 +270,8 @@ impl Engine {
                 page,
                 password: req.password,
                 accessible: req.accessible,
+                pdf_a,
+                date: req.date,
                 font_decls,
             },
         );
@@ -279,19 +293,21 @@ impl Engine {
             images,
             font_faces,
             accessible: p.accessible,
+            pdf_a: p.pdf_a,
+            date: p.date,
         };
 
         // A corrupt image or font fails the whole render; retry once without them, as the native
         // engine does, so a bad one never costs the document.
         let pdf = match self.renderer.render(&job) {
-            Err(_) if !job.images.is_empty() || !job.font_faces.is_empty() => {
+            Err(_) if job.pdf_a.is_none() && (!job.images.is_empty() || !job.font_faces.is_empty()) => {
                 job.images.clear();
                 job.font_faces.clear();
                 self.renderer.render(&job)
             }
             other => other,
         }
-        .map_err(AppError::Render)?;
+        .map_err(fulgur_engine::render_error)?;
 
         match p.password.as_deref().filter(|p| !p.is_empty()) {
             Some(password) => pdf_encrypt::encrypt(&pdf, password).map_err(AppError::PdfProcessing),

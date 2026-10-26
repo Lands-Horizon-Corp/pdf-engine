@@ -103,6 +103,53 @@ pub struct Config {
     pub enable_tagging: bool,
     /// Enable PDF/UA-1 conformance (implies enable_tagging).
     pub pdf_ua: bool,
+    /// Archival PDF/A conformance level (pdf-engine patch). The "a" levels imply tagging.
+    pub pdf_a: Option<PdfA>,
+}
+
+/// A PDF/A conformance level (pdf-engine patch, see PATCHES.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PdfA {
+    A1b,
+    A2b,
+    A2u,
+    A2a,
+    A3b,
+    A3a,
+}
+
+impl PdfA {
+    /// Parses `2b`, `PDF/A-2b`, `pdfa-2b` and the like, in any case.
+    pub fn parse(s: &str) -> Option<Self> {
+        let s = s.trim().to_ascii_lowercase();
+        let s = s.trim_start_matches("pdf/a").trim_start_matches("pdfa");
+        Some(match s.trim_start_matches(['-', ' ', '_']) {
+            "1b" => Self::A1b,
+            "2b" => Self::A2b,
+            "2u" => Self::A2u,
+            "2a" => Self::A2a,
+            "3b" => Self::A3b,
+            "3a" => Self::A3a,
+            _ => return None,
+        })
+    }
+
+    /// The "a" (accessible) levels need a structure tree.
+    pub fn needs_tags(self) -> bool {
+        matches!(self, Self::A2a | Self::A3a)
+    }
+
+    pub(crate) fn validator(self) -> krilla::configure::Validator {
+        use krilla::configure::Validator as V;
+        match self {
+            Self::A1b => V::A1_B,
+            Self::A2b => V::A2_B,
+            Self::A2u => V::A2_U,
+            Self::A2a => V::A2_A,
+            Self::A3b => V::A3_B,
+            Self::A3a => V::A3_A,
+        }
+    }
 }
 
 impl Default for Config {
@@ -123,6 +170,7 @@ impl Default for Config {
             bookmarks: false,
             enable_tagging: false,
             pdf_ua: false,
+            pdf_a: None,
         }
     }
 }
@@ -169,7 +217,7 @@ impl Config {
     /// Returns true if tagging should be enabled in the PDF output.
     /// pdf_ua implies tagging.
     pub fn effective_tagging(&self) -> bool {
-        self.enable_tagging || self.pdf_ua
+        self.enable_tagging || self.pdf_ua || self.pdf_a.is_some_and(PdfA::needs_tags)
     }
 
     /// Returns true if bookmarks should be generated.
@@ -264,6 +312,11 @@ impl ConfigBuilder {
 
     pub fn pdf_ua(mut self, enabled: bool) -> Self {
         self.config.pdf_ua = enabled;
+        self
+    }
+
+    pub fn pdf_a(mut self, level: Option<PdfA>) -> Self {
+        self.config.pdf_a = level;
         self
     }
 

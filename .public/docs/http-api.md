@@ -41,6 +41,7 @@ Other methods on a known path answer `405`.
 | `orientation` | no | `portrait` or `landscape` |
 | `password` | no | Encrypts the PDF |
 | `accessible` | no | `true` makes a tagged, accessible PDF (PDF/UA). [Accessible PDFs](templates.md#accessible-pdfs) |
+| `pdf_a` | no | Archival PDF/A at this level: `1b`, `2b`, `2u`, `2a`, `3b` or `3a`. Not with `password`. [Archival PDF/A](templates.md#archival-pdfa) |
 | `partials` | no | A JSON object of name to template, for `{% include %}`, `{% extends %}` and `{% import %}` ([Partials](templates.md#partials-headers-footers-rows-and-layouts)) |
 | `filename` | no | The name in the `Content-Disposition` header (default `document.pdf`) |
 

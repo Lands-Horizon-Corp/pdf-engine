@@ -70,7 +70,7 @@ window.bench = {
   },
 };
 // Many documents in a row (the scale benchmark): each gets its own number; stops at `count` or the time budget.
-window.bench.batch = async (library, scenarioName, count, budgetMs) => {
+window.bench.batch = async (library, scenarioName, count, budgetMs, warm = 3) => {
   const scenario = scenarios[scenarioName];
   const render = async (i) => {
     const doc = scenario.render(i);
@@ -81,7 +81,7 @@ window.bench.batch = async (library, scenarioName, count, budgetMs) => {
       el.remove();
     }
   };
-  for (let i = 0; i < 3; i++) await render(i); // warm-up, not counted
+  for (let i = 0; i < warm; i++) await render(i); // warm-up, not counted
   const started = performance.now();
   let completed = 0;
   let errors = 0;

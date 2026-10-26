@@ -141,6 +141,8 @@ pub struct Request {
     password: Option<String>,
     /// `render` op: make a tagged (accessible, PDF/UA) PDF.
     accessible: Option<bool>,
+    /// `render` op: archival PDF/A output at this level (`2b`, ...).
+    pdf_a: Option<String>,
     /// Named templates the template can `{% include %}` or `{% extends %}`.
     partials: Option<std::collections::BTreeMap<String, String>>,
     paths: Option<Vec<String>>,
@@ -209,6 +211,8 @@ pub async fn handle_one(state: &AppState, header: Vec<u8>) -> (Vec<u8>, Bytes) {
 /// Answer one request. Never fails: problems become error replies.
 async fn handle(state: &AppState, frame: Frame) -> Reply {
     let mut header = frame.header;
+    // Kept to read the id back if the request does not parse (the parser overwrites its input).
+    let prefix = header[..header.len().min(256)].to_vec();
     // Large requests (big `data`) are parsed off the async threads.
     let parsed = if header.len() > 64 * 1024 {
         tokio::task::spawn_blocking(move || simd_json::serde::from_slice::<Request>(&mut header))
@@ -221,8 +225,18 @@ async fn handle(state: &AppState, frame: Frame) -> Reply {
     let req = match parsed {
         Ok(r) => r,
         Err(e) => {
-            let err = AppError::Protocol(format!("request header is not a valid request: {e}"));
-            return error_reply(Value::Null, &err);
+            // Valid JSON with a field of the wrong type (`"template": 5`) is the caller's mistake and is answered
+            // with the request's id, so that one call fails instead of waiting for an answer that never matches.
+            return match sniff_id(&prefix) {
+                Some(id) => error_reply(
+                    id,
+                    &AppError::InvalidField(format!("request is not valid: {e}")),
+                ),
+                None => error_reply(
+                    Value::Null,
+                    &AppError::Protocol(format!("request header is not a valid request: {e}")),
+                ),
+            };
         }
     };
     let id = req.id.clone();
@@ -230,6 +244,22 @@ async fn handle(state: &AppState, frame: Frame) -> Reply {
         Ok(reply) => reply,
         Err(err) => error_reply(id, &err),
     }
+}
+
+/// The `"id"` of a request header (a number or a string) read from its first bytes, if it has one.
+fn sniff_id(prefix: &[u8]) -> Option<Value> {
+    let text = String::from_utf8_lossy(prefix);
+    let after = text
+        .split("\"id\"")
+        .nth(1)?
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start();
+    if let Some(rest) = after.strip_prefix('"') {
+        return Some(Value::String(rest.split('"').next()?.to_string()));
+    }
+    let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<u64>().ok().map(Value::from)
 }
 
 async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, AppError> {
@@ -247,6 +277,7 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
                 filename: String::new(),
                 password: req.password.filter(|p| !p.is_empty()),
                 accessible: req.accessible.unwrap_or(false),
+                pdf_a: req.pdf_a,
                 partials: req.partials.unwrap_or_default().into_iter().collect(),
             };
             let supplied = split_images(&req.images, body)?;
@@ -389,6 +420,7 @@ async fn render_raster(
         filename: String::new(),
         password: None,
         accessible: false,
+        pdf_a: None,
         partials,
     };
     let pdf = timeout(
@@ -465,6 +497,7 @@ pub async fn print_job(state: &AppState, req: Request, body: Vec<u8>) -> Result<
             filename: String::new(),
             password: None,
             accessible: false,
+            pdf_a: None,
             partials: req
                 .partials
                 .clone()

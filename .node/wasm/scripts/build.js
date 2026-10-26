@@ -51,6 +51,36 @@ const built = path.join(crate, 'target', 'wasm32-unknown-unknown', 'release', 'p
 fs.rmSync(dist, { recursive: true, force: true });
 run('wasm-bindgen', ['--target', 'web', '--out-dir', dist, built]);
 
+// After a trap (a crash inside WebAssembly) the instance cannot be used again, and the generated init() returns
+// the old one. Add a function that forgets it, so the next init() makes a fresh instance.
+const glue = path.join(dist, 'pdf_engine_wasm.js');
+let glueSource = fs.readFileSync(glue, 'utf8');
+for (const needle of ['let wasmModule, wasmInstance, wasm;', 'let cachedDataViewMemory0 = null;', 'let cachedUint8ArrayMemory0 = null;', 'let heap = new Array(1024).fill(undefined);', 'let heap_next = heap.length;', 'let WASM_VECTOR_LEN = 0;']) {
+  if (!glueSource.includes(needle)) fail(`wasm-bindgen's output changed (missing "${needle}"); update the reset() patch in scripts/build.js.`);
+}
+glueSource += `
+/** pdf-engine: forget the instance, so the next init() creates a fresh one (the old one is unusable after a trap). */
+export function reset() {
+    wasmModule = wasmInstance = wasm = undefined;
+    cachedDataViewMemory0 = null;
+    cachedUint8ArrayMemory0 = null;
+    heap = new Array(1024).fill(undefined);
+    heap_next = heap.length;
+    WASM_VECTOR_LEN = 0;
+}
+`;
+// An engine made before a reset must never be freed in the new instance (its pointer means something else there).
+const registryOld = 'new FinalizationRegistry(ptr => wasm.__wbg_engine_free(ptr, 1))';
+const registerOld = 'EngineFinalization.register(this, this.__wbg_ptr, this);';
+if (!glueSource.includes(registryOld) || !glueSource.includes(registerOld)) fail("wasm-bindgen's output changed (the finalizer); update the patch in scripts/build.js.");
+glueSource = glueSource
+  .replace(registryOld, 'new FinalizationRegistry(held => { if (held.gen === instanceGeneration && wasm) wasm.__wbg_engine_free(held.ptr, 1); })')
+  .replace(registerOld, 'EngineFinalization.register(this, { ptr: this.__wbg_ptr, gen: instanceGeneration }, this);')
+  .replace('let wasmModule, wasmInstance, wasm;', 'let wasmModule, wasmInstance, wasm;\nlet instanceGeneration = 0;')
+  .replace('export function reset() {\n', 'export function reset() {\n    instanceGeneration++;\n');
+fs.writeFileSync(glue, glueSource);
+fs.appendFileSync(path.join(dist, 'pdf_engine_wasm.d.ts'), '\n/** Forget the WebAssembly instance (after a trap); the next `init()` makes a fresh one. */\nexport function reset(): void;\n');
+
 const wasm = path.join(dist, 'pdf_engine_wasm_bg.wasm');
 if (spawnSync('wasm-opt', ['--version'], { env }).status === 0) {
   run('wasm-opt', ['-O3', '--enable-simd', '--enable-multivalue', '--enable-reference-types', '--enable-bulk-memory', '--enable-nontrapping-float-to-int', '--enable-sign-ext', '--enable-mutable-globals', wasm, '-o', wasm]);

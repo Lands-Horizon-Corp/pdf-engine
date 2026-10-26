@@ -564,7 +564,24 @@ pub mod units;
 
 pub use asset::AssetBundle;
 pub use blitz_adapter::{DocFontFace, reload_system_fonts, set_extra_fonts, with_doc_font_faces};
-pub use config::{Config, ConfigBuilder, Margin, PageSize};
+std::thread_local! {
+    static IMAGE_INTERPOLATION: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Whether images are drawn with the `/Interpolate` flag (pdf-engine patch). PDF/A forbids it.
+pub(crate) fn image_interpolation() -> bool {
+    IMAGE_INTERPOLATION.with(|c| c.get())
+}
+
+/// Runs `f` with image interpolation on or off for this thread (pdf-engine patch).
+pub fn with_image_interpolation<R>(on: bool, f: impl FnOnce() -> R) -> R {
+    let previous = IMAGE_INTERPOLATION.with(|c| c.replace(on));
+    let result = f();
+    IMAGE_INTERPOLATION.with(|c| c.set(previous));
+    result
+}
+
+pub use config::{Config, ConfigBuilder, Margin, PageSize, PdfA};
 pub use engine::{Engine, EngineBuilder, LayoutOutput};
 pub use error::{Error, Result};
 pub use outline::build_outline;

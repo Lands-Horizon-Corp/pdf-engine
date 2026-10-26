@@ -221,6 +221,33 @@ and below. Inside the tag, write `<` as `&lt;` (a template value already is).
   with several alignment points, no `\color`. A command it does not know is shown as written (`\foo`), never an error.
 - **Limits:** a formula of up to 20,000 characters and 24 levels of nesting.
 
+## Archival PDF/A
+
+Set `pdfA` (the `pdf_a` form field on the server) for a file meant to be kept for decades: fonts are embedded, colours are
+declared, the metadata says which standard it follows, and the file is **checked against that standard while it is made**.
+
+```ts
+await pdf.generate({ template, data, pdfA: '2b' });
+```
+
+| Level | Use it for |
+| --- | --- |
+| `2b` | The usual choice: archival, visually reproducible |
+| `2u` | Also guarantees the text can be searched and copied (Unicode) |
+| `3b` | Like 2b, and allows attached files |
+| `1b` | The oldest standard, for systems that ask for it |
+| `2a`, `3a` | Also tagged (a structure tree, like `accessible: true`); every `<img>` needs an `alt` |
+
+- **Refused, not faked:** a document that cannot meet the standard is `INVALID_FIELD` with the reason, for example text in a
+  script no font covers (add one with `@font-face`) or an image without `alt` at level `a`. You never get a file that claims
+  PDF/A and does not conform.
+- **No password:** PDF/A forbids encryption, so `pdfA` with `password` is `INVALID_FIELD`.
+- **Images** are drawn without smoothing (PDF/A forbids the flag), so a small image scaled up looks blockier than in a
+  normal PDF.
+- **Date:** the creation date is the current time (the page's clock in the browser).
+- **What is not checked:** the validator is the one built into the PDF writer (Krilla); we have not run an external one
+  such as veraPDF on the output. If you need a certificate, validate your own documents with veraPDF.
+
 ## Accessible PDFs
 
 Set `accessible: true` (the `accessible` form field on the server) for a **tagged PDF**: besides the drawing, the file

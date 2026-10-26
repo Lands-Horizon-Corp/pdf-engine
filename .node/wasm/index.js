@@ -11,7 +11,7 @@
  */
 import { WorkerPool } from './pool.js';
 import { ServerPool, choose, isRetryable, pruneData, requestBytes, serversOf } from './routing.js';
-import init, { Engine, set_compression, version as engineVersion } from './dist/pdf_engine_wasm.js';
+import init, { Engine, reset as resetWasm, set_compression, version as engineVersion } from './dist/pdf_engine_wasm.js';
 
 const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined';
 
@@ -122,6 +122,15 @@ function browserBlobUrl(bytes) {
 
 let wasmReady = null;
 let wasmKey = null;
+/** Release an engine. One made before a crash lives in a dead instance: only forget it there, never free it. */
+function releaseEngine(engine, generation) {
+  if (!engine) return;
+  if (generation === wasmGeneration) engine.free();
+  else engine.__destroy_into_raw();
+}
+
+/** Counts the WebAssembly instances made: an engine made on an earlier one (before a crash) is stale. */
+let wasmGeneration = 0;
 
 /** Instantiate the WebAssembly module once per page. */
 function ensureWasm(source, fetchImpl) {
@@ -170,6 +179,7 @@ function toError(e) {
 export class PDFEngine {
   #options;
   #engine = null;
+  #generation = 0;
   #starting = null;
   #fontBytes = [];
   #closed = false;
@@ -264,7 +274,7 @@ export class PDFEngine {
       const warn = onImageError || this.#options.onImageError || ((src, reason) => console.warn(`pdf-engine: skipped image ${String(src).slice(0, 100)}: ${reason}`));
       return this.#workerPool(workers).generate(send, warn);
     }
-    const { template, data, password, width, height, orientation, accessible } = options;
+    const { template, data, password, width, height, orientation, accessible, pdfA } = options;
     await this.#start();
     this.#applyFonts();
     const compression = options.compression ?? this.#options.compression ?? 'fast';
@@ -273,7 +283,7 @@ export class PDFEngine {
       set_compression(COMPRESSION_LEVELS[compression]);
       activeCompression = compression;
     }
-    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation, accessible: accessible || undefined, partials: this.#partials(options) });
+    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation, accessible: accessible || undefined, pdf_a: pdfA || undefined, date: pdfA ? new Date().toISOString().slice(0, 19) : undefined, partials: this.#partials(options) });
     try {
       // Images in data: URIs need nothing more. Any other <img src> (a URL, blob:, a name in
       // `images`) is fetched first, so a template without them keeps the one-call fast path.
@@ -285,8 +295,11 @@ export class PDFEngine {
     } catch (e) {
       if (typeof WebAssembly !== 'undefined' && e instanceof WebAssembly.RuntimeError) {
         // A trap (a bug in the engine) leaves the module unusable: start over on the next call.
+        this.#engine?.__destroy_into_raw();
         this.#engine = null;
         this.#starting = null;
+        resetWasm();
+        wasmGeneration++;
         wasmReady = null;
         activeFonts = null;
         activeCompression = 'fast';
@@ -346,7 +359,7 @@ export class PDFEngine {
     return Object.keys(merged).length ? merged : undefined;
   }
 
-  async #generateRemote(url, token, { template, data, password, width, height, orientation, partials, accessible }) {
+  async #generateRemote(url, token, { template, data, password, width, height, orientation, partials, accessible, pdfA }) {
     const form = new FormData();
     form.append('template', template ?? '');
     form.append('data', JSON.stringify(data === undefined ? {} : data));
@@ -354,6 +367,7 @@ export class PDFEngine {
       if (value) form.append(name, value);
     }
     if (accessible) form.append('accessible', 'true');
+    if (pdfA) form.append('pdf_a', pdfA);
     const allPartials = this.#partials({ partials });
     if (allPartials) form.append('partials', JSON.stringify(allPartials));
     const headers = token ? { Authorization: /^Bearer /i.test(token) ? token : `Bearer ${token}` } : {};
@@ -539,13 +553,19 @@ export class PDFEngine {
     this.#closed = true;
     this.#workerThreads?.close();
     this.#workerThreads = null;
-    this.#engine?.free();
+    releaseEngine(this.#engine, this.#generation);
     this.#engine = null;
     if (activeFonts === this) activeFonts = null;
   }
 
   async #start() {
     if (this.#closed) throw clientError('ENGINE_CLOSED', 'This PDFEngine was closed; create a new one.');
+    if (this.#engine && this.#generation !== wasmGeneration) {
+      // Another engine crashed the module: this one lives in the dead instance. Forget it (do not free it there).
+      releaseEngine(this.#engine, this.#generation);
+      this.#engine = null;
+      this.#starting = null;
+    }
     if (!this.#starting) {
       this.#starting = (async () => {
         await ensureWasm(this.#options.wasm, this.#options.fetch);
@@ -555,8 +575,9 @@ export class PDFEngine {
         } catch (e) {
           throw clientError('FONT_LOAD_FAILED', `Could not load a font: ${e?.message || e}`, 'Check the font URLs, or pass the font bytes directly.');
         }
-        this.#engine?.free();
+        releaseEngine(this.#engine, this.#generation);
         this.#engine = new Engine();
+        this.#generation = wasmGeneration;
         for (const bytes of this.#fontBytes) this.#engine.add_font(bytes);
         activeFonts = null; // re-apply
       })().catch((e) => {

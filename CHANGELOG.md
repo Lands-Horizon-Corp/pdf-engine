@@ -6,8 +6,12 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-27
+
 ### Added
 
+- **Archival PDF/A:** `pdfA: '2b'` (also `1b`, `2u`, `2a`, `3b`, `3a`; the `pdf_a` form field on the server) makes a PDF/A file, checked
+  against the standard as it is made. A document that cannot conform is `INVALID_FIELD` with the reason.
 - **`float: left | right` (approximation):** floats sit side by side with the content beside them; no text wrapping under them yet.
 - **`pdf.fromElement(element)`** (browser): options for a PDF of an element as it looks on screen, from computed styles,
   images, canvases, inline SVG and the page's `@font-face` fonts.
@@ -19,6 +23,29 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 - `<details>` triangles and list bullets draw in the browser build (built-in symbol font).
 - **A PDF is now print media:** `@media print` rules apply and `@media screen` rules do not.
+- The default font stack tries the system's sans-serif before the built-in math font, so on a computer without Noto Sans
+  (the Node and Electron package on a Mac or Windows PC) body text and bold use the system font, not the math font.
+
+### Fixed
+
+- **Browser package: a crash no longer leaves the engine unusable.** After a trap (for example, running out of memory)
+  every later call failed with "memory access out of bounds" and the promised restart never happened. The WebAssembly
+  instance is now replaced, and every other `PDFEngine` on the page rebuilds itself on its next call.
+- **Node and Electron package: a field of the wrong type** (`template: 5`, `password: 12345`) was never answered, so the call
+  waited until its timeout. It is now `INVALID_FIELD`.
+- **Node and Electron package: `loadFonts()` with a path that does not exist** made every later call, and every restart,
+  fail with `FONT_ERROR`. The failed list is no longer kept.
+- **Node and Electron package: an engine process that failed to start properly** (for example `loadFonts()` with a bad path)
+  was left running and lost; the next call started another. It is now stopped.
+- **HTML nested more than 512 levels deep** (a template that would overflow the renderer's stack) is a `TEMPLATE_ERROR`
+  instead of a crash.
+- **Browser package: a template that would produce more than 256 MiB of HTML** is `TEMPLATE_OUTPUT_TOO_LARGE` instead of
+  running WebAssembly out of memory (the server's limit is unchanged, 5 GiB, and `TEMPLATE_MAX_OUTPUT_BYTES` still sets it).
+
+### Tests
+
+- New functional suites for the browser package and the Node package: smoke, happy path, sad path, limits and memory
+  (out of memory, leaks, concurrency, restarts), and the Tauri sidecar's command line and wire protocol.
 
 ## [1.3.0] - 2026-10-26
 

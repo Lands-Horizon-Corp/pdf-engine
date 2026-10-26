@@ -37,6 +37,7 @@ pub async fn render_with_images(
     state: &AppState,
 ) -> Result<Bytes, AppError> {
     let page = PageMm::parse_request(&req.width, &req.height, &req.orientation)?;
+    let pdf_a = crate::fulgur_engine::parse_pdf_a(req.pdf_a.as_deref(), req.password.as_deref())?;
     let html = render_template(req.template, req.data, req.partials).await?;
 
     let mut images = if supplied.is_empty() {
@@ -64,6 +65,8 @@ pub async fn render_with_images(
         images,
         font_faces,
         accessible: req.accessible,
+        pdf_a,
+        date: None,
     });
     // A corrupt image fails the whole render; retry once without images so a bad remote
     // image never costs the document. The job is shared, not cloned up front, so the common
@@ -107,7 +110,7 @@ async fn render_shared(job: Arc<RenderJob>, state: &AppState) -> Result<Vec<u8>,
     .await;
     match joined {
         Ok(Ok(pdf)) => Ok(pdf),
-        Ok(Err(e)) => Err(AppError::Render(e)),
+        Ok(Err(e)) => Err(crate::fulgur_engine::render_error(e)),
         Err(e) if e.is_panic() => Err(AppError::Render("renderer panicked".into())),
         Err(e) => Err(e.into()),
     }
@@ -135,6 +138,8 @@ pub async fn warm_up_in_memory(state: &AppState) -> Result<Vec<u8>, AppError> {
         images: Vec::new(),
         font_faces: Vec::new(),
         accessible: false,
+        pdf_a: None,
+        date: None,
     };
     render_html(job, state).await
 }

@@ -12,7 +12,8 @@
     "stats": "node npm-stats.mjs",
     "charts": "node charts.mjs",
     "bench": "npm run build && npm run bench:browser && npm run bench:node && npm run charts",
-    "setup:tools": "node setup-tools.mjs"
+    "setup:tools": "node setup-tools.mjs",
+    "memory": "node memory.mjs"
   },
   "dependencies": {
     "@lands-horizon-corp/pdf-engine": "file:../../.node/desktop",

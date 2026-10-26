@@ -1,6 +1,6 @@
 {
   "name": "@lands-horizon-corp/pdf-engine-wasm",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "HTML to PDF for the browser and Node.js: a Rust layout engine compiled to WebAssembly. Real vector text, Markdown, LaTeX math, QR codes. No server, no Chromium, no Puppeteer. Works in React, Vue, Svelte and Next.js.",
   "type": "module",
   "main": "index.js",

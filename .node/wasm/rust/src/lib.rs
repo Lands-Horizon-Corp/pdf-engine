@@ -25,6 +25,8 @@ mod font_face;
 mod fulgur_engine;
 #[path = "../../../../src/image_util.rs"]
 mod image_util;
+#[path = "../../../../src/markdown.rs"]
+mod markdown;
 #[path = "../../../../src/pdf_encrypt.rs"]
 mod pdf_encrypt;
 #[path = "../../../../src/template.rs"]

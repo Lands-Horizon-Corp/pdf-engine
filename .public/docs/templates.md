@@ -164,6 +164,34 @@ adds the check digit); `ean8` 7 or 8; `code39` capitals, digits and `- . $ / + %
 type is an `INVALID_FIELD` error that says why, rather than a barcode that will not scan. QR codes hold Unicode
 (`₱`, `你好`). The tests render a QR code and decode it back from the PDF.
 
+## Markdown
+
+Write the text of a document in Markdown instead of HTML, in the template or in the data:
+
+```html
+{% filter markdown %}
+## Release notes
+
+This is **Markdown**, with a [link](https://example.com), `code`, lists and tables:
+
+| Item | Qty |
+|------|----:|
+| Hosting | 1 |
+{% endfilter %}
+
+{{ report.summary|markdown }}
+```
+
+- **What it reads:** CommonMark (headings, emphasis, lists, links, images, quotes, code blocks) plus tables,
+  `~~strikethrough~~` and task lists (`- [x] done`). Style the result with your own CSS: the output is plain HTML
+  (`h1`, `p`, `ul`, `table`, `blockquote`, `pre`, ...).
+- **Values are text:** raw HTML inside the Markdown is shown as text, not read as markup, and a `{{ }}` inside a value is
+  not evaluated. So `{{ user_text|markdown }}` is safe for text you do not control.
+- **Links and images:** only `http`, `https`, `mailto`, `tel`, relative and `#anchor` links are kept; `javascript:` and
+  other schemes are removed. An image address follows the usual image rules (a `data:` URI always; a URL only from an
+  allowed host).
+- **Limit:** 2 MB of Markdown per use; more is cut.
+
 ## Guard rails
 
 A template can only produce so much: output is capped (`TEMPLATE_MAX_OUTPUT_BYTES`) and execution has a budget

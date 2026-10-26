@@ -2102,5 +2102,15 @@
       "from": "Lands Horizon, 12 Rizal Ave, Manila",
       "tracking": "PH2026102600417"
     }
+  },
+  "markdown": {
+    "label": "Markdown (filter, tables, task lists)",
+    "options": {},
+    "template": "<style>\n  body { font-family: 'Noto Sans', sans-serif; font-size: 13px; line-height: 1.5; color: #1f2937; padding: 34px; }\n  h1, h2 { color: #2563eb; } h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }\n  table { border-collapse: collapse; margin: 8px 0; } th, td { border: 1px solid #d1d5db; padding: 5px 10px; } th { background: #eff4ff; }\n  blockquote { border-left: 4px solid #2563eb; margin: 10px 0; padding: 2px 14px; color: #4b5563; background: #f8fafc; }\n  code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; } pre { background: #f3f4f6; padding: 10px; border-radius: 6px; }\n  a { color: #2563eb; }\n</style>\n{% filter markdown %}\n# {{ title }}\n\nWritten in **Markdown**, inside the template. The text below comes from the *data* tab and goes through the same filter.\n\n## Summary\n\n{{ summary }}\n\n## Numbers\n\n| Plan | Price | Seats |\n|------|------:|------:|\n| Starter | ₱450 | 1 |\n| Team | ₱1,500 | 10 |\n| Business | ₱4,800 | 50 |\n\n> Everything here is plain Markdown: headings, lists, quotes, code, tables and links.\n\n- [x] Headings, **bold**, *italic*, ~~strikethrough~~\n- [x] Lists, [links](https://example.com) and `inline code`\n- [ ] Your own text: edit this template\n\n```\ntotal = starter + team + business\n```\n{% endfilter %}\n\n<h2>Text from the data</h2>\n{{ notes|markdown }}",
+    "data": {
+      "title": "Release notes",
+      "summary": "This quarter we shipped **three** things: faster *rendering*, `@font-face` fonts and Markdown.",
+      "notes": "Raw HTML such as <b>this</b> stays visible as text, and a value with {{ braces }} is not evaluated.\n\n1. First point\n2. Second point"
+    }
   }
 }

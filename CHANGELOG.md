@@ -14,6 +14,9 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
   the browser package the page fetches URL fonts (`onImageError` reports failures). A font that cannot be loaded is
   skipped; the document is still made.
 
+- **Markdown** in templates: `{{ text|markdown }}` and `{% filter markdown %}...{% endfilter %}` (CommonMark, tables,
+  strikethrough, task lists). Raw HTML in the text is shown as text and unsafe link schemes are removed.
+
 ### Changed
 
 - **Node package:** the `printers` constructor option is gone. Printers cannot be known when the engine is created:

@@ -421,3 +421,19 @@ test('@font-face: a font in a data: URI, or fetched from a URL, is used for that
     pdf.close();
   }
 });
+
+test('markdown: a filter and a block turn Markdown into the document, and raw HTML in it stays text', async () => {
+  const pdf = new PDFEngine();
+  try {
+    const plain = await pdf.generate({ template: '<p>x</p>' });
+    const md = await pdf.generate({
+      template: '{{ notes|markdown }}{% filter markdown %}## Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n{% endfilter %}',
+      data: { notes: '# Hello\n\n**bold** and <script>alert(1)</script>\n\n- one\n- two' },
+    });
+    assert.ok(isPdf(md));
+    assert.match(latin1(md), /NotoSans-Bold/, 'headings and bold text are set in bold');
+    assert.ok(md.length > plain.length);
+  } finally {
+    pdf.close();
+  }
+});

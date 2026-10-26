@@ -36,6 +36,10 @@ fn new_env() -> Environment<'static> {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
     env.set_recursion_limit(64);
+    // `{{ text|markdown }}` and `{% filter markdown %}...{% endfilter %}`: Markdown to HTML (see markdown.rs).
+    env.add_filter("markdown", |text: &str| {
+        Value::from_safe_string(crate::markdown::to_html(text))
+    });
     env.set_fuel(Some(*FUEL));
     env
 }
@@ -266,6 +270,39 @@ fn run(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_markdown_filter_and_block() {
+        let html = render_with("{{ t|markdown }}", json!({ "t": "**a** <b>b</b>" }), &[]).unwrap();
+        assert_eq!(
+            html.trim(),
+            "<p><strong>a</strong> &lt;b&gt;b&lt;/b&gt;</p>"
+        );
+        // Written in the template, with a value inside.
+        let html = render_with(
+            "{% filter markdown %}# Hi {{ n }}\n\n- x{% endfilter %}",
+            json!({ "n": "Ana" }),
+            &[],
+        )
+        .unwrap();
+        assert!(
+            html.contains("<h1>Hi Ana</h1>") && html.contains("<li>x</li>"),
+            "{html}"
+        );
+        // The text is escaped like any value: markup in a value never reaches the output as markup.
+        let html = render_with(
+            "{% filter markdown %}{{ n }}{% endfilter %}",
+            json!({ "n": "<img src=x>" }),
+            &[],
+        )
+        .unwrap();
+        assert!(!html.contains("<img"), "{html}");
+        // Without the filter a value is only escaped, never read as Markdown.
+        assert_eq!(
+            render_with("{{ t }}", json!({ "t": "**a**" }), &[]).unwrap(),
+            "**a**"
+        );
+    }
 
     #[test]
     fn autoescapes_and_walks_nested_data() {

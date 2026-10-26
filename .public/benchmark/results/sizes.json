@@ -9,11 +9,11 @@
   "rows": [
     {
       "library": "pdf-engine (WebAssembly)",
-      "jsRaw": 28056,
-      "jsGzip": 9583,
-      "jsBrotli": 9089,
-      "dataRaw": 11710410,
-      "dataBrotli": 3347182
+      "jsRaw": 28826,
+      "jsGzip": 9767,
+      "jsBrotli": 9258,
+      "dataRaw": 12070054,
+      "dataBrotli": 3478318
     },
     {
       "library": "ironpress",

@@ -100,7 +100,7 @@ pdf-engine is a real layout engine (Blitz, Stylo, Taffy, Parley and Krilla, in R
 text, in 1 to 3 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
 
 | HTML to PDF | pdf-engine | dompdf.js | ironpress | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Text stays text (selectable, searchable) | ✅ | ✅ | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
 | Runs in the browser, no server | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
@@ -186,46 +186,46 @@ Each library makes 10,000 different documents (or runs for 150 s, then the time 
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 2.0 s | 5,047 | 1 |
-| pdf-engine (WebAssembly) | 10,000 | 7.0 s | 1,436 | 1 |
-| Puppeteer (headless shell) | 10,000 | 13 s | 753 | 1 |
+| pdf-engine | 10,000 | 4.3 s | 2,337 | 1 |
+| pdf-engine (WebAssembly) | 10,000 | 13 s | 751 | 1 |
+| Puppeteer (headless shell) | 10,000 | 30 s | 338 | 1 |
 | dompdf.js | 10,000 | 32 s | 315 | 1 |
-| Puppeteer (default) | 10,000 | 1.2 min | 145 | 1 |
-| ironpress | 3,867 | 6.5 min (projected) | 26 | 1 |
-| wkhtmltopdf | 2,728 | 9.2 min (projected) | 18 | 1 |
-| jspdf-html2canvas | 2,173 | 11.5 min (projected) | 14 | 1 |
-| html2pdf.js | 1,798 | 13.9 min (projected) | 12 | 1 |
-| html-pdf (PhantomJS) | 1,214 | 20.7 min (projected) | 8 | 1 |
+| Puppeteer (default) | 10,000 | 2.2 min | 74 | 1 |
+| ironpress | 3,871 | 6.5 min (projected) | 26 | 1 |
+| wkhtmltopdf | 2,088 | 12.0 min (projected) | 14 | 1 |
+| jspdf-html2canvas | 2,054 | 12.2 min (projected) | 14 | 1 |
+| html2pdf.js | 1,794 | 13.9 min (projected) | 12 | 1 |
+| html-pdf (PhantomJS) | 599 | 41.9 min (projected) | 4 | 1 |
 
 **Large invoices** (300 lines, 7-9 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 33 s | 305 | 7 |
-| Puppeteer (headless shell) | 10,000 | 1.4 min | 120 | 7 |
-| pdf-engine (WebAssembly) | 10,000 | 2.2 min | 76 | 7 |
-| Puppeteer (default) | 8,422 | 3.0 min (projected) | 56 | 7 |
-| wkhtmltopdf | 2,384 | 10.5 min (projected) | 16 | 7 |
-| dompdf.js | 1,993 | 12.5 min (projected) | 13 | 7 |
-| html-pdf (PhantomJS) | 1,117 | 22.4 min (projected) | 7 | 9 |
-| html2pdf.js | 566 | 44.2 min (projected) | 4 | 7 |
-| jspdf-html2canvas | 521 | 48.1 min (projected) | 3 | 7 |
-| ironpress | 153 | 2.7 h (projected) | 1 | 8 |
+| pdf-engine | 10,000 | 1.0 min | 162 | 7 |
+| Puppeteer (headless shell) | 7,079 | 3.5 min (projected) | 47 | 7 |
+| pdf-engine (WebAssembly) | 5,847 | 4.3 min (projected) | 39 | 7 |
+| Puppeteer (default) | 4,534 | 5.5 min (projected) | 30 | 7 |
+| dompdf.js | 2,019 | 12.4 min (projected) | 13 | 7 |
+| wkhtmltopdf | 1,584 | 15.8 min (projected) | 11 | 7 |
+| html-pdf (PhantomJS) | 564 | 44.6 min (projected) | 4 | 9 |
+| html2pdf.js | 332 | 1.3 h (projected) | 2 | 7 |
+| jspdf-html2canvas | 295 | 1.4 h (projected) | 2 | 7 |
+| ironpress | 154 | 2.7 h (projected) | 1 | 8 |
 
 **Multi-table statements** (5 tables of 35 lines, 4-6 pages)
 
 | Library | Finished | Time for 10,000 | Documents / second | Pages |
 | --- | ---: | ---: | ---: | ---: |
-| pdf-engine | 10,000 | 19 s | 528 | 5 |
-| Puppeteer (headless shell) | 10,000 | 57 s | 176 | 5 |
-| pdf-engine (WebAssembly) | 10,000 | 1.3 min | 125 | 5 |
-| Puppeteer (default) | 10,000 | 2.2 min | 77 | 5 |
-| dompdf.js | 3,166 | 7.9 min (projected) | 21 | 5 |
-| wkhtmltopdf | 2,520 | 9.9 min (projected) | 17 | 5 |
-| html-pdf (PhantomJS) | 1,165 | 21.6 min (projected) | 8 | 6 |
-| html2pdf.js | 797 | 31.4 min (projected) | 5 | 5 |
-| jspdf-html2canvas | 767 | 32.6 min (projected) | 5 | 5 |
-| ironpress | 257 | 1.6 h (projected) | 2 | 6 |
+| pdf-engine | 10,000 | 38 s | 265 | 5 |
+| Puppeteer (headless shell) | 10,000 | 2.5 min | 68 | 5 |
+| pdf-engine (WebAssembly) | 9,513 | 2.6 min (projected) | 63 | 5 |
+| Puppeteer (default) | 5,381 | 4.6 min (projected) | 36 | 5 |
+| dompdf.js | 3,194 | 7.8 min (projected) | 21 | 5 |
+| wkhtmltopdf | 1,659 | 15.1 min (projected) | 11 | 5 |
+| html-pdf (PhantomJS) | 631 | 39.8 min (projected) | 4 | 6 |
+| html2pdf.js | 486 | 51.5 min (projected) | 3 | 5 |
+| jspdf-html2canvas | 454 | 55.2 min (projected) | 3 | 5 |
+| ironpress | 256 | 1.6 h (projected) | 2 | 6 |
 
 Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-26.
 
@@ -561,4 +561,3 @@ Planned, not built yet:
 Taffy, Parley and Krilla; fonts by [Noto](https://fonts.google.com/noto) (OFL).
 
 <p align="center">Made by <a href="https://github.com/Lands-Horizon-Corp">Lands Horizon</a></p>
-

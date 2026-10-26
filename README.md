@@ -402,6 +402,7 @@ flowchart TD
 | [Command line and IPC](.public/docs/cli-and-ipc.md) | The commands and the wire protocol, to write a client in any language |
 | [Fonts and languages](.public/docs/fonts-and-languages.md) | Scripts covered, adding fonts |
 | [Errors](.public/docs/errors.md) | Every code and what to do about it |
+| [Real-world concerns](.public/docs/user-concerns.md) | What developers struggle with in HTML to PDF, and where pdf-engine stands on each: solved, partly, or planned |
 | Guides | [React](.public/docs/sample-react.md) · [Vue](.public/docs/sample-vue.md) · [Svelte](.public/docs/sample-svelte.md) · [Next.js](.public/docs/sample-nextjs.md) · [Electron](.public/docs/sample-electron.md) · [Tauri](.public/docs/sample-tauri.md) |
 
 ---

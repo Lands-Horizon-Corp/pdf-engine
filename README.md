@@ -546,7 +546,7 @@ Planned, not built yet:
 - [x] Repeating `<thead>` on later pages
 - [x] `rowspan` and `@font-face`
 - [x] Markdown (`{{ text|markdown }}`) and LaTeX math (`<math>`) in templates
-- [ ] `float`
+- [x] `float` side by side (text wrapping under a float is not built yet)
 - [x] A live layout preview with box outlines (`pdf.preview()`), a Web Worker pool (`workers`), and React, Vue and Svelte helpers
 
 ---

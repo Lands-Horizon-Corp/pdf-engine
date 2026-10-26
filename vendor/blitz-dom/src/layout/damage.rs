@@ -231,7 +231,80 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
     }
 }
 
+/// How a node takes part in the float approximation (PATCHES.md #5).
+#[derive(Clone, Copy)]
+enum FloatRole {
+    None,
+    /// The anonymous flex row that holds floats and the content beside them.
+    Row,
+    /// The in-flow content, one item of the row.
+    Content,
+    /// A floated box, one item of the row. `push_right` for the first right float (it goes to the right edge).
+    Item { push_right: bool },
+}
+
+impl FloatRole {
+    fn apply(self, style: &mut taffy::Style<style::Atom>) {
+        use taffy::prelude::TaffyAuto as _;
+        use taffy::{AlignItems, Dimension, Display, FlexDirection, FlexWrap, LengthPercentageAuto};
+        match self {
+            FloatRole::None => {}
+            FloatRole::Row => {
+                style.display = Display::Flex;
+                style.flex_direction = FlexDirection::Row;
+                style.flex_wrap = FlexWrap::Wrap;
+                style.align_items = Some(AlignItems::FlexStart);
+            }
+            FloatRole::Content => {
+                style.flex_grow = 1.0;
+                style.flex_shrink = 1.0;
+                style.flex_basis = Dimension::length(150.0);
+            }
+            FloatRole::Item { push_right } => {
+                style.flex_grow = 0.0;
+                style.flex_shrink = 0.0;
+                if push_right {
+                    style.margin.left = LengthPercentageAuto::AUTO;
+                }
+            }
+        }
+    }
+}
+
 impl BaseDocument {
+    fn float_role(&self, node_id: usize) -> FloatRole {
+        use crate::node::NodeFlags;
+        use style::values::computed::Float;
+        let node = &self.nodes[node_id];
+        if node.flags.contains(NodeFlags::IS_FLOAT_ROW) {
+            return FloatRole::Row;
+        }
+        if node.flags.contains(NodeFlags::IS_FLOAT_CONTENT) {
+            return FloatRole::Content;
+        }
+        let Some(parent) = node.layout_parent.get() else {
+            return FloatRole::None;
+        };
+        if !self.nodes[parent].flags.contains(NodeFlags::IS_FLOAT_ROW) {
+            return FloatRole::None;
+        }
+        let float_of = |id: usize| {
+            self.nodes[id]
+                .primary_styles()
+                .map(|s| s.get_box().clone_float())
+        };
+        if !matches!(float_of(node_id), Some(Float::Left | Float::Right)) {
+            return FloatRole::None;
+        }
+        let push_right = float_of(node_id) == Some(Float::Right) && {
+            let siblings = self.nodes[parent].layout_children.borrow();
+            let siblings = siblings.as_deref().unwrap_or(&[]);
+            let pos = siblings.iter().position(|&id| id == node_id).unwrap_or(0);
+            pos == 0 || float_of(siblings[pos - 1]) != Some(Float::Right)
+        };
+        FloatRole::Item { push_right }
+    }
+
     pub(crate) fn invalidate_inline_contexts(&mut self) {
         let scale = self.viewport.scale();
 
@@ -261,6 +334,7 @@ impl BaseDocument {
     pub fn flush_styles_to_layout(&mut self, node_id: usize) {
         let doc_id = self.id();
 
+        let float_role = self.float_role(node_id);
         let display = {
             let node = self.nodes.get_mut(node_id).unwrap();
             let _damage = node.damage().unwrap_or(ALL_DAMAGE);
@@ -276,6 +350,7 @@ impl BaseDocument {
             // if damage.intersects(RestyleDamage::RELAYOUT | CONSTRUCT_BOX) {
             node.style = stylo_taffy::to_taffy_style(style);
             node.display_constructed_as = style.clone_display();
+            float_role.apply(&mut node.style);
             // }
 
             // Flush background image from style to dedicated storage on the node

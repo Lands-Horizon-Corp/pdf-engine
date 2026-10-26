@@ -8,6 +8,7 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Added
 
+- **`float: left | right` (approximation):** floats sit side by side with the content beside them; no text wrapping under them yet.
 - **`pdf.fromElement(element)`** (browser): options for a PDF of an element as it looks on screen, from computed styles,
   images, canvases, inline SVG and the page's `@font-face` fonts.
 - **Repeating table headers:** a table's `<thead>` is drawn again at the top of every page the table continues onto.

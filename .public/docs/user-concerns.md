@@ -64,7 +64,7 @@ really working", "fonts shifting", "gaps at the end of the page with a big parag
 | **Gaps at the bottom of a page when something big will not fit.** | 🟡 | A paragraph splits across pages, so it does not leave a gap. A box that cannot split (a picture, `break-inside: avoid`) moves to the next page and leaves the space, as in any browser. |
 | **Page numbers, headers and footers, "page X of Y".** | ✅ | `@page` margin boxes with `counter(page)` and `counter(pages)`, with text from your data. The demo's report example shows it. [Templates](templates.md#page-numbers-headers-and-footers) |
 | **A table header that repeats on every page.** | ✅ | A `<thead>` repeats at the top of every page the table continues onto ([Repeating table headers](templates.md#repeating-table-headers)). |
-| **Floats (`float: left`), text wrapping around an image.** | 🔴 | Not supported: a floated box is laid out as a block. The layout engine has no float support at all, so this is a large change. Plan: first an approximation (side-by-side boxes), then real text wrapping. |
+| **Floats (`float: left`), text wrapping around an image.** | 🟡 | Approximated: floats sit side by side with the content beside them ([how](templates.md#float-approximation)); text does not wrap under a float yet. |
 | **Modern CSS, because old engines (wkhtmltopdf, PhantomJS) lack it.** | ✅ | Flexbox, grid, tables (with `rowspan` and `colspan`), CSS variables, `calc()`, multi-column, transforms, opacity, rounded corners, `box-shadow`, gradients, `@font-face`, `@page`. [CSS](templates.md#css) |
 | **CSS the engine ignores.** | 🔴 / 🟡 | Checked: `outline` and `filter` (blur) are not drawn; `position: sticky` is ignored. The list is in [Known gaps](templates.md#css). |
 | **Fonts look different on Linux and Windows; emoji and symbols break.** | ✅ / 🟡 | The same engine and the same fonts everywhere, so a page breaks in the same place on every machine and in every browser. The browser package bundles Noto Sans (Latin, Cyrillic, Greek, Vietnamese) and Noto Sans Math; the server image carries about 150 Noto fonts. Your own fonts come with `@font-face`. 🟡 Chinese, Japanese, Korean, Arabic, Thai and colour emoji are not bundled in the browser: load the font you need ([Fonts](fonts-and-languages.md)). Optional font packs fetched on demand are planned. |
@@ -134,7 +134,7 @@ Ordered by how often the concern comes up and how much it blocks real documents.
 1. ~~Repeat table headers on every page (`<thead>`).~~ **Done.**
 2. ~~`pdf.fromElement(element)`: export what is on screen without writing a template.~~ **Done** (approximation; improves with the items below).
 3. ~~Apply `@media print`~~ **Done:** a PDF is print media.
-4. **`float`**, starting with side-by-side boxes, then text wrapping.
+4. **`float`**: ~~side-by-side boxes~~ **Done**; text wrapping under a float is next.
 5. **Image fixes:** `<img>` of an SVG file, percentage widths without a height, inline SVG wider than its box.
 6. **`outline` and `filter`**, and a way to read the CSS `orphans` and `widows` properties.
 7. **Tagged (accessible) PDFs**: the option exists; next, check it with veraPDF and a screen reader, then PDF/A.

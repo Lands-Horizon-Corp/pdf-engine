@@ -305,7 +305,7 @@ Known gaps and what to do instead:
 | Not supported | Use instead |
 | --- | --- |
 | `background: url()`, `@import` | `<img>`; fonts: `@font-face` is supported ([Fonts](fonts-and-languages.md#font-face-a-font-a-document-brings-along)) |
-| `float`, `z-index` | Flexbox or grid; reorder |
+| `float` (text wrapping under it), `z-index` | `float: left/right` is approximated, see below; otherwise flexbox or grid |
 | `@page { size }` | `width` / `height` |
 | `outline`, `filter`, `position: sticky` | A border or background instead |
 | `-webkit-background-clip: text` | A solid text color |
@@ -340,3 +340,11 @@ file or `data:image/svg+xml` is **not drawn yet** (it is skipped without an erro
 An image that cannot be loaded is skipped (the browser package tells `onImageError`); the document still renders.
 Limits: 5 MB per image, 20 remote images per document on the server (`ASSET_MAX_BYTES`, `ASSET_MAX_IMAGES`), and
 200 per document in the browser.
+
+
+## Float (approximation)
+
+`float: left` and `float: right` put boxes **side by side**: the floats of a block and the content that follows them (up to an
+element with `clear`) share one wrapping row: left floats, the content, right floats. Text does **not** wrap underneath a
+float: it sits beside it, or below it when less than about 150px is left. That covers image-plus-text, two columns and a
+right-aligned total. Real text wrapping is not built yet.

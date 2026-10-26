@@ -219,6 +219,19 @@ pub(crate) fn collect_layout_children(
                 }
             }
 
+            if let Some((first, end)) = float_row_range(doc, container_node_id)
+                .filter(|_| !doc.nodes[container_node_id].flags.contains(NodeFlags::IS_FLOAT_ROW))
+            {
+                return collect_float_row(
+                    doc,
+                    container_node_id,
+                    first,
+                    end,
+                    layout_children,
+                    anonymous_block_id,
+                );
+            }
+
             // TODO: fix display:contents
             if all_inline {
                 let existing_layout = doc.nodes[container_node_id]
@@ -403,10 +416,170 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: usize) {
     }
 }
 
+
+/// Creates an anonymous block box, a child of `container_node_id` in the layout tree.
+fn create_anonymous_block(doc: &mut BaseDocument, container_node_id: usize) -> usize {
+    use style::selector_parser::PseudoElement;
+
+    const NAME: QualName = QualName {
+        prefix: None,
+        ns: ns!(html),
+        local: local_name!("div"),
+    };
+    let node_id = doc.create_node(NodeData::AnonymousBlock(ElementData::new(NAME, Vec::new())));
+
+    // Set style data
+    let parent_style = doc.nodes[container_node_id].primary_styles().unwrap();
+    let read_guard = doc.guard.read();
+    let guards = StylesheetGuards::same(&read_guard);
+    let style = doc.stylist.style_for_anonymous::<&Node>(
+        &guards,
+        &PseudoElement::ServoAnonymousBox,
+        &parent_style,
+    );
+    let mut stylo_element_data = StyloElementData {
+        damage: ALL_DAMAGE,
+        ..Default::default()
+    };
+    drop(parent_style);
+
+    stylo_element_data.styles.primary = Some(style);
+    stylo_element_data.set_restyled();
+    *doc.nodes[node_id].stylo_element_data.borrow_mut() = Some(stylo_element_data);
+    doc.nodes[node_id].parent = Some(container_node_id);
+    doc.nodes[node_id]
+        .layout_parent
+        .set(Some(container_node_id));
+    node_id
+}
+
+/// pdf-engine patch (PATCHES.md #5): `float: left | right` is approximated. The floats of a block and the
+/// content that follows them (up to an element with `clear`) become one wrapping flex row: left floats, then the
+/// content as one item, then right floats. Returns `(first, end)`, the range of `children` that makes the row.
+fn float_row_range(doc: &BaseDocument, container_node_id: usize) -> Option<(usize, usize)> {
+    use style::values::computed::{Clear, Float};
+
+    let children = &doc.nodes[container_node_id].children;
+    let mut first = None;
+    for (i, id) in children.iter().copied().enumerate() {
+        let Some(styles) = doc.nodes[id].primary_styles() else {
+            continue;
+        };
+        let b = styles.get_box();
+        if first.is_none() {
+            if b.display != Display::None && matches!(b.clone_float(), Float::Left | Float::Right) {
+                first = Some(i);
+            }
+        } else if b.clone_clear() != Clear::None && b.display != Display::None {
+            return first.map(|f| (f, i));
+        }
+    }
+    first.map(|f| (f, children.len()))
+}
+
+fn is_float_node(doc: &BaseDocument, id: usize) -> Option<bool> {
+    use style::values::computed::Float;
+    let styles = doc.nodes[id].primary_styles()?;
+    match styles.get_box().clone_float() {
+        Float::Left => Some(true),
+        Float::Right => Some(false),
+        _ => None,
+    }
+}
+
+/// Builds the layout children of a block that has floats (see `float_row_range`): what comes before the first
+/// float, the float row, then what comes after it (from an element with `clear`).
+fn collect_float_row(
+    doc: &mut BaseDocument,
+    container_node_id: usize,
+    first: usize,
+    end: usize,
+    layout_children: &mut Vec<usize>,
+    anonymous_block_id: &mut Option<usize>,
+) {
+    fn needs_wrap(kind: NodeKind, outside: DisplayOutside) -> bool {
+        kind == NodeKind::Text || outside == DisplayOutside::Inline
+    }
+    let children = doc.nodes[container_node_id].children.clone();
+    let node = &doc.nodes[container_node_id];
+    let (before, after) = (node.before, node.after);
+
+    let pre: Vec<usize> = before.into_iter().chain(children[..first].iter().copied()).collect();
+    let post: Vec<usize> = children[end..].iter().copied().chain(after).collect();
+
+    collect_complex_layout_children_of(
+        doc,
+        container_node_id,
+        Some(pre),
+        layout_children,
+        anonymous_block_id,
+        false,
+        needs_wrap,
+    );
+    *anonymous_block_id = None;
+
+    // The row: left floats, the content as one item, right floats.
+    let row = create_anonymous_block(doc, container_node_id);
+    doc.nodes[row].flags.insert(NodeFlags::IS_FLOAT_ROW);
+    let (mut left, mut right, mut content) = (Vec::new(), Vec::new(), Vec::new());
+    for id in children[first..end].iter().copied() {
+        match is_float_node(doc, id) {
+            Some(true) => left.push(id),
+            Some(false) => right.push(id),
+            None => content.push(id),
+        }
+    }
+    let mut row_children = left;
+    if content.iter().any(|id| {
+        doc.nodes[*id]
+            .text_data()
+            .is_none_or(|t| !t.content.chars().all(|c| c.is_ascii_whitespace()))
+    }) {
+        let item = create_anonymous_block(doc, row);
+        doc.nodes[item].flags.insert(NodeFlags::IS_FLOAT_CONTENT);
+        doc.nodes[item].children = content;
+        row_children.push(item);
+    }
+    row_children.extend(right);
+    doc.nodes[row].children = row_children;
+    layout_children.push(row);
+
+    collect_complex_layout_children_of(
+        doc,
+        container_node_id,
+        Some(post),
+        layout_children,
+        anonymous_block_id,
+        false,
+        needs_wrap,
+    );
+}
+
 /// Handles the cases where there are text nodes or inline nodes that need to be wrapped in an anonymous block node
 fn collect_complex_layout_children(
     doc: &mut BaseDocument,
     container_node_id: usize,
+    layout_children: &mut Vec<usize>,
+    anonymous_block_id: &mut Option<usize>,
+    hide_whitespace: bool,
+    needs_wrap: impl Fn(NodeKind, DisplayOutside) -> bool,
+) {
+    collect_complex_layout_children_of(
+        doc,
+        container_node_id,
+        None,
+        layout_children,
+        anonymous_block_id,
+        hide_whitespace,
+        needs_wrap,
+    )
+}
+
+/// Like `collect_complex_layout_children`, over `ids` when given (instead of all the container's children).
+fn collect_complex_layout_children_of(
+    doc: &mut BaseDocument,
+    container_node_id: usize,
+    ids: Option<Vec<usize>>,
     layout_children: &mut Vec<usize>,
     anonymous_block_id: &mut Option<usize>,
     hide_whitespace: bool,
@@ -426,7 +599,7 @@ fn collect_complex_layout_children(
         true
     }
 
-    doc.iter_children_and_pseudos_mut(container_node_id, |child_id, doc| {
+    let mut each = |child_id: usize, doc: &mut BaseDocument| {
         // Get node kind (text, element, comment, etc)
         let child_node_kind = doc.nodes[child_id].data.kind();
 
@@ -464,36 +637,7 @@ fn collect_complex_layout_children(
             use style::selector_parser::PseudoElement;
 
             if anonymous_block_id.is_none() {
-                const NAME: QualName = QualName {
-                    prefix: None,
-                    ns: ns!(html),
-                    local: local_name!("div"),
-                };
-                let node_id =
-                    doc.create_node(NodeData::AnonymousBlock(ElementData::new(NAME, Vec::new())));
-
-                // Set style data
-                let parent_style = doc.nodes[container_node_id].primary_styles().unwrap();
-                let read_guard = doc.guard.read();
-                let guards = StylesheetGuards::same(&read_guard);
-                let style = doc.stylist.style_for_anonymous::<&Node>(
-                    &guards,
-                    &PseudoElement::ServoAnonymousBox,
-                    &parent_style,
-                );
-                let mut stylo_element_data = StyloElementData {
-                    damage: ALL_DAMAGE,
-                    ..Default::default()
-                };
-                drop(parent_style);
-
-                stylo_element_data.styles.primary = Some(style);
-                stylo_element_data.set_restyled();
-                *doc.nodes[node_id].stylo_element_data.borrow_mut() = Some(stylo_element_data);
-                doc.nodes[node_id].parent = Some(container_node_id);
-                doc.nodes[node_id]
-                    .layout_parent
-                    .set(Some(container_node_id));
+                let node_id = create_anonymous_block(doc, container_node_id);
 
                 layout_children.push(node_id);
                 *anonymous_block_id = Some(node_id);
@@ -517,7 +661,11 @@ fn collect_complex_layout_children(
             *anonymous_block_id = None;
             layout_children.push(child_id);
         }
-    });
+    };
+    match ids {
+        Some(ids) => ids.into_iter().for_each(|id| each(id, doc)),
+        None => doc.iter_children_and_pseudos_mut(container_node_id, each),
+    }
 
     // If anonymous block node only contains whitespace then delete it
     if let Some(anon_id) = *anonymous_block_id {

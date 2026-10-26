@@ -44,6 +44,10 @@ bitflags! {
         const IS_TABLE_ROOT = 0b00000010;
         /// Whether the node is "in the document" (~= has a parent and isn't a template node)
         const IS_IN_DOCUMENT = 0b00000100;
+        /// pdf-engine: the anonymous flex row that holds the floats of a block and the content beside them
+        const IS_FLOAT_ROW = 0b00001000;
+        /// pdf-engine: the item of a float row that holds the in-flow content
+        const IS_FLOAT_CONTENT = 0b00010000;
     }
 }
 

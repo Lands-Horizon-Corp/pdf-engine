@@ -507,6 +507,18 @@ export class PDFEngine {
     return controller;
   }
 
+  /**
+   * Options for `generate()` (or `download()`, `open()`, `preview()`) that make a PDF of an element as it looks on screen:
+   * `await pdf.download(await pdf.fromElement('#report'), 'report.pdf')`. Browser pages only. See the docs for what it keeps.
+   * @param {Element|string} element an element, or a selector
+   * @param {{ margin?: number, images?: 'inline'|'link', fonts?: boolean } & object} [options] the rest goes to `generate()`
+   */
+  async fromElement(element, options = {}) {
+    if (typeof document === 'undefined') throw clientError('NOT_IN_BROWSER', 'fromElement() needs a browser page.');
+    const { elementToOptions } = await import('./from-element.js');
+    return elementToOptions(element, options);
+  }
+
   /** Load the engine now instead of on the first `generate()`. Returns the engine version. */
   async ping() {
     if (this.#workerCount() > 0) return this.#workerPool(this.#workerCount()).ping();

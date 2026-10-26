@@ -304,6 +304,9 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 Also `download(options, filename)`, `open(options)`, `print(options)`, `preview(options, view)`, `ping()`,
 `loadFonts(fonts)` and `close()`.
 
+**Export what is on screen:** `await pdf.download(await pdf.fromElement('#report'), 'report.pdf')` makes a PDF of an
+element as it looks now, with no template ([what it keeps](../../.public/docs/browser-api.md)).
+
 ## Render on your server instead
 
 Pass the address of a deployed pdf-engine (the Docker image) and documents are rendered there. Nothing is

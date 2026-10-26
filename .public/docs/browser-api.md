@@ -152,6 +152,32 @@ Vue apps.
 | `loadFonts(fonts)` | Use these fonts (besides the default ones) from now on. |
 | `close()` | Release the engine's memory. Calls afterwards throw `ENGINE_CLOSED`. |
 
+## `fromElement(element, options?)`: export what is on screen
+
+Makes the options for a PDF of an element as it looks right now, without writing a template. Pass the result to
+`generate()`, `download()`, `open()` or `preview()`.
+
+```js
+await pdf.download(await pdf.fromElement('#report'), 'report.pdf');
+await pdf.download(await pdf.fromElement(el, { margin: 24, password: 'secret' }), 'report.pdf');
+```
+
+| Option | |
+| --- | --- |
+| `margin` | Page margin in px (default 16). |
+| `images` | `'inline'` (default) turns images into data, `'link'` keeps their addresses. |
+| `fonts` | `false` leaves the page's `@font-face` fonts out. |
+| anything else | Goes to `generate()` (`password`, `accessible`, `orientation`, ...). |
+
+What it keeps: computed styles (copied inline), images and `<canvas>` as data, inline SVG, the `@font-face` fonts the
+element uses, simple `::before` and `::after` text, form controls as their values, closed `<details>` as their
+`<summary>`, and tables, even where a page restyled them to `display: block`. The page is as wide as the element, plus
+the margins.
+
+What it does not: scripts, animations, `position: fixed` tricks, `filter`, `float`, and anything the engine does not draw
+(see [Templates and CSS](templates.md)). For a report that matters, a template of its own is still the cleaner answer.
+Browser pages only (`NOT_IN_BROWSER` elsewhere).
+
 ## Choosing where documents are made
 
 By default everything is rendered in the page. Give `url` (one server or an array) and documents go to your

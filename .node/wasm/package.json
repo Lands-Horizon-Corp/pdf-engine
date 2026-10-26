@@ -47,6 +47,7 @@
     "worker.js",
     "pool.js",
     "worker-core.js",
+    "from-element.js",
     "worker-node.js",
     "dist/pdf_engine_wasm.js",
     "dist/pdf_engine_wasm_bg.wasm",

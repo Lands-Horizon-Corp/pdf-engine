@@ -821,11 +821,17 @@ iframe:fullscreen {
 details>summary:first-of-type {
     display: list-item;
     counter-increment: list-item 0;
-    list-style: disclosure-closed inside;
+    list-style: none;
 }
 
-details[open]>summary:first-of-type {
-    list-style-type: disclosure-open;
+/* pdf-engine patch (PATCHES.md #4): the triangle is generated text, so it uses the normal font stack
+   (which has the built-in math font); an inside list marker looks its font up from the asset bundle only. */
+details>summary:first-of-type::before {
+    content: "\25B8  ";
+}
+
+details[open]>summary:first-of-type::before {
+    content: "\25BE  ";
 }
 
 /* media elements */

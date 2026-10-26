@@ -89,6 +89,48 @@ export async function runSuite() {
     preview.close();
     result.previewClosed = !host.querySelector('iframe');
 
+    // fromElement(): what is on screen becomes the document.
+    const stage = document.createElement('div');
+    stage.id = 'stage';
+    stage.innerHTML = `<style>
+        #stage .card { display: flex; gap: 12px; padding: 14px; border: 2px solid #2563eb; border-radius: 10px; background: #eff6ff; font: 16px/1.4 Georgia, serif; width: 520px; }
+        #stage .card .grow { flex: 1; color: #1d4ed8; }
+        #stage .tag::before { content: "ID "; font-weight: 700; }
+        #stage table { border-collapse: collapse } #stage td { border: 1px solid #999; padding: 4px 8px }
+      </style>
+      <div class="card"><div class="grow"><b>Order {{ 42 }}</b> <span class="tag">7</span><div style="display:none">hidden</div></div>
+        <canvas id="cv" width="40" height="40"></canvas>
+        <svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" class="dot"/></svg>
+        <input value="typed text"><input type="checkbox" checked><script>window.__ran = true<\/script></div>
+      <table><tr><td>a</td><td>b</td></tr></table>`;
+    document.body.append(stage);
+    const ctx = stage.querySelector('#cv').getContext('2d');
+    ctx.fillStyle = '#e11d48';
+    ctx.fillRect(0, 0, 40, 40);
+    const extra = document.createElement('style');
+    extra.textContent = '#stage .dot { fill: #16a34a }';
+    document.head.append(extra);
+    const options = await pdf.fromElement('#stage', { password: undefined });
+    const raw = options.template;
+    result.fromElement = {
+      literal: raw.startsWith('{% raw %}') && raw.endsWith('{% endraw %}'),
+      styled: /display:\s*flex/.test(raw) && /border-top-width:2px/.test(raw),
+      text: raw.includes('Order {{ 42 }}'),
+      canvas: /<img src="data:image\/png;base64,/.test(raw),
+      svgPaint: /fill:\s*rgb\(22, 163, 74\)/.test(raw),
+      pseudo: raw.includes('>ID <'),
+      hiddenGone: !raw.includes('hidden'),
+      noScript: !raw.includes('<script'),
+      inputText: raw.includes('typed text'),
+      pageSize: /^\d+px$/.test(options.width) && /^\d+px$/.test(options.height),
+    };
+    const fromScreen = await pdf.generate(options);
+    result.fromElement.pdf = text(fromScreen.subarray(0, 5));
+    result.fromElement.hasText = /NotoSans/.test(text(fromScreen));
+    result.fromElement.template = '{{ 42 }} was not evaluated';
+    stage.remove();
+    extra.remove();
+
     let ok = 0;
     for (let i = 0; i < 20; i++) {
       const bytes = await pdf.generate({ template: '<p>{{ i }}</p>', data: { i } });

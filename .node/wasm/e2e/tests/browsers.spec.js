@@ -38,6 +38,9 @@ for (const app of ['plain', 'react', 'vue']) {
       expect(r.hook.failure).toBe('TEMPLATE_ERROR');
     }
     if (app === 'vue') expect(r.hook).toMatchObject({ busyAfter: false, errorCode: 'TEMPLATE_ERROR' });
+    expect(r.fromElement, 'fromElement() keeps the look of what is on screen').toMatchObject({
+      literal: true, styled: true, text: true, canvas: true, svgPaint: true, pseudo: true, hiddenGone: true, noScript: true, inputText: true, pageSize: true, pdf: '%PDF-', hasText: true,
+    });
     expect(r.repeated).toBe(20);
     expect(problems).toEqual([]);
   });

@@ -32,7 +32,7 @@ it ("GoFullPage") makes it look easy while doing it from JavaScript is "practica
 
 | Concern | Today | How it is handled, and what is missing |
 | --- | --- | --- |
-| **"Turn the page the user is looking at into a PDF, like a browser extension does."** | 🔴 | pdf-engine renders an HTML **template plus data**, not a live page. For a report the usual answer is a template of its own (clean, paginated, tested). For "the page as it is", a helper is planned: `pdf.fromElement(element)`, which copies the element with its computed styles, turns images and canvases into data, and renders that. It does not exist yet. |
+| **"Turn the page the user is looking at into a PDF, like a browser extension does."** | 🟡 | pdf-engine renders an HTML **template plus data**, not a live page. For a report the usual answer is a template of its own (clean, paginated, tested). For "the page as it is", `pdf.fromElement(element)` copies the element with its computed styles, turns images and canvases into data and renders that ([docs](browser-api.md#fromelementelement-options-export-what-is-on-screen)). It is an approximation: no scripts, `float` or `filter`. |
 | **Content drawn by JavaScript: charts on a canvas, framework-rendered widgets.** | ⚪ | No JavaScript runs inside a template, on purpose (it keeps rendering fast and safe). Draw charts as inline `<svg>` (the [demo](https://lands-horizon-corp.github.io/pdf-engine/) "Stress test" does bars, a line and a donut that way), or turn a canvas into a PNG in your page and pass it in `images`. |
 | **"Just use `@media print` and the browser's own Print to PDF."** | ✅ | Good advice for a plain "print this page" button, and `pdf.print()` opens exactly that dialog. See [Do you need a PDF at all?](#8-do-you-need-a-pdf-at-all). pdf-engine itself now treats a PDF as print media: `@media print` rules apply and `@media screen` ones do not, so one stylesheet can serve the browser's Print and the PDF. |
 | **Pages behind a login: the server cannot fetch them without cookies.** | ✅ | Nothing is fetched by URL. You give the HTML and the data, so there is no session to forward. Images that need a login are passed as bytes in `images`. |
@@ -132,7 +132,7 @@ Many answers in the discussion say: *push back*. That is often right, and pdf-en
 Ordered by how often the concern comes up and how much it blocks real documents.
 
 1. ~~Repeat table headers on every page (`<thead>`).~~ **Done.**
-2. **`pdf.fromElement(element)`**: export what is on screen without writing a template.
+2. ~~`pdf.fromElement(element)`: export what is on screen without writing a template.~~ **Done** (approximation; improves with the items below).
 3. ~~Apply `@media print`~~ **Done:** a PDF is print media.
 4. **`float`**, starting with side-by-side boxes, then text wrapping.
 5. **Image fixes:** `<img>` of an SVG file, percentage widths without a height, inline SVG wider than its box.

@@ -188,6 +188,19 @@ export class PDFEngine {
   /** Render, then open the browser's print dialog for it. Browser only. */
   print<T = unknown>(options: GenerateOptions<T>): Promise<void>;
 
+  /**
+   * Options that make a PDF of an element as it looks on screen (browser pages only): computed styles copied inline,
+   * canvases and images as data, inline SVG, the `@font-face` fonts in use, and a page sized to the element. Pass the
+   * result to `generate()`, `download()`, `open()` or `preview()`.
+   * @param element an element, or a CSS selector
+   * @param options `margin` (px, default 16); `images`: `'inline'` (default) makes data URLs, `'link'` keeps addresses;
+   * `fonts`: `false` leaves the `@font-face` rules out. Anything else (`password`, `accessible`, ...) goes to `generate()`.
+   */
+  fromElement(
+    element: Element | string,
+    options?: Omit<GenerateOptions, 'template'> & { margin?: number; images?: 'inline' | 'link'; fonts?: boolean },
+  ): Promise<GenerateOptions>;
+
   /** Load the engine now and report its version. */
   ping(): Promise<{ version: string }>;
 

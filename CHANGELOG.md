@@ -8,12 +8,15 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ### Added
 
+- **`pdf.fromElement(element)`** (browser): options for a PDF of an element as it looks on screen, from computed styles,
+  images, canvases, inline SVG and the page's `@font-face` fonts.
 - **Repeating table headers:** a table's `<thead>` is drawn again at the top of every page the table continues onto.
 - **`accessible: true`**: a tagged PDF (structure tree, document language, title), declared PDF/UA when the document has
   headings. In the browser package, the Node package, the HTTP form field `accessible` and the IPC `render` op.
 
 ### Changed
 
+- `<details>` triangles and list bullets draw in the browser build (built-in symbol font).
 - **A PDF is now print media:** `@media print` rules apply and `@media screen` rules do not.
 
 ## [1.3.0] - 2026-10-26

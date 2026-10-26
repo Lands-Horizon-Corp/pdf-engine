@@ -136,7 +136,9 @@ fn marker_for_style(list_style_type: ListStyleType, index: usize) -> Option<Mark
 
 // Override the font to our specific bullet font when rendering bullets
 fn font_for_bullet_style(list_style_type: ListStyleType) -> Option<FontStack<'static>> {
-    let bullet_font = Some("Bullet, monospace, sans-serif".into());
+    // pdf-engine patch (PATCHES.md #4): the bundled Noto fonts come before the generic families, so a bullet or a
+    // disclosure triangle (▸ ▾) is found in the built-in math font even where there is no system font.
+    let bullet_font = Some("Bullet, Noto Sans, Noto Sans Math, monospace, sans-serif".into());
     match list_style_type {
         ListStyleType::Disc
         | ListStyleType::Circle

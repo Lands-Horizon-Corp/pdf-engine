@@ -25,17 +25,17 @@ npm install @lands-horizon-corp/pdf-engine-wasm
 ```tsx
 import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
 
-const pdf = new PDFEngine();                       // create once, reuse
+const pdf = new PDFEngine();                       
 
 const doc = {
-  template: '<h1>Invoice {{ no }}</h1>',           // HTML with {{ placeholders }}
+  template: '<h1>Invoice {{ no }}</h1>',          
   data: { no: '12345' },
-  password: '',                                    // set it to encrypt
+  password: '',                                  
 };
 
-const bytes = await pdf.generate(doc);            // the PDF as a Uint8Array
-await pdf.download(doc, 'invoice.pdf');           // or save it
-await pdf.open(doc);                              // or show it in a new tab, or pdf.print(doc)
+const bytes = await pdf.generate(doc);           
+await pdf.download(doc, 'invoice.pdf');          
+await pdf.open(doc);                             
 ```
 
 Every option, method and error is in the [reference](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/browser-api.md). No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
@@ -61,7 +61,7 @@ pdf-engine is a real layout engine (Blitz, Stylo, Taffy, Parley and Krilla, in R
 text, in 1 to 2 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
 
 | HTML to PDF | pdf-engine | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
 | Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Text stays text (selectable, searchable) | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
 | Runs in the browser, no server | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |

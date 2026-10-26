@@ -118,7 +118,7 @@ about doubles its time); its native Rust build is faster than its WebAssembly bu
 html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with
 Puppeteer (fastest mode), 356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac,
 so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including
-JavaScript, which pdf-engine does not run; ironpress also does math, `@font-face` and bookmarks, which pdf-engine does
+JavaScript, which pdf-engine does not run; ironpress also does math and bookmarks, which pdf-engine does
 not; see the [CSS gaps](.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
 
 **What you get**
@@ -536,8 +536,8 @@ Planned, not built yet:
 - [ ] Verify printing on physical receipt, label and office printers
 - [x] Reusable template **partials**, `{% pagebreak %}`, and `<barcode>` / QR tags drawn as vector shapes
 - [ ] Repeating `<thead>` on later pages
-- [x] `rowspan`
-- [ ] `@font-face` and `float`
+- [x] `rowspan` and `@font-face`
+- [ ] `float`
 - [x] A live layout preview with box outlines (`pdf.preview()`), a Web Worker pool (`workers`), and React, Vue and Svelte helpers
 
 ---
@@ -556,3 +556,4 @@ Planned, not built yet:
 Taffy, Parley and Krilla; fonts by [Noto](https://fonts.google.com/noto) (OFL).
 
 <p align="center">Made by <a href="https://github.com/Lands-Horizon-Corp">Lands Horizon</a></p>
+

@@ -13,9 +13,19 @@ pub(crate) enum Skip {
     Failed(String),
 }
 
+#[allow(dead_code)] // the WebAssembly build and the tests use it
 pub(crate) fn decode_data_uri(rest: &str, max_bytes: usize) -> Result<Vec<u8>, Skip> {
+    decode_data_uri_as(rest, max_bytes, true)
+}
+
+/// As `decode_data_uri`; with `images_only` false any media type is accepted (fonts, for `@font-face`).
+pub(crate) fn decode_data_uri_as(
+    rest: &str,
+    max_bytes: usize,
+    images_only: bool,
+) -> Result<Vec<u8>, Skip> {
     let (meta, payload) = rest.split_once(',').ok_or(Skip::Ignored)?;
-    if !meta.to_ascii_lowercase().starts_with("image/") {
+    if images_only && !meta.to_ascii_lowercase().starts_with("image/") {
         return Err(Skip::Ignored);
     }
     if payload.len() > max_bytes.saturating_mul(4) / 3 + 4 {

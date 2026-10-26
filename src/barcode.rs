@@ -40,10 +40,10 @@ pub fn expand(html: &str) -> Result<Cow<'_, str>, AppError> {
         let mut resume = end;
         if !tag.trim_end_matches('>').ends_with('/') {
             let rest = &html[end..];
-            if let Some(close) = rest.trim_start().strip_prefix("</") {
-                if close.to_ascii_lowercase().starts_with("barcode>") {
-                    resume = end + (rest.len() - rest.trim_start().len()) + 2 + "barcode>".len();
-                }
+            if let Some(close) = rest.trim_start().strip_prefix("</")
+                && close.to_ascii_lowercase().starts_with("barcode>")
+            {
+                resume = end + (rest.len() - rest.trim_start().len()) + 2 + "barcode>".len();
             }
         }
         let buf = out.get_or_insert_with(|| String::with_capacity(html.len() + svg.len()));

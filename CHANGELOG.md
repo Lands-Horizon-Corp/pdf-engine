@@ -9,6 +9,10 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 ### Added
 
 - **`rowspan`** in tables (with `colspan`, across pages, and clamped at the last row).
+- **`@font-face`**: a document brings its own fonts (TrueType, OpenType, WOFF2) from a `data:` URI, an allowed URL
+  or file, under the family name its CSS uses, with `font-weight` and `font-style`. Only that document sees them. In
+  the browser package the page fetches URL fonts (`onImageError` reports failures). A font that cannot be loaded is
+  skipped; the document is still made.
 
 ### Changed
 

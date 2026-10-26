@@ -207,7 +207,7 @@ Known gaps and what to do instead:
 | Not supported | Use instead |
 | --- | --- |
 | `<thead>` repeating on later pages | Split long tables per page, or repeat the header yourself |
-| `background: url()`, `@font-face`, `@import` | `<img>`; the `fonts` option of the packages |
+| `background: url()`, `@import` | `<img>`; fonts: `@font-face` is supported ([Fonts](fonts-and-languages.md#font-face-a-font-a-document-brings-along)) |
 | `float`, `z-index` | Flexbox or grid; reorder |
 | `@page { size }`, `@media print` | `width` / `height`; unconditional rules |
 | `-webkit-background-clip: text` | A solid text color |

@@ -6,6 +6,7 @@ pub mod auth;
 pub mod barcode;
 pub mod config;
 pub mod error;
+pub mod font_face;
 pub mod fonts;
 pub mod fulgur_engine;
 pub mod handlers;

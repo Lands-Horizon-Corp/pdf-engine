@@ -19,6 +19,8 @@ use wasm_bindgen::prelude::*;
 mod barcode;
 #[path = "../../../../src/error.rs"]
 mod error;
+#[path = "../../../../src/font_face.rs"]
+mod font_face;
 #[path = "../../../../src/fulgur_engine.rs"]
 mod fulgur_engine;
 #[path = "../../../../src/image_util.rs"]
@@ -66,6 +68,8 @@ struct Request {
 
 /// Largest `data:` image accepted, in bytes (the native default).
 const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+/// Largest font file accepted for `@font-face`.
+const MAX_FONT_BYTES: usize = 16 * 1024 * 1024;
 
 #[wasm_bindgen]
 pub struct Engine {
@@ -80,6 +84,8 @@ struct Prepared {
     html: String,
     page: PageMm,
     password: Option<String>,
+    /// The document's `@font-face` rules, for the fonts the page fetches.
+    font_decls: Vec<font_face::FontFaceDecl>,
 }
 
 #[wasm_bindgen]
@@ -115,8 +121,8 @@ impl Engine {
 
     /// First half of a render that has external images: render the template and keep the HTML.
     ///
-    /// Returns `{ id, sources }`, `sources` being the `<img src>` values that are not `data:`
-    /// URIs. Fetch them, then call `render_prepared` (or `discard` to give up).
+    /// Returns `{ id, sources, fontSources }`: the `<img src>` values and the `@font-face` `src` values that are
+    /// not `data:` URIs. Fetch them, then call `render_prepared` (or `discard` to give up).
     pub fn prepare(&mut self, request_json: &str) -> Result<String, JsValue> {
         self.prepare_inner(request_json)
             .map_err(|e| JsValue::from_str(&e.to_json().to_string()))
@@ -129,6 +135,8 @@ impl Engine {
         id: u32,
         names: js_sys::Array,
         bytes: js_sys::Array,
+        font_names: js_sys::Array,
+        font_bytes: js_sys::Array,
     ) -> Result<Vec<u8>, JsValue> {
         let Some(p) = self.prepared.remove(&id) else {
             return Err(JsValue::from_str(
@@ -149,7 +157,20 @@ impl Engine {
                 images.push((name, Arc::new(data)));
             }
         }
-        self.finish(p, images)
+        let mut fetched: Vec<(String, Arc<Vec<u8>>)> = Vec::new();
+        for (name, data) in font_names.iter().zip(font_bytes.iter()) {
+            let (Some(name), Some(data)) =
+                (name.as_string(), data.dyn_into::<js_sys::Uint8Array>().ok())
+            else {
+                continue;
+            };
+            let data = data.to_vec();
+            if data.len() <= MAX_FONT_BYTES && font_face::is_font(&data) {
+                fetched.push((name, Arc::new(data)));
+            }
+        }
+        let faces = font_faces(&p.font_decls, &fetched);
+        self.finish(p, images, faces)
             .map_err(|e| JsValue::from_str(&e.to_json().to_string()))
     }
 
@@ -181,13 +202,17 @@ impl Engine {
         let partials: Vec<(String, String)> = req.partials.into_iter().collect();
         let html = template::render_with(&template, req.data, &partials)?;
         let images = data_uri_images(&html);
+        let font_decls = font_face::font_face_decls(&html);
+        let faces = font_faces(&font_decls, &[]);
         self.finish(
             Prepared {
                 html,
                 page,
                 password: req.password,
+                font_decls,
             },
             images,
+            faces,
         )
     }
 
@@ -208,6 +233,13 @@ impl Engine {
             .into_iter()
             .filter(|s| !s.starts_with("data:"))
             .collect();
+        let font_decls = font_face::font_face_decls(&html);
+        let font_sources: Vec<&str> = font_decls
+            .iter()
+            .map(|d| d.src.as_str())
+            .filter(|s| !s.starts_with("data:"))
+            .collect();
+        let font_sources = serde_json::json!(font_sources);
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1).max(1);
         self.prepared.insert(
@@ -216,15 +248,17 @@ impl Engine {
                 html,
                 page,
                 password: req.password,
+                font_decls,
             },
         );
-        Ok(serde_json::json!({ "id": id, "sources": sources }).to_string())
+        Ok(serde_json::json!({ "id": id, "sources": sources, "fontSources": font_sources }).to_string())
     }
 
     fn finish(
         &self,
         p: Prepared,
         images: Vec<(String, Arc<Vec<u8>>)>,
+        font_faces: Vec<font_face::LoadedFontFace>,
     ) -> Result<Vec<u8>, AppError> {
         let html = image_util::size_images(&p.html, &images).unwrap_or(p.html);
         let title = extract_title(&html);
@@ -233,13 +267,15 @@ impl Engine {
             page: p.page,
             title,
             images,
+            font_faces,
         };
 
-        // A corrupt image fails the whole render; retry once without images, as the native
-        // engine does, so a bad image never costs the document.
+        // A corrupt image or font fails the whole render; retry once without them, as the native
+        // engine does, so a bad one never costs the document.
         let pdf = match self.renderer.render(&job) {
-            Err(_) if !job.images.is_empty() => {
+            Err(_) if !job.images.is_empty() || !job.font_faces.is_empty() => {
                 job.images.clear();
+                job.font_faces.clear();
                 self.renderer.render(&job)
             }
             other => other,
@@ -261,6 +297,28 @@ fn data_uri_images(html: &str) -> Vec<(String, Arc<Vec<u8>>)> {
             let rest = src.strip_prefix("data:")?;
             let bytes = image_util::decode_data_uri(rest, MAX_IMAGE_BYTES).ok()?;
             image_util::is_supported_image(&bytes).then(|| (src, Arc::new(bytes)))
+        })
+        .collect()
+}
+
+/// The fonts of the `@font-face` rules: `data:` fonts decoded here, the others from what the page fetched (keyed by `src`).
+fn font_faces(
+    decls: &[font_face::FontFaceDecl],
+    fetched: &[(String, Arc<Vec<u8>>)],
+) -> Vec<font_face::LoadedFontFace> {
+    decls
+        .iter()
+        .filter_map(|d| {
+            let data = match d.src.strip_prefix("data:") {
+                Some(rest) => Arc::new(image_util::decode_data_uri_as(rest, MAX_FONT_BYTES, false).ok()?),
+                None => Arc::clone(&fetched.iter().find(|(name, _)| *name == d.src)?.1),
+            };
+            font_face::is_font(&data).then(|| font_face::LoadedFontFace {
+                family: d.family.clone(),
+                data,
+                weight: d.weight,
+                italic: d.italic,
+            })
         })
         .collect()
 }

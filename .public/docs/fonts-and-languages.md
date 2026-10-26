@@ -35,8 +35,35 @@ shows as an empty box; the cure is to add a font that covers it.
 <p>₱1,500 · Привет · Γειά σου</p>
 ```
 
-`'Noto Sans', sans-serif` looks the same everywhere. `@font-face` is not supported: add fonts with the `fonts` option
-(below) and use their family name.
+`'Noto Sans', sans-serif` looks the same everywhere. To use a font only for one document, bring it with `@font-face`
+(next section); to make a font available to every document, add it with the `fonts` option (below) and use its family
+name.
+
+## `@font-face`: a font a document brings along
+
+```html
+<style>
+  @font-face { font-family: 'Brand Display'; src: url(https://cdn.example.com/brand.ttf) format('truetype'); font-weight: 700; }
+  h1 { font-family: 'Brand Display', sans-serif; font-weight: 700; }
+</style>
+```
+
+- **Formats:** TrueType (`.ttf`), OpenType (`.otf`, `.ttc`) and WOFF2. WOFF 1 and EOT sources are skipped; list a
+  readable one as well (`src: url(a.woff2) format('woff2'), url(a.ttf) format('truetype')`: the first usable one wins).
+- **Where the font can come from:**
+  - a `data:` URI: always, nothing else needed;
+  - a URL: in the browser package the page fetches it, so the host must send CORS headers; on the server only from
+    `ASSET_ALLOWED_HOSTS` (the same rule as images); in Electron and Node the engine's `imageHosts` option, or fetch
+    it yourself and use a `data:` URI;
+  - a file: Electron and Node with `imageDir` (or `allowLocalFiles` in the browser package under Node); on the
+    server `ASSET_LOCAL_DIR`.
+- **`font-weight` and `font-style`** in the rule choose which text uses the font. Write the family name in the rule
+  exactly as the CSS uses it.
+- **Only for that document:** the font is not kept for the next one. Use the `fonts` option for fonts every document
+  needs.
+- **Limits:** 16 rules and 16 MB per font. A font that cannot be loaded (wrong host, not a font, a failed download) is
+  skipped and the text uses the next family in the list; the document is still made. In the browser package
+  `onImageError(src, reason)` is called with the reason (it starts with `font:`).
 
 ## Adding fonts
 

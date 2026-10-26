@@ -562,7 +562,7 @@ pub mod template;
 pub mod units;
 
 pub use asset::AssetBundle;
-pub use blitz_adapter::{reload_system_fonts, set_extra_fonts};
+pub use blitz_adapter::{DocFontFace, reload_system_fonts, set_extra_fonts, with_doc_font_faces};
 pub use config::{Config, ConfigBuilder, Margin, PageSize};
 pub use engine::{Engine, EngineBuilder, LayoutOutput};
 pub use error::{Error, Result};

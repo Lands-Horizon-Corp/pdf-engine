@@ -82,7 +82,7 @@ about doubles its time); its native Rust build is faster than its WebAssembly bu
 html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with
 Puppeteer (fastest mode), 356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac,
 so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including
-JavaScript, which pdf-engine does not run; ironpress also does math, `@font-face` and bookmarks, which pdf-engine does
+JavaScript, which pdf-engine does not run; ironpress also does math and bookmarks, which pdf-engine does
 not; see the [CSS gaps](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
 
 <picture>
@@ -348,6 +348,10 @@ const pdf = new PDFEngine({
 });
 // then use it in the template: <p style="font-family: 'Noto Sans SC'">你好</p>
 ```
+
+A document can also bring a font of its own with `@font-face` (a `data:` URI or a URL the page can fetch; TrueType,
+OpenType or WOFF2): `@font-face { font-family: 'Brand'; src: url(https://cdn.example.com/brand.ttf) }`. The font is used
+for that document only. See [Fonts and languages](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/fonts-and-languages.md#font-face-a-font-a-document-brings-along).
 
 Chinese, Japanese and Korean fonts are large (several MB even compressed); load them only when a
 document needs them, for example `await pdf.loadFonts([cjkUrl])` just before rendering.

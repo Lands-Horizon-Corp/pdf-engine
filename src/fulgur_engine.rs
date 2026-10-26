@@ -73,6 +73,8 @@ pub struct RenderJob {
     pub title: Option<String>,
     /// Image bytes keyed by the exact `<img src>` value they replace.
     pub images: Vec<(String, Arc<Vec<u8>>)>,
+    /// Fonts from the document's `@font-face` rules, loaded.
+    pub font_faces: Vec<crate::font_face::LoadedFontFace>,
 }
 
 /// Something that turns HTML into PDF bytes synchronously, in-process.
@@ -120,7 +122,18 @@ impl InProcessRenderer for FulgurEngine {
         if let Some(t) = &job.title {
             builder = builder.title(t.clone());
         }
-        builder.build().render(&job.html).map_err(|e| e.to_string())
+        let faces: Vec<fulgur::DocFontFace> = job
+            .font_faces
+            .iter()
+            .map(|f| fulgur::DocFontFace {
+                data: Arc::clone(&f.data),
+                family: f.family.clone(),
+                weight: f.weight,
+                italic: f.italic,
+            })
+            .collect();
+        fulgur::with_doc_font_faces(faces, || builder.build().render(&job.html))
+            .map_err(|e| e.to_string())
     }
 
     fn reload_fonts(&self) {

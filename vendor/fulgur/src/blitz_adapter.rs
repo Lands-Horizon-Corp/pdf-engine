@@ -316,6 +316,59 @@ fn shared_system_font_context() -> FontContext {
         .clone()
 }
 
+// pdf-engine patch: fonts a document brings in with `@font-face`. The host resolves each rule's `src` to
+// bytes and gives them to `with_doc_font_faces` around one render; they are registered, under the family name
+// the CSS gave them, in that document's own copy of the font context (no other render sees them).
+/// A font from one `@font-face` rule, already loaded.
+#[derive(Debug, Clone)]
+pub struct DocFontFace {
+    pub data: Arc<Vec<u8>>,
+    /// The `font-family` of the rule: the name the document's CSS uses for this font.
+    pub family: String,
+    /// The rule's `font-weight` (400 when absent).
+    pub weight: Option<f32>,
+    pub italic: bool,
+}
+
+thread_local! {
+    static DOC_FONT_FACES: std::cell::RefCell<Vec<DocFontFace>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Run `f` (a render, which parses on this thread) with these `@font-face` fonts available to the document.
+pub fn with_doc_font_faces<R>(faces: Vec<DocFontFace>, f: impl FnOnce() -> R) -> R {
+    struct Restore(Vec<DocFontFace>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            DOC_FONT_FACES.with(|c| *c.borrow_mut() = std::mem::take(&mut self.0));
+        }
+    }
+    let previous = DOC_FONT_FACES.with(|c| std::mem::replace(&mut *c.borrow_mut(), faces));
+    let _restore = Restore(previous);
+    f()
+}
+
+fn register_doc_font_faces(ctx: &mut FontContext) {
+    DOC_FONT_FACES.with(|cell| {
+        for face in cell.borrow().iter() {
+            let blob: parley::fontique::Blob<u8> = (*face.data).clone().into();
+            ctx.collection.register_fonts(
+                blob,
+                Some(parley::fontique::FontInfoOverride {
+                    family_name: Some(face.family.as_str()),
+                    weight: face.weight.map(parley::fontique::FontWeight::new),
+                    style: Some(if face.italic {
+                        parley::fontique::FontStyle::Italic
+                    } else {
+                        parley::fontique::FontStyle::Normal
+                    }),
+                    width: None,
+                    axes: None,
+                }),
+            );
+        }
+    });
+}
+
 // pdf-engine patch: font files supplied by the host application, added to the system fonts.
 static EXTRA_FONTS: std::sync::RwLock<Vec<Arc<Vec<u8>>>> = std::sync::RwLock::new(Vec::new());
 
@@ -398,7 +451,9 @@ fn parse_inner(
         // pdf-engine patch (see PATCHES.md): discover system fonts once per process and give
         // each document a clone, instead of letting Blitz rebuild the collection from
         // fontconfig on every parse. `FontContext` is designed to be a shared resource.
-        Some(shared_system_font_context())
+        let mut ctx = shared_system_font_context();
+        register_doc_font_faces(&mut ctx);
+        Some(ctx)
     } else {
         let collection = parley::fontique::Collection::new(parley::fontique::CollectionOptions {
             system_fonts,
@@ -412,6 +467,7 @@ fn parse_inner(
             let blob: parley::fontique::Blob<u8> = (**data).clone().into();
             ctx.collection.register_fonts(blob, None);
         }
+        register_doc_font_faces(&mut ctx);
         Some(ctx)
     };
 

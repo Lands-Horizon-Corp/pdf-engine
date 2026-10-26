@@ -8,7 +8,10 @@
 //! - Anything else (`file://`, relative paths, blocked hosts) is skipped; the PDF still renders.
 //!   Unless `ASSET_LOCAL_DIR` is set: then files inside that folder load too (IPC mode).
 
-use crate::image_util::{Skip, decode_data_uri, image_sources, is_supported_image, percent_decode};
+use crate::font_face::{FontFaceDecl, LoadedFontFace, font_face_decls, is_font};
+use crate::image_util::{
+    Skip, decode_data_uri_as, image_sources, is_supported_image, percent_decode,
+};
 use futures_util::future::join_all;
 use moka::future::Cache;
 use std::{
@@ -118,7 +121,7 @@ pub async fn resolve_sources(
 ) -> Vec<(String, Arc<Vec<u8>>)> {
     let sources: Vec<String> = sources.into_iter().take(policy.max_images).collect();
     let fetches = sources.into_iter().map(|src| async move {
-        let result = load(policy, &src).await.and_then(|bytes| {
+        let result = load(policy, &src, Kind::Image).await.and_then(|bytes| {
             if is_supported_image(&bytes) {
                 Ok(bytes)
             } else {
@@ -139,20 +142,73 @@ pub async fn resolve_sources(
     join_all(fetches).await.into_iter().flatten().collect()
 }
 
+/// Load the fonts of every usable `@font-face` rule in `html`, by the same rules as images (a `data:` URI always; a
+/// URL only from an allowed host; a file only inside the allowed folder). A font that cannot be loaded is skipped.
+pub async fn resolve_font_faces(policy: &AssetPolicy, html: &str) -> Vec<LoadedFontFace> {
+    resolve_font_decls(policy, font_face_decls(html)).await
+}
+
+/// As [`resolve_font_faces`], for rules already read.
+pub async fn resolve_font_decls(
+    policy: &AssetPolicy,
+    decls: Vec<FontFaceDecl>,
+) -> Vec<LoadedFontFace> {
+    let fetches = decls.into_iter().map(|decl| async move {
+        let result = load(policy, &decl.src, Kind::Font).await.and_then(|bytes| {
+            if is_font(&bytes) {
+                Ok(bytes)
+            } else {
+                Err(Skip::Blocked("not a TrueType, OpenType or WOFF2 font"))
+            }
+        });
+        match &result {
+            Err(Skip::Blocked(why)) => {
+                tracing::warn!(src = %truncate(&decl.src), why, "font blocked");
+            }
+            Err(Skip::Failed(why)) => {
+                tracing::warn!(src = %truncate(&decl.src), why = %why, "font fetch failed");
+            }
+            Ok(_) | Err(Skip::Ignored) => {}
+        }
+        result.ok().map(|data| LoadedFontFace {
+            family: decl.family,
+            data,
+            weight: decl.weight,
+            italic: decl.italic,
+        })
+    });
+    join_all(fetches).await.into_iter().flatten().collect()
+}
+
 fn truncate(s: &str) -> String {
     s.chars().take(120).collect()
 }
 
-async fn load(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
+/// What a source is loaded for: images and fonts share the loading rules but not the size limit or the checks.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Image,
+    Font,
+}
+
+/// The largest font file loaded (CJK fonts are several MB).
+const MAX_FONT_BYTES: usize = 16 * 1024 * 1024;
+
+async fn load(policy: &AssetPolicy, src: &str, kind: Kind) -> Result<Arc<Vec<u8>>, Skip> {
+    let max = if kind == Kind::Font {
+        policy.max_bytes.max(MAX_FONT_BYTES)
+    } else {
+        policy.max_bytes
+    };
     if let Some(rest) = src.strip_prefix("data:") {
-        return decode_data_uri(rest, policy.max_bytes).map(Arc::new);
+        return decode_data_uri_as(rest, max, kind == Kind::Image).map(Arc::new);
     }
     let lower = src.to_ascii_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
-        return fetch(policy, src).await;
+        return fetch(policy, src, kind, max).await;
     }
     if let Some(dir) = &policy.local_dir {
-        return read_local(dir, src, policy.max_bytes).await;
+        return read_local(dir, src, max).await;
     }
     Err(Skip::Ignored)
 }
@@ -204,7 +260,12 @@ async fn read_local(dir: &std::path::Path, src: &str, max: usize) -> Result<Arc<
         .map_err(|e| Skip::Failed(e.to_string()))
 }
 
-async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
+async fn fetch(
+    policy: &AssetPolicy,
+    src: &str,
+    kind: Kind,
+    max: usize,
+) -> Result<Arc<Vec<u8>>, Skip> {
     if policy.allowed_hosts.is_empty() {
         return Err(Skip::Blocked(
             "remote images disabled (ASSET_ALLOWED_HOSTS unset)",
@@ -224,13 +285,21 @@ async fn fetch(policy: &AssetPolicy, src: &str) -> Result<Arc<Vec<u8>>, Skip> {
         .port_or_known_default()
         .ok_or(Skip::Blocked("no port"))?;
 
+    // Fonts are not cached (they are large and rarely repeat across requests).
+    if kind == Kind::Font {
+        return fetch_pinned(policy, url, host, port, kind, max)
+            .await
+            .map(Arc::new);
+    }
     // The scheme and host checks above run on every call; the cache only skips the network.
     let Some(cache) = IMAGE_CACHE.as_ref() else {
-        return fetch_pinned(policy, url, host, port).await.map(Arc::new);
+        return fetch_pinned(policy, url, host, port, kind, max)
+            .await
+            .map(Arc::new);
     };
     cache
         .try_get_with(src.to_string(), async {
-            let bytes = fetch_pinned(policy, url, host, port).await?;
+            let bytes = fetch_pinned(policy, url, host, port, kind, max).await?;
             if is_supported_image(&bytes) {
                 Ok(Arc::new(bytes))
             } else {
@@ -247,6 +316,8 @@ async fn fetch_pinned(
     url: reqwest::Url,
     host: String,
     port: u16,
+    kind: Kind,
+    max: usize,
 ) -> Result<Vec<u8>, Skip> {
     let lookup = tokio::time::timeout(
         policy.timeout,
@@ -279,19 +350,19 @@ async fn fetch_pinned(
     if !resp.status().is_success() {
         return Err(Skip::Failed(format!("HTTP {}", resp.status())));
     }
-    let is_image = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.trim().to_ascii_lowercase().starts_with("image/"));
-    if !is_image {
-        return Err(Skip::Blocked("response is not an image"));
+    // Images are checked by their content type; a font is checked by its first bytes by the caller.
+    if kind == Kind::Image {
+        let is_image = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|ct| ct.trim().to_ascii_lowercase().starts_with("image/"));
+        if !is_image {
+            return Err(Skip::Blocked("response is not an image"));
+        }
     }
-    if resp
-        .content_length()
-        .is_some_and(|n| n > policy.max_bytes as u64)
-    {
-        return Err(Skip::Blocked("image too large"));
+    if resp.content_length().is_some_and(|n| n > max as u64) {
+        return Err(Skip::Blocked("file too large"));
     }
     let mut body = Vec::new();
     while let Some(chunk) = resp
@@ -299,8 +370,8 @@ async fn fetch_pinned(
         .await
         .map_err(|e| Skip::Failed(e.to_string()))?
     {
-        if body.len() + chunk.len() > policy.max_bytes {
-            return Err(Skip::Blocked("image too large"));
+        if body.len() + chunk.len() > max {
+            return Err(Skip::Blocked("file too large"));
         }
         body.extend_from_slice(&chunk);
     }
@@ -342,6 +413,7 @@ fn is_public(ip: IpAddr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::image_util::decode_data_uri;
 
     #[test]
     fn finds_img_sources_and_decodes_entities() {

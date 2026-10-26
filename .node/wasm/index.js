@@ -69,7 +69,11 @@ async function fetchBytes(source, key, fetchImpl) {
 }
 
 const MAX_IMAGES = 200;
+/** A template that may need something fetched before it renders: an `<img>` or an `@font-face` rule. */
+const NEEDS_FETCH = /<img\b|@font-face/i;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_FONT_FACES = 16;
+const MAX_FONT_BYTES = 16 * 1024 * 1024;
 
 const dataUriBytes = (uri) => {
   const comma = uri.indexOf(',');
@@ -95,6 +99,17 @@ async function loadImage(src, images, fetchImpl, allowLocalFiles) {
   }
   const bytes = await loadBytes(source, fetchImpl, false);
   if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
+  return bytes;
+}
+
+/** The bytes for one `@font-face` `src` (a URL; a file path only with `allowLocalFiles` under Node). */
+async function loadFont(src, fetchImpl, allowLocalFiles) {
+  if (/^(javascript|about):/i.test(src)) return null;
+  if (!allowLocalFiles && isNode && !/^(https?|blob):/i.test(src)) {
+    throw new Error('local files are not read unless `allowLocalFiles: true`');
+  }
+  const bytes = await loadBytes(src, fetchImpl, false);
+  if (bytes.length > MAX_FONT_BYTES) throw new Error(`larger than ${MAX_FONT_BYTES / 1024 / 1024} MB`);
   return bytes;
 }
 
@@ -262,7 +277,10 @@ export class PDFEngine {
     try {
       // Images in data: URIs need nothing more. Any other <img src> (a URL, blob:, a name in
       // `images`) is fetched first, so a template without them keeps the one-call fast path.
-      if (typeof template === 'string' && (options.images || /<img\b/i.test(template))) return await this.#generateWithImages(request, options);
+      // The same for an `@font-face` rule: a font in a `data:` URI needs nothing more, a URL is fetched.
+      if (typeof template === 'string' && (options.images || NEEDS_FETCH.test(template) || NEEDS_FETCH.test(Object.values({ ...this.#options.partials, ...options.partials }).join('\n')))) {
+        return await this.#generateWithImages(request, options);
+      }
       return this.#engine.generate(request);
     } catch (e) {
       if (typeof WebAssembly !== 'undefined' && e instanceof WebAssembly.RuntimeError) {
@@ -279,8 +297,8 @@ export class PDFEngine {
   }
 
   async #generateWithImages(request, options) {
-    const { id, sources } = JSON.parse(this.#engine.prepare(request));
-    if (sources.length === 0) return this.#engine.render_prepared(id, [], []);
+    const { id, sources, fontSources } = JSON.parse(this.#engine.prepare(request));
+    if (sources.length === 0 && fontSources.length === 0) return this.#engine.render_prepared(id, [], [], [], []);
     const fetchImpl = options.fetch || this.#options.fetch;
     const warn = options.onImageError || this.#options.onImageError || ((src, reason) => console.warn(`pdf-engine: skipped image ${src.slice(0, 100)}: ${reason}`));
     const names = [];
@@ -303,7 +321,22 @@ export class PDFEngine {
       this.#engine.discard(id);
       throw e;
     }
-    return this.#engine.render_prepared(id, names, bytes);
+    const fontNames = [];
+    const fontBytes = [];
+    await Promise.all(
+      fontSources.slice(0, MAX_FONT_FACES).map(async (src) => {
+        try {
+          const found = await loadFont(src, fetchImpl, options.allowLocalFiles ?? this.#options.allowLocalFiles);
+          if (found) {
+            fontNames.push(src);
+            fontBytes.push(found);
+          }
+        } catch (e) {
+          warn(src, `font: ${e?.message || String(e)}`);
+        }
+      }),
+    );
+    return this.#engine.render_prepared(id, names, bytes, fontNames, fontBytes);
   }
 
   /** Render on a deployed pdf-engine server (`POST {url}/api/to-bytes`). */

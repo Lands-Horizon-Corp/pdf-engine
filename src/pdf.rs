@@ -54,23 +54,27 @@ pub async fn render_with_images(
     images.retain(|(_, b)| crate::image_util::is_supported_image(b));
     let html = crate::image_util::size_images(&html, &images).unwrap_or(html);
 
+    let font_faces = assets::resolve_font_faces(&state.assets, &html).await;
+
     let title = extract_title(&html);
     let job = Arc::new(RenderJob {
         html,
         page,
         title,
         images,
+        font_faces,
     });
     // A corrupt image fails the whole render; retry once without images so a bad remote
     // image never costs the document. The job is shared, not cloned up front, so the common
     // path never copies the HTML.
-    let has_images = !job.images.is_empty();
+    let has_extras = !job.images.is_empty() || !job.font_faces.is_empty();
     let pdf = match render_shared(Arc::clone(&job), state).await {
-        Err(AppError::Render(e)) if has_images => {
-            tracing::warn!(error = %e, "render failed with images; retrying without them");
+        Err(AppError::Render(e)) if has_extras => {
+            tracing::warn!(error = %e, "render failed with images or fonts; retrying without them");
             // The render thread has dropped its handle by now, so this moves the job out.
             let mut job = Arc::try_unwrap(job).unwrap_or_else(|shared| (*shared).clone());
             job.images.clear();
+            job.font_faces.clear();
             render_html(job, state).await?
         }
         other => other?,
@@ -128,6 +132,7 @@ pub async fn warm_up_in_memory(state: &AppState) -> Result<Vec<u8>, AppError> {
         page: PageMm::parse("8.5in", "11in", "portrait").unwrap(),
         title: None,
         images: Vec::new(),
+        font_faces: Vec::new(),
     };
     render_html(job, state).await
 }

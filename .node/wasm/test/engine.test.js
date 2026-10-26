@@ -382,3 +382,42 @@ test('workers: documents are made in worker threads, errors and images included'
 });
 
 const bytes_differ = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) !== 0;
+
+test('@font-face: a font in a data: URI, or fetched from a URL, is used for that document only', async () => {
+  const ttf = fs.readFileSync(new URL('../fonts/NotoSans-Bold.ttf', import.meta.url));
+  const uri = `data:font/ttf;base64,${ttf.toString('base64')}`;
+  const text = `<p style="font-family: 'Brand Display'; font-size: 24px">Hello World</p>`;
+  // No bundled fonts: the only font there can be is the one the document brings.
+  const pdf = new PDFEngine({
+    defaultFonts: false,
+    fetch: async (url) => {
+      assert.equal(String(url), 'https://fonts.test/brand.ttf');
+      return new Response(ttf);
+    },
+  });
+  try {
+    const none = await pdf.generate({ template: text });
+    assert.doesNotMatch(latin1(none), /NotoSans/, 'without the rule there is no font');
+
+    const fromData = await pdf.generate({ template: `<style>@font-face { font-family: 'Brand Display'; src: url(${uri}) format('truetype'); }</style>${text}` });
+    assert.match(latin1(fromData), /NotoSans-Bold/);
+
+    const fromUrl = await pdf.generate({ template: `<style>@font-face { font-family: 'Brand Display'; src: url(https://fonts.test/brand.ttf) format('truetype'); }</style>${text}` });
+    assert.match(latin1(fromUrl), /NotoSans-Bold/);
+
+    const after = await pdf.generate({ template: text });
+    assert.doesNotMatch(latin1(after), /NotoSans/, 'the font belongs to the document that declared it');
+
+    // A font that cannot be fetched never costs the document, and `onImageError` says why.
+    const reasons = [];
+    const broken = await pdf.generate({
+      template: `<style>@font-face { font-family: 'Brand Display'; src: url(https://fonts.test/missing.ttf) }</style>${text}`,
+      fetch: async () => new Response('nope', { status: 404, statusText: 'Not Found' }),
+      onImageError: (src, why) => reasons.push(why),
+    });
+    assert.ok(isPdf(broken));
+    assert.match(reasons.join(), /font: 404/);
+  } finally {
+    pdf.close();
+  }
+});

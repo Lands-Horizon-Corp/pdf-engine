@@ -30,6 +30,11 @@
   button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
   input[type=file] { font-size: 13px; max-width: 210px; color: var(--muted); }
+  .params { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .params .title { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .params input[type=text], .params input[type=password] { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 4px 8px; width: 92px; }
+  .params input.pw { width: 130px; }
+  .params [hidden] { display: none !important; }
   .status { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .status b { color: var(--ok); }
   main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; padding: 12px 16px 16px; }
@@ -73,6 +78,36 @@
   <button id="download" class="primary" disabled>Download PDF</button>
   <button id="open" disabled>Open in a tab</button>
   <span class="status" id="status" aria-live="polite">Loading the engine…</span>
+</div>
+
+<div class="params" role="group" aria-label="PDF options">
+  <span class="title">Options</span>
+  <label>Page size
+    <select id="size" aria-label="Page size">
+      <option value="letter">US Letter (8.5 x 11 in)</option>
+      <option value="a4">A4 (210 x 297 mm)</option>
+      <option value="a5">A5 (148 x 210 mm)</option>
+      <option value="legal">Legal (8.5 x 14 in)</option>
+      <option value="receipt">Receipt (80 x 170 mm)</option>
+      <option value="label">Label (4 x 6 in)</option>
+      <option value="ticket">Ticket (120 x 160 mm)</option>
+      <option value="custom">Custom…</option>
+    </select>
+  </label>
+  <span id="custom" hidden>
+    <label>Width <input type="text" id="width" value="210mm" aria-label="Page width" placeholder="210mm"></label>
+    <label>Height <input type="text" id="height" value="297mm" aria-label="Page height" placeholder="297mm"></label>
+  </span>
+  <label>Orientation
+    <select id="orientation" aria-label="Orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+  </label>
+  <label title="fast: biggest file, quickest. small: about 40% smaller, a little slower.">Compression
+    <select id="compression" aria-label="Compression"><option value="fast">fast</option><option value="balanced">balanced</option><option value="small">small</option></select>
+  </label>
+  <label title="Set a password and the downloaded PDF is encrypted. The preview stays readable.">Password
+    <input type="password" class="pw" id="password" autocomplete="off" aria-label="Password" placeholder="none">
+  </label>
+  <span class="hint" style="font-size:12px;color:var(--muted)">Sizes accept in, mm, cm, pt, px.</span>
 </div>
 
 <main>
@@ -126,7 +161,35 @@ for (const [key, s] of Object.entries(SAMPLES)) sampleSelect.add(new Option(s.la
 
 const fields = { template: $('template'), data: $('data'), partials: $('partials') };
 let logo = defaultLogo;           // a PNG Blob, or the File the visitor chose
-let options = {};
+const PAGE_SIZES = {
+  letter: [null, null], a4: ['210mm', '297mm'], a5: ['148mm', '210mm'], legal: ['8.5in', '14in'],
+  receipt: ['80mm', '170mm'], label: ['4in', '6in'], ticket: ['120mm', '160mm'],
+};
+const ui = { size: $('size'), width: $('width'), height: $('height'), orientation: $('orientation'), compression: $('compression'), password: $('password') };
+
+// The options of the current example go into the controls; after that the controls are the source of truth.
+function applySampleOptions(o = {}) {
+  const w = o.width || null, h = o.height || null;
+  const preset = Object.entries(PAGE_SIZES).find(([, [pw, ph]]) => pw === w && ph === h);
+  if (preset) ui.size.value = preset[0];
+  else { ui.size.value = 'custom'; ui.width.value = w || '210mm'; ui.height.value = h || '297mm'; }
+  ui.orientation.value = o.orientation || 'portrait';
+  ui.compression.value = 'balanced';
+  ui.password.value = '';
+  $('custom').hidden = ui.size.value !== 'custom';
+}
+function uiOptions() {
+  const o = { orientation: ui.orientation.value, compression: ui.compression.value };
+  if (ui.size.value === 'custom') {
+    if (ui.width.value.trim()) o.width = ui.width.value.trim();
+    if (ui.height.value.trim()) o.height = ui.height.value.trim();
+  } else {
+    const [w, h] = PAGE_SIZES[ui.size.value];
+    if (w) { o.width = w; o.height = h; }
+  }
+  if (ui.password.value) o.password = ui.password.value;
+  return o;
+}
 let lastBytes = null;
 let pdf = null;
 let PDFEngineError = Error;
@@ -138,7 +201,7 @@ function loadSample(key) {
   fields.template.value = s.template;
   fields.data.value = JSON.stringify(s.data, null, 2);
   fields.partials.value = JSON.stringify(s.partials || {}, null, 2);
-  options = s.options || {};
+  applySampleOptions(s.options);
   schedule(0);
 }
 
@@ -153,7 +216,7 @@ function currentDoc() {
   let data, partials;
   try { data = JSON.parse(fields.data.value || '{}'); } catch (e) { throw Object.assign(new Error('The Data tab is not valid JSON: ' + e.message), { tab: 'data' }); }
   try { partials = JSON.parse(fields.partials.value || '{}'); } catch (e) { throw Object.assign(new Error('The Partials tab is not valid JSON: ' + e.message), { tab: 'partials' }); }
-  const doc = { template: fields.template.value, data, images: { logo }, ...options };
+  const doc = { template: fields.template.value, data, images: { logo }, ...uiOptions() };
   if (partials && Object.keys(partials).length) doc.partials = partials;
   return doc;
 }
@@ -224,7 +287,8 @@ async function render() {
   try { doc = currentDoc(); } catch (e) { return showError(e); }
   try {
     const t0 = performance.now();
-    const bytes = await pdf.generate(doc);
+    const { password, ...open } = doc;           // the preview is made without the password so it can be drawn
+    const bytes = await pdf.generate(open);
     const ms = performance.now() - t0;
     if (mine !== latest) return;
     $('error').hidden = true;
@@ -232,7 +296,7 @@ async function render() {
     status.innerHTML = `Made in <b>${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms</b> · ${(bytes.length / 1024).toFixed(0)} KB${pages ? ` · ${pages} page${pages === 1 ? '' : 's'}` : ''}`;
     $('download').disabled = $('open').disabled = false;
     lastBytes = bytes;
-    const shown = $('outlines').checked && typeof doc.template === 'string' ? { ...doc, template: OUTLINES + doc.template } : doc;
+    const shown = $('outlines').checked && typeof open.template === 'string' ? { ...open, template: OUTLINES + open.template } : open;
     const picture = $('outlines').checked ? await pdf.generate(shown) : bytes;
     if (mine !== latest) return;
     await draw(picture, mine);
@@ -243,6 +307,9 @@ async function render() {
 
 for (const el of Object.values(fields)) el.addEventListener('input', () => schedule());
 $('outlines').addEventListener('change', () => schedule(0));
+ui.size.addEventListener('change', () => { $('custom').hidden = ui.size.value !== 'custom'; schedule(0); });
+for (const el of [ui.width, ui.height, ui.password]) el.addEventListener('input', () => schedule());
+for (const el of [ui.orientation, ui.compression]) el.addEventListener('change', () => schedule(0));
 sampleSelect.addEventListener('change', () => { showTab('template'); loadSample(sampleSelect.value); });
 $('logo').addEventListener('change', (e) => { logo = e.target.files[0] || defaultLogo; schedule(0); });
 $('download').addEventListener('click', async () => { try { await pdf.download(currentDoc(), 'pdf-engine-demo.pdf'); } catch (e) { showError(e); } });

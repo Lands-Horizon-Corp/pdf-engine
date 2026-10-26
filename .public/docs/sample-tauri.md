@@ -195,10 +195,8 @@ async function run(command: 'printers' | 'print', request: object): Promise<Prin
   return answer;
 }
 
-// 1. The printers on this computer, and network printers you name.
-const { printers } = (await run('printers', {
-  printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }],
-})) as unknown as { printers: { id: string; name: string; type: string; status: string }[] };
+// 1. The printers on this computer (a network printer is not listed: print to it with `printerId: 'net://host:9100'`).
+const { printers } = (await run('printers', {})) as unknown as { printers: { id: string; name: string; type: string; status: string }[] };
 
 // 2. Print a receipt.
 await run('print', {

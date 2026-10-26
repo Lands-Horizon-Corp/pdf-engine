@@ -208,7 +208,7 @@ Known gaps and what to do instead:
 | --- | --- |
 | `<thead>` repeating on later pages | Split long tables per page, or repeat the header yourself |
 | `background: url()`, `@font-face`, `@import` | `<img>`; the `fonts` option of the packages |
-| `float`, `z-index`, `rowspan` | Flexbox or grid; reorder; nested tables |
+| `float`, `z-index` | Flexbox or grid; reorder |
 | `@page { size }`, `@media print` | `width` / `height`; unconditional rules |
 | `-webkit-background-clip: text` | A solid text color |
 | An inline `<svg>` wider than the space it sits in (even by 1 px) is not drawn at all | Give it `style="display:block;max-width:100%"`, or make it narrower. Text inside an SVG (`<text>`) may not show: put labels in HTML |

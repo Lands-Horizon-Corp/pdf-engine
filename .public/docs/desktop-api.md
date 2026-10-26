@@ -29,7 +29,6 @@ An array is shorthand for `{ fonts: [...] }`.
 | `timeoutMs` | `number` (`60000`) | Give up waiting for one answer after this long (`0` = never). |
 | `imageDir` | `string` | A folder templates may load images from: `src="logo.png"` or a `file:` URL inside it. Nothing outside it is read. Off by default. |
 | `imageHosts` | `string[]` | Hosts `<img src="https://...">` may be fetched from (`cdn.example.com`, `*.example.com`). Off by default. |
-| `printers` | `{ id, name?, type? }[]` | Printers to offer besides the system's, such as network printers. [Printing](printing.md) |
 | `partials` | `Record<string, string>` | Partial templates every document can include. [Partials](templates.md#partials-headers-footers-rows-and-layouts) |
 | `env` | `Record<string, string>` | Extra environment for the engine (`RENDER_TIMEOUT_SECS`, `ASSET_ALLOWED_HOSTS`, ...). [Settings](http-api.md#settings) |
 | `onLog` | `(text) => void` | Receives the engine's log output (stderr). |
@@ -69,7 +68,7 @@ An image that cannot be used is skipped; the document still renders.
 
 | Method | Does |
 | --- | --- |
-| `printers(): Promise<Printer[]>` | Lists the printers: the system's, the `printers` you passed, and USB receipt/label printers seen directly. |
+| `printers(): Promise<Printer[]>` | Lists the printers: the system's and USB receipt/label printers seen directly. A network printer is not listed: print to it with `printerId: 'net://host:9100'`. |
 | `print(options): Promise<PrintResult>` | Renders a template and prints it: ESC/POS on a receipt printer, ZPL on a label printer, the PDF on an office printer. |
 
 Everything about ids, paper sizes, options, USB and Windows is in [Printing](printing.md).

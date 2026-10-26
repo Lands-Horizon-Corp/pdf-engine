@@ -291,9 +291,9 @@ With Vite, keep the browser package out of dependency pre-bundling (one line):
 
 | Method | Does |
 | --- | --- |
-| `new PDFEngine(options?)` | Options: `fonts`, `binary`, `timeoutMs`, `imageDir`, `imageHosts`, `printers`, `env`, `onLog` |
+| `new PDFEngine(options?)` | Options: `fonts`, `binary`, `timeoutMs`, `imageDir`, `imageHosts`, `env`, `onLog` |
 | `generate({ template, data, ... })` | Returns the PDF as a `Buffer` |
-| `printers()` | Lists the printers: system, network you name, and USB |
+| `printers()` | Lists the printers: the system's and USB; print to a network one with `net://host:9100` |
 | `print({ printerId, template, data, paper, ... })` | Renders and prints: ESC/POS, ZPL or PDF |
 | `ping()`, `loadFonts()`, `reloadFonts()`, `close()`, `pid` | Housekeeping |
 
@@ -310,12 +310,13 @@ Everything is typed (`generate<MyData>()` checks the shape of your data).
 Receipt (thermal) printers get **ESC/POS**, label printers get **ZPL**, office printers get the **PDF**:
 
 ```ts
-const pdf = new PDFEngine({ printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }] });
+const pdf = new PDFEngine();
 
 await pdf.printers();
 // [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', default: false },
-//  { id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal', transport: 'net', ... },
 //  { id: 'usb://0483:5740', name: 'USB printer 0483:5740', type: 'thermal', transport: 'usb', ... }]
+// A network printer is not in that list (it cannot be discovered): print to it by its address.
+// await pdf.print({ printerId: 'net://192.168.1.150:9100', paper: '80mm', template, data });
 
 await pdf.print({
   printerId: 'system://POS-58',
@@ -535,7 +536,8 @@ Planned, not built yet:
 - [ ] Verify printing on physical receipt, label and office printers
 - [x] Reusable template **partials**, `{% pagebreak %}`, and `<barcode>` / QR tags drawn as vector shapes
 - [ ] Repeating `<thead>` on later pages
-- [ ] `@font-face`, `float` and `rowspan`
+- [x] `rowspan`
+- [ ] `@font-face` and `float`
 - [x] A live layout preview with box outlines (`pdf.preview()`), a Web Worker pool (`workers`), and React, Vue and Svelte helpers
 
 ---

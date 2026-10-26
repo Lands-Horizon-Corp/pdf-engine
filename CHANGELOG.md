@@ -6,6 +6,16 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+### Added
+
+- **`rowspan`** in tables (with `colspan`, across pages, and clamped at the last row).
+
+### Changed
+
+- **Node package:** the `printers` constructor option is gone. Printers cannot be known when the engine is created:
+  `printers()` lists what the system and USB report, and a network printer is printed to by its address
+  (`printerId: 'net://host:9100'`).
+
 ## [1.2.1] - 2026-10-26
 
 ### Added

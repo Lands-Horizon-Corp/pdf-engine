@@ -35,6 +35,9 @@ pub struct TableItem {
     kind: TableItemKind,
     node_id: usize,
     style: taffy::Style<Atom>,
+    /// The 1-based grid row a cell starts in, and how many rows it spans (`rowspan`).
+    row_start: u16,
+    row_span: u16,
 }
 
 pub(crate) fn build_table_context(
@@ -44,6 +47,9 @@ pub(crate) fn build_table_context(
     let mut items: Vec<TableItem> = Vec::new();
     let mut row = 0u16;
     let mut col = 0u16;
+    // For each column, the last row (1-based) occupied by a cell from an earlier row that spans down into it.
+    let mut occupied: Vec<u16> = Vec::new();
+    let mut max_col = 0u16;
 
     let root_node = &mut doc.nodes[table_root_node_id];
 
@@ -74,9 +80,23 @@ pub(crate) fn build_table_context(
             &mut col,
             &mut items,
             &mut column_sizes,
+            &mut occupied,
+            &mut max_col,
         );
     }
-    column_sizes.resize(col as usize, style_helpers::auto());
+    column_sizes.resize(max_col.max(col) as usize, style_helpers::auto());
+
+    // A cell cannot span past the last row.
+    for item in items.iter_mut().filter(|i| i.kind == TableItemKind::Cell) {
+        let span = item.row_span.min(row.saturating_sub(item.row_start) + 1).max(1);
+        if span != item.row_span {
+            item.row_span = span;
+            item.style.grid_row = taffy::Line {
+                start: style_helpers::line(item.row_start as i16),
+                end: style_helpers::span(span),
+            };
+        }
+    }
 
     style.grid_template_columns = column_sizes
         .into_iter()
@@ -103,6 +123,8 @@ pub(crate) fn collect_table_cells(
     col: &mut u16,
     cells: &mut Vec<TableItem>,
     columns: &mut Vec<Dimension>,
+    occupied: &mut Vec<u16>,
+    max_col: &mut u16,
 ) {
     let node = &doc.nodes[node_id];
 
@@ -129,7 +151,7 @@ pub(crate) fn collect_table_cells(
             for child_id in children.iter().copied() {
                 doc.nodes[child_id]
                     .remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
-                collect_table_cells(doc, child_id, is_fixed, row, col, cells, columns);
+                collect_table_cells(doc, child_id, is_fixed, row, col, cells, columns, occupied, max_col);
             }
             doc.nodes[node_id].children = children;
         }
@@ -153,12 +175,14 @@ pub(crate) fn collect_table_cells(
                     kind: TableItemKind::Row,
                     node_id,
                     style,
+                    row_start: *row,
+                    row_span: 1,
                 });
             }
 
             let children = std::mem::take(&mut doc.nodes[node_id].children);
             for child_id in children.iter().copied() {
-                collect_table_cells(doc, child_id, is_fixed, row, col, cells, columns);
+                collect_table_cells(doc, child_id, is_fixed, row, col, cells, columns, occupied, max_col);
             }
             doc.nodes[node_id].children = children;
         }
@@ -169,6 +193,16 @@ pub(crate) fn collect_table_cells(
                 .attr(local_name!("colspan"))
                 .and_then(|val| val.parse().ok())
                 .unwrap_or(1);
+            // `rowspan="0"` means "to the end of the row group"; the cell is clamped to the last row afterwards.
+            let rowspan: u16 = node
+                .attr(local_name!("rowspan"))
+                .and_then(|val| val.parse::<u16>().ok())
+                .map(|n| if n == 0 { u16::MAX / 2 } else { n.min(1000) })
+                .unwrap_or(1);
+            // Skip the columns taken by a cell from an earlier row that spans down into this one.
+            while occupied.get(*col as usize).is_some_and(|&through| through >= *row) {
+                *col += 1;
+            }
             let mut style = stylo_taffy::to_taffy_style(stylo_style);
 
             // TODO: account for padding/border/margin
@@ -207,15 +241,25 @@ pub(crate) fn collect_table_cells(
             };
             style.grid_row = taffy::Line {
                 start: style_helpers::line(*row as i16),
-                end: style_helpers::span(1),
+                end: style_helpers::span(rowspan),
             };
             style.size.width = style_helpers::auto();
             cells.push(TableItem {
                 kind: TableItemKind::Cell,
                 node_id,
                 style,
+                row_start: *row,
+                row_span: rowspan,
             });
 
+            let end_col = *col + colspan;
+            if occupied.len() < end_col as usize {
+                occupied.resize(end_col as usize, 0);
+            }
+            for c in *col..end_col {
+                occupied[c as usize] = (*row).saturating_add(rowspan - 1);
+            }
+            *max_col = (*max_col).max(end_col);
             *col += colspan;
         }
         DisplayInside::Flow

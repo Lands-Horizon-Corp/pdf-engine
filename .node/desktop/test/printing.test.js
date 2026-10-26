@@ -22,15 +22,11 @@ async function fakePrinter() {
   return { port: server.address().port, received, close: () => server.close() };
 }
 
-test('printers() lists the ones you name, and print() sends the receipt to them', async () => {
+test('print() sends the receipt to a network printer named by its net:// id', async () => {
   const printer = await fakePrinter();
   const id = `net://127.0.0.1:${printer.port}`;
-  const pdf = new PDFEngine({ binary, printers: [{ id, name: 'Kitchen Epson TM-T82' }] });
+  const pdf = new PDFEngine({ binary });
   try {
-    const list = await pdf.printers();
-    const kitchen = list.find((p) => p.id === id);
-    assert.deepEqual([kitchen.name, kitchen.type, kitchen.transport], ['Kitchen Epson TM-T82', 'thermal', 'net']);
-
     const result = await pdf.print({
       printerId: id,
       paper: '80mm',

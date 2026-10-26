@@ -37,7 +37,6 @@ The engine starts on the first `generate()` and is reused. Calls can run in para
 | `imageHosts` | Hosts `<img src="https://...">` may be fetched from, e.g. `['cdn.example.com', '*.example.com']`. Off by default. |
 | `env` | Extra environment for the engine, e.g. `ASSET_ALLOWED_HOSTS` for remote images. |
 | `partials` | Named templates for `{% include %}`, `{% extends %}` and `{% import %}`, available to every document. |
-| `printers` | Printers to offer besides the system's, such as network printers. See [Printing](#printing-electron-tauri-node). |
 | `onLog` | Receives the engine's log output. |
 
 | `generate({ ... })` | |
@@ -86,14 +85,13 @@ Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`, `printers()`, `p
 Find printers and print straight to them: receipt (thermal) printers, label printers and office printers.
 
 ```js
-const pdf = new PDFEngine({
-  printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }],   // network printers: list them
-});
+const pdf = new PDFEngine();
 
-const printers = await pdf.printers();
+const printers = await pdf.printers();   // the ones the system knows, and USB receipt and label printers
 // [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', default: false },
-//  { id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal', ... },
 //  { id: 'system://HP_LaserJet_P1102', type: 'document', ... }]
+// A network printer is not in that list (it cannot be discovered): print to it by its address.
+// await pdf.print({ printerId: 'net://192.168.1.150:9100', paper: '80mm', template, data });
 
 await pdf.print({
   printerId: 'system://POS-58',

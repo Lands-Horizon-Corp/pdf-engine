@@ -39,8 +39,6 @@ import { PDFEngine, PDFEngineError } from '@lands-horizon-corp/pdf-engine';
 const pdf = new PDFEngine({
   // Optional extra fonts (the system fonts are always used). Ship them as extraResources.
   // fonts: [path.join(process.resourcesPath, 'fonts')],
-  // Network receipt printers cannot be discovered; list them here.
-  printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal' }],
 });
 
 const fail = (e: unknown) => {
@@ -119,7 +117,7 @@ window.open(url);          // or <iframe src={url}> or an <a download> link
 ```ts
 const printers = await window.pdf.printers();
 // [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', ... },
-//  { id: 'net://192.168.1.150:9100', ... }, { id: 'system://HP_LaserJet_P1102', type: 'document', ... }]
+//  { id: 'system://HP_LaserJet_P1102', type: 'document', ... }]
 
 await window.pdf.print({
   printerId: 'system://POS-58',

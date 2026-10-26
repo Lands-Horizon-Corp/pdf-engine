@@ -71,8 +71,6 @@ export interface PDFEngineOptions {
   imageDir?: string;
   /** Hosts `<img src="https://...">` may be fetched from (`cdn.example.com`, `*.example.com`). Off by default. */
   imageHosts?: string[];
-  /** Printers to offer besides the system's, e.g. network printers: `{ id: 'net://192.168.1.150:9100', name: 'Kitchen', type: 'thermal' }`. */
-  printers?: Array<{ id: string; name?: string; type?: PrinterType }>;
   /** Extra environment variables for the engine (e.g. `ASSET_ALLOWED_HOSTS`, `RENDER_TIMEOUT_SECS`). */
   env?: Record<string, string>;
   /** Receives the engine's log output (stderr). */
@@ -159,9 +157,9 @@ export class PDFEngine {
   constructor(options?: PDFEngineOptions | string[]);
 
   /**
-   * The printers this computer can print to: those the operating system lists plus the `printers` you passed
-   * to the constructor, plus USB receipt and label printers seen directly. Network printers cannot be
-   * discovered, so list them in the constructor.
+   * The printers this computer can print to: those the operating system lists plus USB receipt and label
+   * printers seen directly. Network printers cannot be discovered: print to one with
+   * `printerId: 'net://host[:9100]'`.
    */
   printers(): Promise<Printer[]>;
 

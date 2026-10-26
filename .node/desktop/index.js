@@ -107,7 +107,7 @@ class PDFEngine {
 
   /**
    * @param {{ fonts?: string[], binary?: string, timeoutMs?: number, env?: Record<string,string>,
-   *           imageDir?: string, imageHosts?: string[], printers?: Array<{ id: string, name?: string, type?: string }>,
+   *           imageDir?: string, imageHosts?: string[],
    *           onLog?: (text: string) => void } | string[]} [options]
    */
   constructor(options = {}) {
@@ -148,12 +148,12 @@ class PDFEngine {
 
   /**
    * The printers this computer can print to: those the operating system knows (USB, network and Bluetooth
-   * printers with their driver installed), the `printers` you passed to the constructor (network printers,
-   * which cannot be discovered), and USB receipt and label printers the engine sees directly.
+   * printers with their driver installed) and USB receipt and label printers the engine sees directly.
+   * A network printer cannot be discovered: print to it with `printerId: 'net://host[:9100]'`.
    */
   async printers() {
     await this.#ensureStarted();
-    const { header } = await this.#request({ op: 'printers', printers: this.#options.printers || [] });
+    const { header } = await this.#request({ op: 'printers' });
     return header.printers;
   }
 
@@ -184,7 +184,6 @@ class PDFEngine {
         width,
         height,
         orientation,
-        printers: this.#options.printers || [],
         partials: this.#partials(options),
         images: supplied.length ? supplied.map(({ src, bytes }) => ({ src, len: bytes.length })) : undefined,
       },

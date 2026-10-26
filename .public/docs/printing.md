@@ -8,14 +8,13 @@ browser package's `print()` opens the browser's print dialog instead).
 ```ts
 import { PDFEngine } from '@lands-horizon-corp/pdf-engine';
 
-const pdf = new PDFEngine({
-  printers: [{ id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82' }],   // network printers: list them
-});
+const pdf = new PDFEngine();
 
-const printers = await pdf.printers();
+const printers = await pdf.printers();   // the ones the system knows, and USB receipt and label printers
 // [{ id: 'system://POS-58', name: 'POS-58', type: 'thermal', status: 'ready', transport: 'system', default: false },
-//  { id: 'net://192.168.1.150:9100', name: 'Kitchen Epson TM-T82', type: 'thermal', status: 'unknown', transport: 'net', ... },
 //  { id: 'system://HP_LaserJet_P1102', name: 'HP LaserJet P1102', type: 'document', status: 'ready', ... }]
+// A network printer is not in that list (it cannot be discovered): print to it by its address.
+// await pdf.print({ printerId: 'net://192.168.1.150:9100', paper: '80mm', template, data });
 
 await pdf.print({
   printerId: 'system://POS-58',
@@ -45,7 +44,7 @@ The type is guessed from the printer's name (`POS-58`, `TM-T82`, `TSP143`, `RP32
 | Id | How it reaches the printer | Notes |
 | --- | --- | --- |
 | `system://<name>` | The operating system's print queue (CUPS `lp` on macOS and Linux, the Windows spooler) | Works for any printer with its driver installed: USB, Bluetooth and network. The simplest choice. |
-| `net://<host>[:<port>]` | A TCP socket straight to the printer (port 9100 unless given) | Most network receipt and label printers. Cannot be discovered: list them in the `printers` option. |
+| `net://<host>[:<port>]` | A TCP socket straight to the printer (port 9100 unless given) | Most network receipt and label printers. Cannot be discovered: pass the id to `print()` yourself. |
 | `usb://<vendor>:<product>` | The USB device directly (hexadecimal ids, like `usb://0483:5740`) | Receipt and label printers only. See [USB](#usb) below. |
 
 `printers()` returns, for each: `id`, `name`, `type`, `status` (`ready`, `busy`, `offline` or `unknown`), `transport`

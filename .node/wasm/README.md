@@ -1,8 +1,22 @@
-# @lands-horizon-corp/pdf-engine-wasm
+<p align="center"><img src="https://raw.githubusercontent.com/Lands-Horizon-Corp/pdf-engine/master/.public/assets/logo.svg" width="420" alt="pdf-engine: HTML in, PDF out, Rust inside" /></p>
 
-HTML to PDF **in the browser**, for React, Vue, Svelte and anything else that bundles JavaScript. The
-[pdf-engine](https://github.com/Lands-Horizon-Corp/pdf-engine) renderer compiled to WebAssembly: no
-server, no network round trip, and the document never leaves the page.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@lands-horizon-corp/pdf-engine-wasm"><img src="https://img.shields.io/npm/v/@lands-horizon-corp/pdf-engine-wasm.svg?style=flat-square&color=2563EB&label=npm" alt="npm version" /></a>
+  <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/actions"><img src="https://img.shields.io/github/actions/workflow/status/Lands-Horizon-Corp/pdf-engine/ci.yml?branch=master&style=flat-square&label=CI" alt="CI status" /></a>
+  <img src="https://img.shields.io/badge/browsers-Chromium%20%7C%20Firefox%20%7C%20WebKit-orange?style=flat-square" alt="browsers" />
+  <img src="https://img.shields.io/badge/engine-Rust%20%2B%20WebAssembly-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust and WebAssembly" />
+  <img src="https://img.shields.io/badge/TypeScript-types%20included-blue?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript types" />
+  <img src="https://img.shields.io/badge/no%20Chromium-needed-brightgreen?style=flat-square" alt="no Chromium needed" />
+  <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
+</p>
+
+<p align="center"><strong>Turn HTML templates into real PDFs, in the browser.</strong></p>
+<p align="center">The pdf-engine renderer compiled to WebAssembly: no server, no headless Chrome, no network round trip.<br/>
+Vector text, not screenshots. The document never leaves the page.</p>
+
+---
+
+## Quick start
 
 ```sh
 npm install @lands-horizon-corp/pdf-engine-wasm
@@ -13,26 +27,83 @@ import { PDFEngine } from '@lands-horizon-corp/pdf-engine-wasm';
 
 const pdf = new PDFEngine();                       // create once, reuse
 
-const bytes = await pdf.generate({
+const doc = {
   template: '<h1>Invoice {{ no }}</h1>',           // HTML with {{ placeholders }}
   data: { no: '12345' },
   password: '',                                    // set it to encrypt
-});
+};
 
-const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-window.open(url);                                  // or <iframe src={url}> or <a href={url} download>
+const bytes = await pdf.generate(doc);            // the PDF as a Uint8Array
+await pdf.download(doc, 'invoice.pdf');           // or save it
+await pdf.open(doc);                              // or show it in a new tab, or pdf.print(doc)
 ```
 
-Every option, method and error is in the [reference](../../.public/docs/browser-api.md). No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
+Every option, method and error is in the [reference](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/browser-api.md). No bundler? See [Without a build step (CDN)](#without-a-build-step-cdn).
 Using React, Vue or Svelte? See [Framework helpers](#react-vue-and-svelte-helpers).
 
-The Node.js/Electron package ([`@lands-horizon-corp/pdf-engine`](../desktop/README.md)) has the same API, so
+The Node.js/Electron package ([`@lands-horizon-corp/pdf-engine`](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.node/desktop/README.md)) has the same API, so
 code moves between them.
+
+---
+
+## Why pdf-engine?
+
+Turning HTML into a PDF on the web has always meant picking your trade-off:
+
+| The usual way | What you give up |
+| --- | --- |
+| **A server with headless Chrome** (Puppeteer, Playwright) | A Node backend just to make PDFs, and 200 to 370 MB of Chromium to install, deploy and keep running |
+| **A screenshot in the browser** (html2pdf.js, jspdf-html2canvas: html2canvas + jsPDF) | The PDF is a picture of the page: text cannot be selected or searched, it blurs when zoomed, and it is slow (70 to 100 ms per page here) |
+| **Older engines** (html-pdf on PhantomJS, wkhtmltopdf) | Abandoned: PhantomJS development ended in 2018, `html-pdf` is deprecated on npm, the npm wrapper for `wkhtmltopdf` has not been updated since 2022 and the project is archived |
+
+pdf-engine is a real layout engine (Blitz, Stylo, Taffy, Parley and Krilla, in Rust) compiled to WebAssembly. It runs
+**inside the page**: no server, no Chromium, no PhantomJS, no round trip, works offline. The PDF has real vector
+text, in 1 to 2 ms. The same engine also runs natively in Electron, Tauri and Docker when you want a server.
+
+| HTML to PDF | pdf-engine | Puppeteer | html2pdf.js | jspdf-html2canvas | html-pdf | wkhtmltopdf |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Takes HTML and CSS (flexbox, grid, tables) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Text stays text (selectable, searchable) | ✅ | ✅ | ❌ picture | ❌ picture | ✅ | ✅ |
+| Runs in the browser, no server | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Nothing heavy to install (no Chromium, PhantomJS or binary) | ✅ | ❌ ~370 MB | ✅ | ✅ | ❌ PhantomJS | ❌ binary |
+| Maintained | ✅ | ✅ | ✅ | ✅ | ❌ deprecated | ❌ since 2022 |
+| Time for a receipt, in the browser<sup>1</sup> | **0.7 ms** | n/a | 87 ms | 73 ms | n/a | n/a |
+| Prints to receipt and label printers (Node package) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+<sub>1. Chromium on an Apple M4, median after warm-up. Puppeteer, html-pdf and wkhtmltopdf need a server, so a
+browser time does not apply: on a server a receipt takes 4.7 ms with Puppeteer (fastest mode), 356 ms with wkhtmltopdf and
+413 ms with html-pdf (both x86 builds under Rosetta on that Mac, so slower than they would be natively), against 0.9 ms
+here. Puppeteer renders everything Chrome can, including JavaScript, which pdf-engine does not run; see the
+[CSS gaps](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md#css). pdf-engine is new and has no track record yet.
+[Full benchmarks and how to run them](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/README.md#benchmarks).</sub>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Lands-Horizon-Corp/pdf-engine/master/.public/benchmark/charts/browser-time-dark.svg">
+  <img alt="In the browser: time to make one invoice PDF" src="https://raw.githubusercontent.com/Lands-Horizon-Corp/pdf-engine/master/.public/benchmark/charts/browser-time-light.svg">
+</picture>
+
+**What you get**
+
+- 📄 **Real PDFs.** Vector text in tens of KB. Flexbox, grid, tables, gradients, transforms, SVG, CSS variables,
+  `calc()`, page breaks, multi-column, and `@page` margin boxes.
+- ⚡ **Fast.** About 1 ms per receipt and 2 ms per 30-line invoice in the browser.
+- 🌍 **Every language.** Bundled Noto Sans covers Latin, Cyrillic, Greek and Vietnamese; add the font you need for
+  anything else.
+- 🧩 **Templates built in.** `{{ value }}`, loops, conditions, filters, macros, partials; HTML-escaped by default.
+- 🧾 **Page numbers, page breaks, QR codes and barcodes**, drawn as vectors.
+- 🖼️ **Images.** PNG, JPEG, GIF and SVG from URLs, files, `data:` URIs or bytes. A bad image is skipped, never an error.
+- 🔀 **Browser or server, your choice.** Several servers with failover, `pick: 'auto'` by size, and a fallback to
+  WebAssembly when offline.
+- 🔐 **Password encryption.** Set `password` and the PDF is encrypted.
+- 🧭 **Errors you can act on.** A stable `code`, the template `line` and a `hint`.
+- 🔒 **Safe by default.** Output and execution limits stop runaway templates; images load only from hosts you allow.
+
+---
 
 ## Templates
 
 The template language is [minijinja](https://github.com/mitsuhiko/minijinja): `{{ value }}`, `{% for %}`, `{% if %}`,
-filters and macros, HTML-escaped by default. Full guide: [Templates and CSS](../../.public/docs/templates.md).
+filters and macros, HTML-escaped by default. Full guide: [Templates and CSS](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md).
 
 **Partials** (headers, footers, rows, layouts), given to the constructor or to one call:
 
@@ -122,8 +193,8 @@ const { download, busy, error } = usePDFEngine();      // busy and error are ref
 ```
 
 Each returns `generate`, `download`, `open`, `print`, `preview` and `ping`. Guides:
-[React](../../.public/docs/sample-react.md), [Vue](../../.public/docs/sample-vue.md),
-[Svelte](../../.public/docs/sample-svelte.md), [Next.js](../../.public/docs/sample-nextjs.md).
+[React](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/sample-react.md), [Vue](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/sample-vue.md),
+[Svelte](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/sample-svelte.md), [Next.js](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/sample-nextjs.md).
 
 ## Images
 

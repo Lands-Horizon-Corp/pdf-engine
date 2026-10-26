@@ -82,9 +82,10 @@ text, in 1 to 3 ms. The same engine also runs natively in Electron, Tauri and Do
 starts faster and downloads far less than pdf-engine; pdf-engine makes each document 2 to 2.5 times faster once running.
 ironpress is run as WebAssembly with a generic font family, which is faster for it than a named font (a named font
 about doubles its time); its native Rust build is faster than its WebAssembly build and was not measured. Puppeteer,
-html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 4.7 ms with
-Puppeteer (fastest mode), 356 ms with wkhtmltopdf and 413 ms with html-pdf (both x86 builds under Rosetta on this Mac,
-so slower than they would be natively), against 0.9 ms here. Puppeteer renders everything Chrome can, including
+html-pdf and wkhtmltopdf need a server, so a browser time does not apply: on a server a receipt takes 8.7 ms with
+Puppeteer (fastest mode), 444 ms with wkhtmltopdf and 779 ms with html-pdf (both x86 builds under Rosetta on this Mac,
+so slower than they would be natively), against 1.8 ms here (this run was taken with other programs open, so every time is
+higher than on an idle machine; read the ratios). Puppeteer renders everything Chrome can, including
 JavaScript, which pdf-engine does not run; ironpress also does PDF bookmarks, which pdf-engine does
 not; see the [CSS gaps](https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md#css). pdf-engine is new and has no track record yet.</sub>
 

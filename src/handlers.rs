@@ -40,6 +40,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
     let mut orientation = "portrait".to_string();
     let mut filename = "document.pdf".to_string();
     let mut password = None;
+    let mut accessible = false;
     let mut partials = Vec::new();
     let mut budget = MAX_BODY_BYTES;
 
@@ -75,6 +76,15 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
                     .await?
                     .unwrap_or(filename)
             }
+            "accessible" => {
+                let v = field_text(&mut field, &mut budget)
+                    .await?
+                    .unwrap_or_default();
+                accessible = matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "true" | "1" | "on" | "yes"
+                );
+            }
             "password" => {
                 let p = field_text(&mut field, &mut budget)
                     .await?
@@ -97,6 +107,7 @@ async fn parse_pdf_multipart(mut multipart: Multipart) -> Result<PdfRequest, App
         orientation,
         filename,
         password,
+        accessible,
         partials,
     })
 }

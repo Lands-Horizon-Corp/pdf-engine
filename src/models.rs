@@ -21,6 +21,8 @@ pub struct PdfRequest {
     pub orientation: String,
     pub filename: String,
     pub password: Option<String>,
+    /// Make a tagged (accessible, PDF/UA) PDF: a structure tree, the document language and a title.
+    pub accessible: bool,
     /// Named templates the main template can `{% include %}` or `{% extends %}`.
     pub partials: Vec<(String, String)>,
 }

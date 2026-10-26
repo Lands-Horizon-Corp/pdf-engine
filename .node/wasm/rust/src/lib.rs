@@ -65,6 +65,9 @@ struct Request {
     height: Option<String>,
     orientation: Option<String>,
     password: Option<String>,
+    /// Make a tagged (accessible, PDF/UA) PDF.
+    #[serde(default)]
+    accessible: bool,
     /// Named templates the template can `{% include %}` or `{% extends %}`.
     #[serde(default)]
     partials: std::collections::BTreeMap<String, String>,
@@ -88,6 +91,7 @@ struct Prepared {
     html: String,
     page: PageMm,
     password: Option<String>,
+    accessible: bool,
     /// The document's `@font-face` rules, for the fonts the page fetches.
     font_decls: Vec<font_face::FontFaceDecl>,
 }
@@ -213,6 +217,7 @@ impl Engine {
                 html,
                 page,
                 password: req.password,
+                accessible: req.accessible,
                 font_decls,
             },
             images,
@@ -252,6 +257,7 @@ impl Engine {
                 html,
                 page,
                 password: req.password,
+                accessible: req.accessible,
                 font_decls,
             },
         );
@@ -272,6 +278,7 @@ impl Engine {
             title,
             images,
             font_faces,
+            accessible: p.accessible,
         };
 
         // A corrupt image or font fails the whole render; retry once without them, as the native

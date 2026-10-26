@@ -6,6 +6,15 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+### Added
+
+- **`accessible: true`**: a tagged PDF (structure tree, document language, title), declared PDF/UA when the document has
+  headings. In the browser package, the Node package, the HTTP form field `accessible` and the IPC `render` op.
+
+### Changed
+
+- **A PDF is now print media:** `@media print` rules apply and `@media screen` rules do not.
+
 ## [1.3.0] - 2026-10-26
 
 ### Added

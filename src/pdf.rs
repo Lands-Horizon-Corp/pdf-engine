@@ -63,6 +63,7 @@ pub async fn render_with_images(
         title,
         images,
         font_faces,
+        accessible: req.accessible,
     });
     // A corrupt image fails the whole render; retry once without images so a bad remote
     // image never costs the document. The job is shared, not cloned up front, so the common
@@ -133,6 +134,7 @@ pub async fn warm_up_in_memory(state: &AppState) -> Result<Vec<u8>, AppError> {
         title: None,
         images: Vec::new(),
         font_faces: Vec::new(),
+        accessible: false,
     };
     render_html(job, state).await
 }

@@ -139,6 +139,8 @@ pub struct Request {
     height: Option<String>,
     orientation: Option<String>,
     password: Option<String>,
+    /// `render` op: make a tagged (accessible, PDF/UA) PDF.
+    accessible: Option<bool>,
     /// Named templates the template can `{% include %}` or `{% extends %}`.
     partials: Option<std::collections::BTreeMap<String, String>>,
     paths: Option<Vec<String>>,
@@ -244,6 +246,7 @@ async fn run_op(state: &AppState, req: Request, body: Vec<u8>) -> Result<Reply, 
                 orientation: req.orientation.unwrap_or_else(|| "portrait".into()),
                 filename: String::new(),
                 password: req.password.filter(|p| !p.is_empty()),
+                accessible: req.accessible.unwrap_or(false),
                 partials: req.partials.unwrap_or_default().into_iter().collect(),
             };
             let supplied = split_images(&req.images, body)?;
@@ -385,6 +388,7 @@ async fn render_raster(
         orientation: "portrait".into(),
         filename: String::new(),
         password: None,
+        accessible: false,
         partials,
     };
     let pdf = timeout(
@@ -460,6 +464,7 @@ pub async fn print_job(state: &AppState, req: Request, body: Vec<u8>) -> Result<
             orientation: req.orientation.clone().unwrap_or_else(|| "portrait".into()),
             filename: String::new(),
             password: None,
+            accessible: false,
             partials: req
                 .partials
                 .clone()

@@ -34,7 +34,7 @@ it ("GoFullPage") makes it look easy while doing it from JavaScript is "practica
 | --- | --- | --- |
 | **"Turn the page the user is looking at into a PDF, like a browser extension does."** | 🔴 | pdf-engine renders an HTML **template plus data**, not a live page. For a report the usual answer is a template of its own (clean, paginated, tested). For "the page as it is", a helper is planned: `pdf.fromElement(element)`, which copies the element with its computed styles, turns images and canvases into data, and renders that. It does not exist yet. |
 | **Content drawn by JavaScript: charts on a canvas, framework-rendered widgets.** | ⚪ | No JavaScript runs inside a template, on purpose (it keeps rendering fast and safe). Draw charts as inline `<svg>` (the [demo](https://lands-horizon-corp.github.io/pdf-engine/) "Stress test" does bars, a line and a donut that way), or turn a canvas into a PNG in your page and pass it in `images`. |
-| **"Just use `@media print` and the browser's own Print to PDF."** | ⚪ / 🔴 | Good advice for a plain "print this page" button, and `pdf.print()` opens exactly that dialog. See [Do you need a PDF at all?](#8-do-you-need-a-pdf-at-all). pdf-engine itself does not apply `@media print` rules yet; making a PDF count as print media is planned, so one stylesheet can serve both. |
+| **"Just use `@media print` and the browser's own Print to PDF."** | ✅ | Good advice for a plain "print this page" button, and `pdf.print()` opens exactly that dialog. See [Do you need a PDF at all?](#8-do-you-need-a-pdf-at-all). pdf-engine itself now treats a PDF as print media: `@media print` rules apply and `@media screen` ones do not, so one stylesheet can serve the browser's Print and the PDF. |
 | **Pages behind a login: the server cannot fetch them without cookies.** | ✅ | Nothing is fetched by URL. You give the HTML and the data, so there is no session to forward. Images that need a login are passed as bytes in `images`. |
 | **Browser extension quality ("it just works").** | 🟡 | The live [playground](https://lands-horizon-corp.github.io/pdf-engine/) lets you check what your template becomes before you write code. |
 
@@ -66,7 +66,7 @@ really working", "fonts shifting", "gaps at the end of the page with a big parag
 | **A table header that repeats on every page.** | 🔴 | Not repeated yet (checked: the header row appears only on the first page). A long table has to repeat the header by hand. This is the first item on the plan. |
 | **Floats (`float: left`), text wrapping around an image.** | 🔴 | Not supported: a floated box is laid out as a block. The layout engine has no float support at all, so this is a large change. Plan: first an approximation (side-by-side boxes), then real text wrapping. |
 | **Modern CSS, because old engines (wkhtmltopdf, PhantomJS) lack it.** | ✅ | Flexbox, grid, tables (with `rowspan` and `colspan`), CSS variables, `calc()`, multi-column, transforms, opacity, rounded corners, `box-shadow`, gradients, `@font-face`, `@page`. [CSS](templates.md#css) |
-| **CSS the engine ignores.** | 🔴 / 🟡 | Checked: `outline` and `filter` (blur) are not drawn; `position: sticky` is ignored; `@media print` is not applied. The list is in [Known gaps](templates.md#css). |
+| **CSS the engine ignores.** | 🔴 / 🟡 | Checked: `outline` and `filter` (blur) are not drawn; `position: sticky` is ignored. The list is in [Known gaps](templates.md#css). |
 | **Fonts look different on Linux and Windows; emoji and symbols break.** | ✅ / 🟡 | The same engine and the same fonts everywhere, so a page breaks in the same place on every machine and in every browser. The browser package bundles Noto Sans (Latin, Cyrillic, Greek, Vietnamese) and Noto Sans Math; the server image carries about 150 Noto fonts. Your own fonts come with `@font-face`. 🟡 Chinese, Japanese, Korean, Arabic, Thai and colour emoji are not bundled in the browser: load the font you need ([Fonts](fonts-and-languages.md)). Optional font packs fetched on demand are planned. |
 | **Pixel and sub-pixel differences between machines.** | ✅ | The layout is computed by the engine, not by a platform's text stack, so there is nothing to differ. |
 | **Mixing text and mathematics, Markdown content.** | ✅ | `<math>` for LaTeX and `{{ text|markdown }}`, built in ([Math](templates.md#math), [Markdown](templates.md#markdown)). Spacing of formulas is an approximation, not TeX. |
@@ -110,7 +110,7 @@ like garbage", "the PDFs were 15 MB", "blank spaces where the images should be (
 
 | Concern | Today | How it is handled, and what is missing |
 | --- | --- | --- |
-| **Tagged (accessible) PDFs, PDF/UA.** | 🔴 | Not verified and not claimed. The PDF library we build on has tagging support, but we have not turned it on or tested it with a screen reader. The document `<title>` is written into the PDF. Plan: test and enable tagged output, then document it. |
+| **Tagged (accessible) PDFs, PDF/UA.** | 🟡 | `accessible: true` makes a tagged PDF with a structure tree, the document language and the title, and declares PDF/UA when the document has headings ([Accessible PDFs](templates.md#accessible-pdfs)). We have not run an external checker (veraPDF) or a screen reader over it yet, so we do not claim certification. |
 | **Archival PDF/A.** | 🔴 | Not supported yet. |
 | **Password protection.** | ✅ | The `password` option encrypts the PDF. |
 | **Digital signatures.** | ⚪ | Not in scope; sign the finished PDF with a signing tool. |
@@ -133,11 +133,11 @@ Ordered by how often the concern comes up and how much it blocks real documents.
 
 1. **Repeat table headers on every page** (`<thead>`). Common in invoices and reports.
 2. **`pdf.fromElement(element)`**: export what is on screen without writing a template.
-3. **Apply `@media print`** (treat the PDF as print media) so one stylesheet serves the browser's print and the PDF.
+3. ~~Apply `@media print`~~ **Done:** a PDF is print media.
 4. **`float`**, starting with side-by-side boxes, then text wrapping.
 5. **Image fixes:** `<img>` of an SVG file, percentage widths without a height, inline SVG wider than its box.
 6. **`outline` and `filter`**, and a way to read the CSS `orphans` and `widows` properties.
-7. **Tagged (accessible) PDFs**, then PDF/A.
+7. **Tagged (accessible) PDFs**: the option exists; next, check it with veraPDF and a screen reader, then PDF/A.
 8. **Optional font packs** for the browser (CJK, Arabic, Thai, emoji), fetched on demand.
 9. **Short client examples** for PHP, Python, Go and C#, and a Gotenberg entry in the benchmark.
 

@@ -40,6 +40,7 @@ Other methods on a known path answer `405`.
 | `width`, `height` | no | `8.5in`, `210mm`, ... (default Letter) |
 | `orientation` | no | `portrait` or `landscape` |
 | `password` | no | Encrypts the PDF |
+| `accessible` | no | `true` makes a tagged, accessible PDF (PDF/UA). [Accessible PDFs](templates.md#accessible-pdfs) |
 | `partials` | no | A JSON object of name to template, for `{% include %}`, `{% extends %}` and `{% import %}` ([Partials](templates.md#partials-headers-footers-rows-and-layouts)) |
 | `filename` | no | The name in the `Content-Disposition` header (default `document.pdf`) |
 

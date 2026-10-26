@@ -125,7 +125,7 @@ class PDFEngine {
     if (!options || typeof options !== 'object') {
       throw clientError('MISSING_FIELD', 'generate() needs an options object with a `template`.');
     }
-    const { template, data, password, width, height, orientation } = options;
+    const { template, data, password, width, height, orientation, accessible } = options;
     const supplied = options.images ? await collectImages(options.images) : [];
     await this.#ensureStarted();
     const { body } = await this.#request(
@@ -134,6 +134,7 @@ class PDFEngine {
         template,
         data: data === undefined ? {} : data,
         password: password || undefined,
+        accessible: accessible || undefined,
         width,
         height,
         orientation,

@@ -92,6 +92,12 @@ export interface GenerateOptions<T = unknown> {
   /** Encrypts the PDF (open and owner password). Empty or missing = not encrypted. */
   password?: string;
   /**
+   * Make a tagged, accessible PDF (PDF/UA): a structure tree, the document language (`<html lang>`, else English)
+   * and the title (`<title>`). A page with no headings has no outline, which PDF/UA needs, so it is tagged but not
+   * declared PDF/UA.
+   */
+  accessible?: boolean;
+  /**
    * Named templates the template can `{% include "name" %}`, `{% extends "name" %}` or `{% import "name" as x %}`,
    * for headers, footers, rows and layouts. Merged over the constructor's `partials`.
    */

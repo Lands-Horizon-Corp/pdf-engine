@@ -264,7 +264,7 @@ export class PDFEngine {
       const warn = onImageError || this.#options.onImageError || ((src, reason) => console.warn(`pdf-engine: skipped image ${String(src).slice(0, 100)}: ${reason}`));
       return this.#workerPool(workers).generate(send, warn);
     }
-    const { template, data, password, width, height, orientation } = options;
+    const { template, data, password, width, height, orientation, accessible } = options;
     await this.#start();
     this.#applyFonts();
     const compression = options.compression ?? this.#options.compression ?? 'fast';
@@ -273,7 +273,7 @@ export class PDFEngine {
       set_compression(COMPRESSION_LEVELS[compression]);
       activeCompression = compression;
     }
-    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation, partials: this.#partials(options) });
+    const request = JSON.stringify({ template, data: data === undefined ? {} : data, password: password || undefined, width, height, orientation, accessible: accessible || undefined, partials: this.#partials(options) });
     try {
       // Images in data: URIs need nothing more. Any other <img src> (a URL, blob:, a name in
       // `images`) is fetched first, so a template without them keeps the one-call fast path.
@@ -346,13 +346,14 @@ export class PDFEngine {
     return Object.keys(merged).length ? merged : undefined;
   }
 
-  async #generateRemote(url, token, { template, data, password, width, height, orientation, partials }) {
+  async #generateRemote(url, token, { template, data, password, width, height, orientation, partials, accessible }) {
     const form = new FormData();
     form.append('template', template ?? '');
     form.append('data', JSON.stringify(data === undefined ? {} : data));
     for (const [name, value] of Object.entries({ width, height, orientation, password })) {
       if (value) form.append(name, value);
     }
+    if (accessible) form.append('accessible', 'true');
     const allPartials = this.#partials({ partials });
     if (allPartials) form.append('partials', JSON.stringify(allPartials));
     const headers = token ? { Authorization: /^Bearer /i.test(token) ? token : `Bearer ${token}` } : {};

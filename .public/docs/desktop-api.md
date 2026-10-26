@@ -48,6 +48,7 @@ machine: `npm run build:native` in the package. [Packaging for Electron](sample-
 | `template` | `string` (required) | HTML with `{{ }}` and `{% %}`. [Templates](templates.md) |
 | `data` | any JSON value | Values for the template. `generate<MyData>()` checks its shape. |
 | `password` | `string` | Encrypts the PDF. |
+| `accessible` | `boolean` | A tagged, accessible PDF (PDF/UA): a structure tree, the language and the title. [Accessible PDFs](templates.md#accessible-pdfs) |
 | `partials` | `Record<string, string>` | Named templates for `{% include %}` and `{% extends %}`, merged over the constructor's. |
 | `width`, `height` | `string` | `8.5in`, `210mm`, `21cm`, `612pt`, `816px`. Default Letter. |
 | `orientation` | `'portrait' \| 'landscape'` | |

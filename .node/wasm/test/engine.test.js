@@ -456,3 +456,26 @@ test('math: <math> tags and the math filter lay out formulas, with the symbols a
     pdf.close();
   }
 });
+
+test('accessible: a tagged PDF with a language and a title; @media print rules apply', async () => {
+  const pdf = new PDFEngine();
+  try {
+    const doc = '<html lang="fil"><head><title>Invoice 42</title></head><body><h1>Invoice</h1><p>Hello</p></body></html>';
+    const plain = await pdf.generate({ template: doc });
+    assert.doesNotMatch(latin1(plain), /StructTreeRoot/);
+    const tagged = await pdf.generate({ template: doc, accessible: true });
+    assert.match(latin1(tagged), /StructTreeRoot/);
+    assert.match(latin1(tagged), /pdfuaid/);
+    // No headings: still tagged, not declared PDF/UA, and not an error.
+    const noHeadings = await pdf.generate({ template: '<p>just text</p>', accessible: true });
+    assert.match(latin1(noHeadings), /StructTreeRoot/);
+    assert.doesNotMatch(latin1(noHeadings), /pdfuaid/);
+
+    // A PDF is print media: the element hidden in print is not drawn.
+    const shown = await pdf.generate({ template: '<p class="x">Hidden in print</p><p>Visible</p>' });
+    const hidden = await pdf.generate({ template: '<style>@media print { .x { display: none } }</style><p class="x">Hidden in print</p><p>Visible</p>' });
+    assert.ok(hidden.length < shown.length);
+  } finally {
+    pdf.close();
+  }
+});

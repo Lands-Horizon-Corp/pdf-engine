@@ -221,6 +221,31 @@ and below. Inside the tag, write `<` as `&lt;` (a template value already is).
   with several alignment points, no `\color`. A command it does not know is shown as written (`\foo`), never an error.
 - **Limits:** a formula of up to 20,000 characters and 24 levels of nesting.
 
+## Accessible PDFs
+
+Set `accessible: true` (the `accessible` form field on the server) for a **tagged PDF**: besides the drawing, the file
+carries a structure tree (headings, paragraphs, lists, tables, links, images with their `alt` text), the document
+language and the title, so a screen reader can read it in order.
+
+```ts
+await pdf.generate({ template, data, accessible: true });
+```
+
+```html
+<html lang="fil"><head><title>Invoice 42</title></head><body><h1>Invoice</h1> ...</body></html>
+```
+
+- **Language:** the `lang` of `<html>`; English when there is none. **Title:** the `<title>`; "Document" when there is none.
+- **Write real structure:** `<h1>`..`<h6>` for headings, `<table>` with `<th>` for data tables, `<ul>`/`<ol>` for lists,
+  `alt` on every meaningful image. Text in `<div>`s and `<span>`s is read, but without headings and lists there is
+  little for a reader to navigate.
+- **PDF/UA:** a document with headings is declared PDF/UA (the standard needs an outline, which comes from the
+  headings). A page with no headings is still tagged, with its language and title, but is not declared PDF/UA.
+- **What is not checked:** the file is built to the structure the standard asks for, but we have not run an external
+  conformance checker (such as veraPDF) or a screen-reader test suite on it. If you need a certificate, validate your
+  own documents with one.
+- **Cost:** a little extra time and file size for the structure; leave it off for receipts and labels.
+
 ## Guard rails
 
 A template can only produce so much: output is capped (`TEMPLATE_MAX_OUTPUT_BYTES`) and execution has a budget
@@ -266,7 +291,8 @@ Known gaps and what to do instead:
 | `<thead>` repeating on later pages | Split long tables per page, or repeat the header yourself |
 | `background: url()`, `@import` | `<img>`; fonts: `@font-face` is supported ([Fonts](fonts-and-languages.md#font-face-a-font-a-document-brings-along)) |
 | `float`, `z-index` | Flexbox or grid; reorder |
-| `@page { size }`, `@media print` | `width` / `height`; unconditional rules |
+| `@page { size }` | `width` / `height` |
+| `outline`, `filter`, `position: sticky` | A border or background instead |
 | `-webkit-background-clip: text` | A solid text color |
 | An inline `<svg>` wider than the space it sits in (even by 1 px) is not drawn at all | Give it `style="display:block;max-width:100%"`, or make it narrower. Text inside an SVG (`<text>`) may not show: put labels in HTML |
 | An `<img>` with a percentage CSS width and no height (`width: 100%`) is drawn at size zero | Give it a `width="520"` attribute, or a width and a height |

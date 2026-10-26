@@ -75,6 +75,8 @@ pub struct RenderJob {
     pub images: Vec<(String, Arc<Vec<u8>>)>,
     /// Fonts from the document's `@font-face` rules, loaded.
     pub font_faces: Vec<crate::font_face::LoadedFontFace>,
+    /// A tagged, accessible (PDF/UA) PDF: a structure tree, the document language and the title.
+    pub accessible: bool,
 }
 
 /// Something that turns HTML into PDF bytes synchronously, in-process.
@@ -115,8 +117,10 @@ impl Default for FulgurEngine {
     }
 }
 
-impl InProcessRenderer for FulgurEngine {
-    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String> {
+impl FulgurEngine {
+    /// One render. `pdf_ua` asks for a PDF/UA conforming file (which needs a document outline, so a page with no
+    /// headings cannot claim it); `job.accessible` without it still gives a tagged PDF with a language and a title.
+    fn render_once(&self, job: &RenderJob, pdf_ua: bool) -> Result<Vec<u8>, String> {
         let mut assets = self.assets.clone();
         for (src, data) in &job.images {
             // Same key normalisation as `AssetBundle::get_image`.
@@ -129,6 +133,16 @@ impl InProcessRenderer for FulgurEngine {
             .system_fonts(true);
         if let Some(t) = &job.title {
             builder = builder.title(t.clone());
+        }
+        if job.accessible {
+            // A tagged PDF needs a title and a language; a document that gives neither gets "Document" and English.
+            if job.title.is_none() {
+                builder = builder.title("Document");
+            }
+            builder = builder
+                .tagged(true)
+                .pdf_ua(pdf_ua)
+                .lang(extract_lang(&job.html).unwrap_or_else(|| "en".to_string()));
         }
         let faces: Vec<fulgur::DocFontFace> = job
             .font_faces
@@ -143,6 +157,16 @@ impl InProcessRenderer for FulgurEngine {
         fulgur::with_doc_font_faces(faces, || builder.build().render(&job.html))
             .map_err(|e| e.to_string())
     }
+}
+
+impl InProcessRenderer for FulgurEngine {
+    fn render(&self, job: &RenderJob) -> Result<Vec<u8>, String> {
+        match self.render_once(job, job.accessible) {
+            // The PDF/UA check failed (typically: no headings, so no outline). Keep the tags and the language, drop the claim.
+            Err(e) if job.accessible && e.contains("Validation") => self.render_once(job, false),
+            other => other,
+        }
+    }
 
     fn reload_fonts(&self) {
         fulgur::reload_system_fonts();
@@ -152,6 +176,24 @@ impl InProcessRenderer for FulgurEngine {
         fonts.push(MATH_FONT.to_vec());
         fulgur::set_extra_fonts(fonts);
     }
+}
+
+/// The `lang` of the `<html>` element (`<html lang="fil">`), for the document language of an accessible PDF.
+pub fn extract_lang(html: &str) -> Option<String> {
+    let start = find_ascii_ci(html, "<html", 0)?;
+    let tag_end = start + html[start..].find('>')?;
+    let tag = &html[start..tag_end];
+    let at = find_ascii_ci(tag, "lang=", 0)?;
+    let rest = &tag[at + 5..];
+    let (quote, rest) = match rest.chars().next()? {
+        q @ ('"' | '\'') => (Some(q), &rest[1..]),
+        _ => (None, rest),
+    };
+    let end = rest
+        .find(|c: char| quote.map_or(c.is_whitespace(), |q| c == q))
+        .unwrap_or(rest.len());
+    let lang = rest[..end].trim();
+    (!lang.is_empty() && lang.len() <= 35).then(|| lang.to_string())
 }
 
 /// `<title>` text, found without allocating a lowercased copy of the document.

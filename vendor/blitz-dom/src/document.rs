@@ -176,8 +176,9 @@ pub(crate) fn make_device(viewport: &Viewport, font_ctx: Arc<Mutex<FontContext>>
     let viewport_size = euclid::Size2D::new(width, height);
     let device_pixel_ratio = euclid::Scale::new(viewport.scale());
 
+    // pdf-engine patch (PATCHES.md #3): a PDF is print media, so `@media print` rules apply and `@media screen` ones do not.
     Device::new(
-        MediaType::screen(),
+        MediaType::print(),
         selectors::matching::QuirksMode::NoQuirks,
         viewport_size,
         device_pixel_ratio,

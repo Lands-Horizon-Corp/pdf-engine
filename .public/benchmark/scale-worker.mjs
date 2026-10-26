@@ -71,6 +71,8 @@ async function inNode() {
 }
 
 const r = browserLibraries[id] ? await inBrowser() : await inNode();
+// The memory benchmark stops measuring here: checking the PDF below loads pdf.js, which is not part of making it.
+console.log('RENDERED');
 let pages = null;
 let chars = null;
 let kb = null;

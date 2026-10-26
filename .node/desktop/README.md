@@ -80,7 +80,19 @@ await pdf.generate({
 
 Also: `ping()`, `loadFonts(paths)`, `reloadFonts()`, `close()`, `printers()`, `print()` and `pid`. Full reference: [`.public/docs/desktop-api.md`](../../.public/docs/desktop-api.md).
 
-## Printing (Electron, Tauri, Node)
+## Memory and fonts
+
+The engine process starts at about 20 MB and stays there for ordinary documents. It carries Noto Sans (regular and bold;
+Latin, Cyrillic, Greek and Vietnamese) and a math font, and uses them for a document they cover: plain text, currency
+and math symbols, and no other font family than `Noto Sans` or `sans-serif`. Only a document that needs more (Chinese,
+Japanese, Arabic, emoji, `font-family: Arial`, `<code>` and `<pre>`, form controls, `serif`) makes the engine read the
+computer's installed fonts, which costs time and memory once (on macOS about 200 MB) and then stays.
+
+So the same plain document looks the same on every computer. `font-family: sans-serif` is Noto Sans, not the system's
+sans-serif (it was Helvetica or Segoe UI before 1.4.1); to use the system's font, name it (`font-family: Helvetica`) and
+the system's fonts are used. Italic is the regular face slanted (Noto Sans Italic is not built in).
+
+
 
 Find printers and print straight to them: receipt (thermal) printers, label printers and office printers.
 

@@ -130,3 +130,24 @@ test('restart storm: killing the engine 10 times in a row never loses the client
       assert.ok(isPdf(await pdf.generate({ template: `<p>round ${i}</p>` })));
     }
   }));
+
+test('memory: an idle engine and plain documents stay small (the system fonts are loaded only for a document that needs them)', { skip: process.platform === 'win32' && 'needs ps' }, () =>
+  withEngine(async (pdf) => {
+    await pdf.ping();
+    const idle = rssOf(pdf.pid);
+    for (let i = 0; i < 20; i++) await pdf.generate({ template: `<h1>Receipt ${i}</h1><table>${'<tr><td>Item</td><td>₱10</td></tr>'.repeat(8)}</table>` });
+    const afterPlain = rssOf(pdf.pid);
+    assert.ok(idle < 100, `an idle engine used ${idle.toFixed(0)} MB`);
+    assert.ok(afterPlain < 120, `after plain documents it used ${afterPlain.toFixed(0)} MB`);
+  }));
+
+test('memory: a 100-page document needs well under 200 MB', { timeout: 120_000, skip: process.platform === 'win32' && 'needs ps' }, () =>
+  withEngine(async (pdf) => {
+    const page = (n) => `<div style="break-after:page"><h2>Page ${n}</h2><table>${Array.from({ length: 30 }, (_, r) => `<tr><td>Line ${r}</td><td>Item ${n}-${r}</td><td>₱${(r * 13) % 1000}</td></tr>`).join('')}</table></div>`;
+    let peak = 0;
+    const timer = setInterval(() => (peak = Math.max(peak, rssOf(pdf.pid))), 15);
+    const bytes = await pdf.generate({ template: Array.from({ length: 100 }, (_, i) => page(i + 1)).join('') });
+    clearInterval(timer);
+    assert.equal(pageCount(bytes), 100);
+    assert.ok(peak < 200, `peak ${peak.toFixed(0)} MB for 100 pages`);
+  }));

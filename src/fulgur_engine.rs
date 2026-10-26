@@ -174,6 +174,24 @@ const BASE_CSS: &str = "@page { margin: 0; } :where(body) { font-family: 'Noto S
 /// It is always available, in the server, the Node client and the browser build alike.
 const MATH_FONT: &[u8] = include_bytes!("NotoSansMath-Subset.ttf");
 
+/// Noto Sans Regular and Bold (SIL Open Font License, `.public/assets/fonts/OFL.txt`): Latin, Cyrillic, Greek and
+/// Vietnamese, the fonts of the browser package. Not in the WebAssembly build, which gets them from its page.
+#[cfg(not(target_arch = "wasm32"))]
+const BUNDLED_FONTS: [&[u8]; 2] = [
+    include_bytes!("NotoSans-Regular.ttf"),
+    include_bytes!("NotoSans-Bold.ttf"),
+];
+
+/// Lay out documents that need only Latin, Cyrillic, Greek, Vietnamese, currency and math text with fonts built into the
+/// program, and look at the system's fonts only for a document that needs them. For the Node, Electron and Tauri
+/// engine, where the system's fonts are many and enumerating them costs a lot of memory and time. The HTTP server does
+/// not use it: its fonts are a curated set, and its output must not depend on this.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn use_light_fonts() {
+    fulgur::set_static_extra_fonts(&[MATH_FONT]);
+    fulgur::set_static_fonts(&BUNDLED_FONTS);
+}
+
 pub struct FulgurEngine {
     assets: AssetBundle,
 }
@@ -183,8 +201,8 @@ impl Default for FulgurEngine {
         let mut assets = AssetBundle::new();
         assets.add_css(BASE_CSS);
         let engine = Self { assets };
-        // The math font is there from the start; fonts the host adds later join it (see `set_extra_fonts`).
-        engine.set_extra_fonts(Vec::new());
+        // The math font is there from the start (shared, not copied); fonts the host adds later join it.
+        fulgur::set_static_extra_fonts(&[MATH_FONT]);
         engine
     }
 }
@@ -260,8 +278,7 @@ impl InProcessRenderer for FulgurEngine {
         fulgur::reload_system_fonts();
     }
 
-    fn set_extra_fonts(&self, mut fonts: Vec<Vec<u8>>) {
-        fonts.push(MATH_FONT.to_vec());
+    fn set_extra_fonts(&self, fonts: Vec<Vec<u8>>) {
         fulgur::set_extra_fonts(fonts);
     }
 }

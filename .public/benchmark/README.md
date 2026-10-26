@@ -144,3 +144,20 @@ and do not support modern CSS such as grid; `npm run check` shows what each draw
   it and says so. It runs in CI on Linux.
 - **A library is "not run"**: its reason is printed and saved in `results/scale.json` under `skipped`.
 - **Numbers jump around**: close other programs, plug in, and use a release build.
+
+## Why the memory numbers look like this
+
+- **pdf-engine** lays out the whole document in memory before it writes the first page. What it keeps, per page of this test
+  (30 table rows, 90 cells): about 215 nodes of 1.2 KB each, the text layout of each cell (about 3 KB each, from the text
+  shaping library), and the styles of the elements. That is about 0.75 MB per page, so memory grows with the page count: 22 MB
+  idle, 89 MB for 1 page, 162 MB for 100, 803 MB for 1000. Before 1.4.1 it also read every installed font at start (about
+  200 MB on a Mac) and kept a second copy of the style of every table cell, which is why 1.4.0 was higher.
+- **wkhtmltopdf and html-pdf** (WebKit, in C++) hold the same document in compact structures and write the PDF as they go, so they
+  start higher than an idle pdf-engine but grow much more slowly (about 0.2 MB per page here). This is our reading of the
+  numbers; we have not profiled their insides.
+- **Puppeteer** runs a whole browser (several processes), which is most of its 1 to 3 GB, and the browser libraries (pdf-engine's
+  WebAssembly, ironpress, dompdf.js, html2pdf.js, jspdf-html2canvas) are measured with the Chromium that runs them, about 550 MB
+  before they do anything. html2pdf.js and jspdf-html2canvas also draw each page as an image first.
+- **The fix is not a tweak:** to use less than the older engines for long documents, pdf-engine would have to lay out and write
+  the document a few pages at a time instead of all at once. That is planned work, not part of 1.4.1.
+

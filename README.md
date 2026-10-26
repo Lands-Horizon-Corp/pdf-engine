@@ -237,7 +237,7 @@ Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-26.
 
 ### Memory: one PDF of 1, 100 and 1000 pages
 
-Each library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms, including the cost of starting. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.
+Each library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".public/benchmark/charts/memory-pages1-dark.svg">
@@ -254,23 +254,39 @@ Each library makes **one** PDF in a fresh process, cold (nothing warmed up). The
   <img alt="Peak memory for one PDF of 1000 pages" src=".public/benchmark/charts/memory-pages1000-light.svg">
 </picture>
 
-Read it with these in mind: for 1 page, wkhtmltopdf used the least (140 MB against 347 MB for pdf-engine); for 100 pages, html-pdf (PhantomJS) used the least (165 MB against 575 MB for pdf-engine); dompdf.js made 66 pages for 100 pages; jspdf-html2canvas made 61 pages for 100 pages; for 1000 pages, wkhtmltopdf used the least (283 MB against 1311 MB for pdf-engine); dompdf.js made 654 pages for 1000 pages; jspdf-html2canvas could not make 1000 pages (addImage does not support files of type 'UNKNOWN', please ensure that a plugin f). wkhtmltopdf and html-pdf are x86 builds run under Rosetta on this Mac, and they hold a document differently (they make one blank page more than asked). pdf-engine's native figure includes loading this Mac's system fonts. One run each.
+Read it with these in mind: for 100 pages, wkhtmltopdf used the least (115 MB against 162 MB for pdf-engine); dompdf.js made 66 pages for 100 pages; jspdf-html2canvas made 61 pages for 100 pages; for 1000 pages, wkhtmltopdf used the least (282 MB against 803 MB for pdf-engine); dompdf.js made 654 pages for 1000 pages; jspdf-html2canvas could not make 1000 pages (addImage does not support files of type 'UNKNOWN', please ensure that a plugin f). wkhtmltopdf and html-pdf are x86 builds run under Rosetta on this Mac, and they hold a document differently (they make one blank page more than asked). pdf-engine builds the whole document in memory before writing it (about 0.75 MB per page here), which is why it is behind the older engines from 100 pages on; it is the lowest at 1 page. One run each.
+
+**Why the numbers look like this**
+
+- **pdf-engine** lays out the whole document in memory before it writes the first page. What it keeps, per page of this test
+  (30 table rows, 90 cells): about 215 nodes of 1.2 KB each, the text layout of each cell (about 3 KB each, from the text
+  shaping library), and the styles of the elements. That is about 0.75 MB per page, so memory grows with the page count: 22 MB
+  idle, 89 MB for 1 page, 162 MB for 100, 803 MB for 1000. Before 1.4.1 it also read every installed font at start (about
+  200 MB on a Mac) and kept a second copy of the style of every table cell, which is why 1.4.0 was higher.
+- **wkhtmltopdf and html-pdf** (WebKit, in C++) hold the same document in compact structures and write the PDF as they go, so they
+  start higher than an idle pdf-engine but grow much more slowly (about 0.2 MB per page here). This is our reading of the
+  numbers; we have not profiled their insides.
+- **Puppeteer** runs a whole browser (several processes), which is most of its 1 to 3 GB, and the browser libraries (pdf-engine's
+  WebAssembly, ironpress, dompdf.js, html2pdf.js, jspdf-html2canvas) are measured with the Chromium that runs them, about 550 MB
+  before they do anything. html2pdf.js and jspdf-html2canvas also draw each page as an image first.
+- **The fix is not a tweak:** to use less than the older engines for long documents, pdf-engine would have to lay out and write
+  the document a few pages at a time instead of all at once. That is planned work, not part of 1.4.1.
 
 <details>
 <summary>All the numbers (peak memory, time to make the PDF)</summary>
 
 | Library | 1 page | 100 pages | 1000 pages |
 | --- | ---: | ---: | ---: |
-| pdf-engine | 347 MB, 0.1 s | 575 MB, 0.2 s | 1,311 MB, 1.1 s |
-| pdf-engine (WebAssembly) | 684 MB, 0.1 s | 899 MB, 0.4 s | 1,701 MB, 2.1 s |
-| ironpress | 645 MB, 0.1 s | 664 MB, 8.2 s | 866 MB, 1.4 min |
-| dompdf.js | 552 MB, 0.0 s | 747 MB, 0.4 s | 1,909 MB, 4.6 s |
-| Puppeteer (headless shell) | 1,020 MB, 0.1 s | 1,227 MB, 0.4 s | 2,379 MB, 2.6 s |
-| Puppeteer (default) | 1,476 MB, 0.2 s | 1,738 MB, 0.5 s | 3,264 MB, 3.7 s |
-| html2pdf.js | 569 MB, 0.1 s | 969 MB, 1.7 s | 2,840 MB, 17 s |
-| jspdf-html2canvas | 564 MB, 0.1 s | 1,317 MB, 5.8 s | failed (2,178 MB peak) |
-| html-pdf (PhantomJS) | 142 MB, 0.4 s | 165 MB, 0.6 s | 326 MB, 2.5 s |
-| wkhtmltopdf | 140 MB, 0.3 s | 167 MB, 0.6 s | 283 MB, 3.7 s |
+| pdf-engine | 89 MB, 0.1 s | 162 MB, 0.1 s | 803 MB, 1.0 s |
+| pdf-engine (WebAssembly) | 685 MB, 0.1 s | 861 MB, 0.4 s | 1,936 MB, 2.3 s |
+| ironpress | 637 MB, 0.1 s | 685 MB, 8.2 s | 778 MB, 1.4 min |
+| dompdf.js | 566 MB, 0.0 s | 742 MB, 0.4 s | 1,950 MB, 4.5 s |
+| Puppeteer (headless shell) | 1,017 MB, 0.1 s | 1,225 MB, 0.3 s | 2,725 MB, 2.5 s |
+| Puppeteer (default) | 1,484 MB, 0.2 s | 1,733 MB, 0.5 s | 3,231 MB, 3.5 s |
+| html2pdf.js | 567 MB, 0.1 s | 969 MB, 1.7 s | 2,835 MB, 17 s |
+| jspdf-html2canvas | 567 MB, 0.1 s | 1,543 MB, 5.8 s | failed (2,450 MB peak) |
+| html-pdf (PhantomJS) | 119 MB, 0.4 s | 141 MB, 0.6 s | 323 MB, 2.6 s |
+| wkhtmltopdf | 97 MB, 0.3 s | 115 MB, 0.6 s | 282 MB, 3.6 s |
 
 Machine: Apple M4, 10 cores, darwin arm64, Node v26.10.0, 2026-10-26. One run each, so treat small differences as noise.
 

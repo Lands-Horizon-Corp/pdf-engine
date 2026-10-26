@@ -18,6 +18,9 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 10 | `src/table_header.rs`, `src/engine.rs` | A table's `<thead>` rows are copied in front of every body row that starts a page after the first, then the document is laid out again | Long tables showed their header only on the first page. The first pass predicts all the page starts from the row heights, so a table costs about one extra layout; documents without a `<thead>` pay nothing |
 | 11 | `src/config.rs`, `engine.rs`, `render.rs`, `lib.rs` | A `PdfA` conformance level (`1b`, `2b`, `2u`, `2a`, `3b`, `3a`) on the config and builder; the PDF writer validates against it (the `a` levels imply tagging) | PDF/A archival output |
 | 12 | `src/lib.rs`, `render.rs`, `image.rs` | `with_image_interpolation(on, f)`: images are drawn with the `/Interpolate` flag unless turned off for the thread | PDF/A forbids the flag, so the renderer turns it off for PDF/A documents |
+| 13 | `src/blitz_adapter.rs`, `lib.rs` | A "light" font context (fonts the host builds in, `set_static_fonts`) is used for a document its fonts cover, and the system fonts are looked at only for a document that needs them (`document_needs_system_fonts`); system fonts are not all opened up front on Apple platforms | Enumerating the system fonts cost about 200 MB resident and 100 ms on macOS, for every process, even for a receipt |
+| 14 | `src/blitz_adapter.rs` | Font bytes are shared as blobs, never copied: the host's fonts keep one identity in every context, `@font-face` fonts are shared with the document, and built-in fonts are `&'static` | A copy of every font for every document and every context |
+| 15 | `src/blitz_adapter.rs` | `expected_nodes` is passed from the number of `<` in the HTML | See blitz-dom patch 6 |
 
 ## Upgrading fulgur
 

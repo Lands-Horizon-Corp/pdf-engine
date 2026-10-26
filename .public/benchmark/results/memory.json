@@ -17,13 +17,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.059636499999999995,
+      "seconds": 0.05169120799999999,
       "pages": 1,
       "chars": 639,
-      "kb": 25.62890625,
+      "kb": 15.919921875,
       "status": "ok",
-      "peakMb": 347.40625,
-      "wallSeconds": 0.243
+      "peakMb": 89.15625,
+      "wallSeconds": 0.227
     },
     {
       "id": "wasm",
@@ -34,13 +34,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.10610000002384186,
+      "seconds": 0.11290000003576278,
       "pages": 1,
       "chars": 639,
       "kb": 42.072265625,
       "status": "ok",
-      "peakMb": 683.5625,
-      "wallSeconds": 0.614
+      "peakMb": 684.640625,
+      "wallSeconds": 0.952
     },
     {
       "id": "ironpress",
@@ -51,13 +51,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.1465,
+      "seconds": 0.14770000004768372,
       "pages": 1,
       "chars": 639,
       "kb": 16.267578125,
       "status": "ok",
-      "peakMb": 645.484375,
-      "wallSeconds": 0.659
+      "peakMb": 636.65625,
+      "wallSeconds": 0.655
     },
     {
       "id": "dompdf",
@@ -68,13 +68,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.033599999964237216,
+      "seconds": 0.03519999998807907,
       "pages": 1,
       "chars": 642,
       "kb": 12.7802734375,
       "status": "ok",
-      "peakMb": 551.96875,
-      "wallSeconds": 0.556
+      "peakMb": 566.015625,
+      "wallSeconds": 0.544
     },
     {
       "id": "puppeteer-shell",
@@ -85,13 +85,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.144877209,
+      "seconds": 0.143080916,
       "pages": 1,
       "chars": 639,
       "kb": 54.2265625,
       "status": "ok",
-      "peakMb": 1020.21875,
-      "wallSeconds": 0.881
+      "peakMb": 1017.28125,
+      "wallSeconds": 0.833
     },
     {
       "id": "puppeteer",
@@ -102,13 +102,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.20736066600000003,
+      "seconds": 0.23400920900000005,
       "pages": 1,
       "chars": 639,
       "kb": 54.4345703125,
       "status": "ok",
-      "peakMb": 1476.1875,
-      "wallSeconds": 1.943
+      "peakMb": 1483.890625,
+      "wallSeconds": 1.646
     },
     {
       "id": "html2pdf",
@@ -119,13 +119,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.11669999998807908,
+      "seconds": 0.1135,
       "pages": 1,
       "chars": 0,
       "kb": 85.5205078125,
       "status": "ok",
-      "peakMb": 569.015625,
-      "wallSeconds": 0.639
+      "peakMb": 567.25,
+      "wallSeconds": 0.635
     },
     {
       "id": "jspdf-html2canvas",
@@ -136,13 +136,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.09479999995231628,
+      "seconds": 0.10090000003576279,
       "pages": 1,
       "chars": 0,
       "kb": 99.4697265625,
       "status": "ok",
-      "peakMb": 563.96875,
-      "wallSeconds": 0.642
+      "peakMb": 567,
+      "wallSeconds": 0.618
     },
     {
       "id": "html-pdf",
@@ -153,13 +153,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.434763375,
+      "seconds": 0.4222756669999999,
       "pages": 2,
       "chars": 639,
       "kb": 11.90234375,
       "status": "ok",
-      "peakMb": 141.640625,
-      "wallSeconds": 2.917
+      "peakMb": 118.83203125,
+      "wallSeconds": 1.81
     },
     {
       "id": "wkhtmltopdf",
@@ -170,13 +170,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.321378375,
+      "seconds": 0.328793667,
       "pages": 2,
       "chars": 639,
       "kb": 11.3876953125,
       "status": "ok",
-      "peakMb": 140.203125,
-      "wallSeconds": 1.267
+      "peakMb": 97.18359375,
+      "wallSeconds": 1.031
     },
     {
       "id": "pdf-engine",
@@ -187,13 +187,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.1650535,
+      "seconds": 0.139802291,
       "pages": 100,
       "chars": 67542,
-      "kb": 214.671875,
+      "kb": 202.4306640625,
       "status": "ok",
-      "peakMb": 575.46875,
-      "wallSeconds": 0.45
+      "peakMb": 161.875,
+      "wallSeconds": 0.42
     },
     {
       "id": "wasm",
@@ -204,13 +204,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.36419999998807906,
+      "seconds": 0.36879999995231627,
       "pages": 100,
       "chars": 67542,
       "kb": 2171.05078125,
       "status": "ok",
-      "peakMb": 899.28125,
-      "wallSeconds": 1.035
+      "peakMb": 860.6875,
+      "wallSeconds": 1.052
     },
     {
       "id": "ironpress",
@@ -221,13 +221,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 8.24669999998808,
+      "seconds": 8.193699999988079,
       "pages": 100,
       "chars": 67542,
       "kb": 185.6162109375,
       "status": "ok",
-      "peakMb": 663.53125,
-      "wallSeconds": 8.876
+      "peakMb": 684.65625,
+      "wallSeconds": 8.814
     },
     {
       "id": "dompdf",
@@ -238,13 +238,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.372,
+      "seconds": 0.35610000002384185,
       "pages": 66,
       "chars": 67863,
       "kb": 1210.3623046875,
       "status": "ok",
-      "peakMb": 747.0625,
-      "wallSeconds": 1.009
+      "peakMb": 742.3125,
+      "wallSeconds": 0.94
     },
     {
       "id": "puppeteer-shell",
@@ -255,13 +255,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.3568413330000001,
+      "seconds": 0.29912708299999996,
       "pages": 100,
       "chars": 67542,
       "kb": 3128.095703125,
       "status": "ok",
-      "peakMb": 1226.640625,
-      "wallSeconds": 1.153
+      "peakMb": 1225.40625,
+      "wallSeconds": 0.727
     },
     {
       "id": "puppeteer",
@@ -272,13 +272,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.513317083,
+      "seconds": 0.45561108400000006,
       "pages": 100,
       "chars": 67542,
       "kb": 3128.3037109375,
       "status": "ok",
-      "peakMb": 1738.109375,
-      "wallSeconds": 1.803
+      "peakMb": 1733.34375,
+      "wallSeconds": 1.135
     },
     {
       "id": "html2pdf",
@@ -289,13 +289,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 1.7271999999880792,
+      "seconds": 1.6865,
       "pages": 100,
       "chars": 0,
       "kb": 34.619140625,
       "status": "ok",
-      "peakMb": 969.0625,
-      "wallSeconds": 2.279
+      "peakMb": 968.828125,
+      "wallSeconds": 2.213
     },
     {
       "id": "jspdf-html2canvas",
@@ -306,13 +306,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 5.831899999976158,
+      "seconds": 5.767699999988079,
       "pages": 61,
       "chars": 0,
       "kb": 10421.189453125,
       "status": "ok",
-      "peakMb": 1317.15625,
-      "wallSeconds": 6.47
+      "peakMb": 1542.84375,
+      "wallSeconds": 6.377
     },
     {
       "id": "html-pdf",
@@ -323,13 +323,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.62685575,
+      "seconds": 0.632558625,
       "pages": 101,
       "chars": 67542,
       "kb": 241.087890625,
       "status": "ok",
-      "peakMb": 165.375,
-      "wallSeconds": 1.481
+      "peakMb": 140.66796875,
+      "wallSeconds": 1.484
     },
     {
       "id": "wkhtmltopdf",
@@ -340,13 +340,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 0.6425973340000001,
+      "seconds": 0.6401358330000001,
       "pages": 101,
       "chars": 67542,
       "kb": 271.158203125,
       "status": "ok",
-      "peakMb": 166.796875,
-      "wallSeconds": 1.361
+      "peakMb": 114.9921875,
+      "wallSeconds": 1.381
     },
     {
       "id": "pdf-engine",
@@ -357,13 +357,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 1.09457075,
+      "seconds": 1.011534917,
       "pages": 1000,
       "chars": 703383,
-      "kb": 1916.228515625,
+      "kb": 1894.2294921875,
       "status": "ok",
-      "peakMb": 1310.890625,
-      "wallSeconds": 2.221
+      "peakMb": 803.453125,
+      "wallSeconds": 2.118
     },
     {
       "id": "wasm",
@@ -374,13 +374,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 2.094899999976158,
+      "seconds": 2.2812000000476838,
       "pages": 1000,
       "chars": 703383,
       "kb": 21766.544921875,
       "status": "ok",
-      "peakMb": 1701.234375,
-      "wallSeconds": 3.911
+      "peakMb": 1935.796875,
+      "wallSeconds": 4.009
     },
     {
       "id": "ironpress",
@@ -391,13 +391,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 81.41019999998808,
+      "seconds": 81.76209999996424,
       "pages": 1000,
       "chars": 703383,
       "kb": 1735.9482421875,
       "status": "ok",
-      "peakMb": 865.671875,
-      "wallSeconds": 82.89
+      "peakMb": 778.234375,
+      "wallSeconds": 83.237
     },
     {
       "id": "dompdf",
@@ -408,13 +408,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 4.623,
+      "seconds": 4.475300000011921,
       "pages": 654,
       "chars": 707853,
       "kb": 12078.6884765625,
       "status": "ok",
-      "peakMb": 1908.640625,
-      "wallSeconds": 5.905
+      "peakMb": 1950.40625,
+      "wallSeconds": 5.683
     },
     {
       "id": "puppeteer-shell",
@@ -425,13 +425,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 2.5789474579999996,
+      "seconds": 2.4944241660000004,
       "pages": 1000,
       "chars": 703383,
       "kb": 31862.1083984375,
       "status": "ok",
-      "peakMb": 2379.015625,
-      "wallSeconds": 4.092
+      "peakMb": 2724.921875,
+      "wallSeconds": 3.85
     },
     {
       "id": "puppeteer",
@@ -442,13 +442,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 3.7037584999999997,
+      "seconds": 3.496737833,
       "pages": 1000,
       "chars": 703383,
       "kb": 31862.31640625,
       "status": "ok",
-      "peakMb": 3264.0625,
-      "wallSeconds": 5.756
+      "peakMb": 3230.734375,
+      "wallSeconds": 5.294
     },
     {
       "id": "html2pdf",
@@ -459,13 +459,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 16.77680000001192,
+      "seconds": 16.93140000003576,
       "pages": 1000,
       "chars": 0,
       "kb": 272.162109375,
       "status": "ok",
-      "peakMb": 2839.53125,
-      "wallSeconds": 17.758
+      "peakMb": 2835.046875,
+      "wallSeconds": 17.954
     },
     {
       "id": "jspdf-html2canvas",
@@ -476,13 +476,13 @@
       "completed": 0,
       "errors": 1,
       "firstError": "addImage does not support files of type 'UNKNOWN', please ensure that a plugin for 'UNKNOWN' support is added.",
-      "seconds": 13.128900000035763,
+      "seconds": 13.131199999988079,
       "pages": null,
       "chars": null,
       "kb": null,
       "status": "addImage does not support files of type 'UNKNOWN', please ensure that a plugin for 'UNKNOWN' support is added.",
-      "peakMb": 2177.640625,
-      "wallSeconds": 13.612
+      "peakMb": 2449.890625,
+      "wallSeconds": 13.632
     },
     {
       "id": "html-pdf",
@@ -493,13 +493,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 2.541116958,
+      "seconds": 2.567103958,
       "pages": 1001,
       "chars": 703383,
       "kb": 2356.9677734375,
       "status": "ok",
-      "peakMb": 325.609375,
-      "wallSeconds": 4.936
+      "peakMb": 322.63671875,
+      "wallSeconds": 4.857
     },
     {
       "id": "wkhtmltopdf",
@@ -510,13 +510,13 @@
       "completed": 1,
       "errors": 0,
       "firstError": null,
-      "seconds": 3.7472775,
+      "seconds": 3.635126,
       "pages": 1001,
       "chars": 703383,
       "kb": 2647.8896484375,
       "status": "ok",
-      "peakMb": 283.02734375,
-      "wallSeconds": 6.077
+      "peakMb": 281.95703125,
+      "wallSeconds": 5.754
     }
   ]
 }

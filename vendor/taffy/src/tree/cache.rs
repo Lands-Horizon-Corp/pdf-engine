@@ -25,7 +25,9 @@ pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
     /// The cache entries for the node's preliminary size measurements
-    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
+    /// pdf-engine patch: allocated when the first measurement is stored. Most nodes are never measured, and the array
+    /// is 360 bytes, which is a quarter of a node in a large document.
+    measure_entries: Option<Box<[Option<CacheEntry<Size<f32>>>; CACHE_SIZE]>>,
     /// Tracks if all cache entries are empty
     is_empty: bool,
 }
@@ -39,7 +41,7 @@ impl Default for Cache {
 impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
-        Self { final_layout_entry: None, measure_entries: [None; CACHE_SIZE], is_empty: true }
+        Self { final_layout_entry: None, measure_entries: None, is_empty: true }
     }
 
     /// Return the cache slot to cache the current computed result in
@@ -130,7 +132,7 @@ impl Cache {
                 })
                 .map(|e| e.content),
             RunMode::ComputeSize => {
-                for entry in self.measure_entries.iter().flatten() {
+                for entry in self.measure_entries.iter().flat_map(|entries| entries.iter()).flatten() {
                     let cached_size = entry.content;
 
                     if (known_dimensions.width == entry.known_dimensions.width
@@ -168,7 +170,7 @@ impl Cache {
             RunMode::ComputeSize => {
                 self.is_empty = false;
                 let cache_slot = Self::compute_cache_slot(known_dimensions, available_space);
-                self.measure_entries[cache_slot] =
+                self.measure_entries.get_or_insert_with(|| Box::new([None; CACHE_SIZE]))[cache_slot] =
                     Some(CacheEntry { known_dimensions, available_space, content: layout_output.size });
             }
             RunMode::PerformHiddenLayout => {}
@@ -182,13 +184,13 @@ impl Cache {
         }
         self.is_empty = true;
         self.final_layout_entry = None;
-        self.measure_entries = [None; CACHE_SIZE];
+        self.measure_entries = None;
         ClearState::Cleared
     }
 
     /// Returns true if all cache entries are None, else false
     pub fn is_empty(&self) -> bool {
-        self.final_layout_entry.is_none() && !self.measure_entries.iter().any(|entry| entry.is_some())
+        self.final_layout_entry.is_none() && !self.measure_entries.iter().flat_map(|e| e.iter()).any(|entry| entry.is_some())
     }
 }
 

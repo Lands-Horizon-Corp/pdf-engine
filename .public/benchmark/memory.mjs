@@ -52,11 +52,20 @@ function runOne(id, scenario) {
     });
     let out = '';
     let err = '';
-    child.stdout.on('data', (d) => (out += d));
+    let sampling_done = false;
+    let timer;
+    child.stdout.on('data', (d) => {
+      out += d;
+      // The worker says RENDERED when the PDF is made; what it loads afterwards to check it is not counted.
+      if (!sampling_done && out.includes('RENDERED')) {
+        sampling_done = true;
+        clearInterval(timer);
+      }
+    });
     child.stderr.on('data', (d) => (err += d));
     let peak = 0;
     let sampling = false;
-    const timer = setInterval(() => {
+    timer = setInterval(() => {
       if (sampling) return;
       sampling = true;
       try {

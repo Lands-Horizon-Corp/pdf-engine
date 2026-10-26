@@ -425,13 +425,9 @@ impl BaseDocument {
             // Put children back
             *self.nodes[node_id].layout_children.borrow_mut() = Some(children);
 
-            // Sort paint_children in place
-            self.nodes[node_id]
-                .paint_children
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .sort_by(|left, right| {
+            // Sort paint_children in place (pdf-engine patch: there are none, see `resolve_layout_children`)
+            if let Some(paint_children) = self.nodes[node_id].paint_children.borrow_mut().as_mut() {
+                paint_children.sort_by(|left, right| {
                     let left_node = self.nodes.get(*left).unwrap();
                     let right_node = self.nodes.get(*right).unwrap();
                     left_node
@@ -455,7 +451,8 @@ impl BaseDocument {
 
                             left_position.cmp(&right_position)
                         })
-                })
+                });
+            }
         }
     }
 }

@@ -276,7 +276,7 @@ if (existsSync(readmePath) && readFileSync(readmePath, 'utf8').includes('<!-- be
 
   if (existsSync(memoryPath)) {
     const memory = JSON.parse(readFileSync(memoryPath, 'utf8'));
-    md += `### Memory: one PDF of 1, 100 and 1000 pages\n\nEach library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms, including the cost of starting. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.\n\n`;
+    md += `### Memory: one PDF of 1, 100 and 1000 pages\n\nEach library makes **one** PDF in a fresh process, cold (nothing warmed up). The number is the peak resident memory of that process and everything it starts (Chromium, PhantomJS, wkhtmltopdf), sampled every 20 ms from the start until the PDF is made, so it includes the cost of starting. The Node libraries are run from a Node process, which is about 55 MB of every Node figure here; the browser libraries run in Chromium. Browser libraries run in Chromium, so the whole browser is counted. A library that cannot make the document is shown as failed.\n\n`;
     for (const scenario of Object.keys(memoryPages)) md += `${picture(`memory-${scenario}`, `Peak memory for one PDF of ${memoryPages[scenario]}`)}\n`;
     const ids = [...new Set(memory.rows.map((r) => r.id))];
     const cell = (id, sc) => {
@@ -294,7 +294,24 @@ if (existsSync(readmePath) && readFileSync(readmePath, 'utf8').includes('<!-- be
       for (const r of ok) if (r.pages && r.pages !== wanted[sc] && r.pages !== wanted[sc] + 1) notes.push(`${r.library} made ${r.pages} pages for ${memoryPages[sc]}`);
       for (const r of memory.rows.filter((x) => x.scenario === sc && x.status !== 'ok')) notes.push(`${r.library} could not make ${memoryPages[sc]} (${String(r.status).slice(0, 80)})`);
     }
-    if (notes.length) md += `Read it with these in mind: ${notes.join('; ')}. wkhtmltopdf and html-pdf are x86 builds run under Rosetta on this Mac, and they hold a document differently (they make one blank page more than asked). pdf-engine's native figure includes loading this Mac's system fonts. One run each.\n\n`;
+    if (notes.length) md += `Read it with these in mind: ${notes.join('; ')}. wkhtmltopdf and html-pdf are x86 builds run under Rosetta on this Mac, and they hold a document differently (they make one blank page more than asked). pdf-engine builds the whole document in memory before writing it (about 0.75 MB per page here), which is why it is behind the older engines from 100 pages on; it is the lowest at 1 page. One run each.\n\n`;
+    md += `**Why the numbers look like this**
+
+- **pdf-engine** lays out the whole document in memory before it writes the first page. What it keeps, per page of this test
+  (30 table rows, 90 cells): about 215 nodes of 1.2 KB each, the text layout of each cell (about 3 KB each, from the text
+  shaping library), and the styles of the elements. That is about 0.75 MB per page, so memory grows with the page count: 22 MB
+  idle, 89 MB for 1 page, 162 MB for 100, 803 MB for 1000. Before 1.4.1 it also read every installed font at start (about
+  200 MB on a Mac) and kept a second copy of the style of every table cell, which is why 1.4.0 was higher.
+- **wkhtmltopdf and html-pdf** (WebKit, in C++) hold the same document in compact structures and write the PDF as they go, so they
+  start higher than an idle pdf-engine but grow much more slowly (about 0.2 MB per page here). This is our reading of the
+  numbers; we have not profiled their insides.
+- **Puppeteer** runs a whole browser (several processes), which is most of its 1 to 3 GB, and the browser libraries (pdf-engine's
+  WebAssembly, ironpress, dompdf.js, html2pdf.js, jspdf-html2canvas) are measured with the Chromium that runs them, about 550 MB
+  before they do anything. html2pdf.js and jspdf-html2canvas also draw each page as an image first.
+- **The fix is not a tweak:** to use less than the older engines for long documents, pdf-engine would have to lay out and write
+  the document a few pages at a time instead of all at once. That is planned work, not part of 1.4.1.
+
+`;
     md += '<details>\n<summary>All the numbers (peak memory, time to make the PDF)</summary>\n\n' + table(['Library', ...Object.values(memoryPages)], ids.map((id) => [memory.rows.find((x) => x.id === id).library || id, ...Object.keys(memoryPages).map((sc) => cell(id, sc))])) + `\nMachine: ${memory.machine.cpu}, ${memory.machine.cores} cores, ${memory.machine.platform}, Node ${memory.machine.node}, ${memory.machine.date}. One run each, so treat small differences as noise.\n\n</details>\n\n`;
   }
 

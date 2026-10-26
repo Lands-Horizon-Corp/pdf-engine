@@ -1,4 +1,4 @@
-use pdf_engine::{config::AppState, fonts, ipc, pdf, serve};
+use pdf_engine::{config::AppState, fonts, fulgur_engine, ipc, pdf, serve};
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -56,6 +56,7 @@ fn healthcheck() -> ! {
 /// server, no port, no token and no storage settings are needed.
 fn run_ipc() -> ! {
     init_logging();
+    fulgur_engine::use_light_fonts();
     let output = match ipc::take_stdout() {
         Ok(out) => out,
         Err(e) => {
@@ -69,7 +70,7 @@ fn run_ipc() -> ! {
         .expect("tokio runtime");
     let code = runtime.block_on(async {
         let state = AppState::for_ipc();
-        if let Err(e) = pdf::warm_up_in_memory(&state).await {
+        if let Err(e) = pdf::warm_up_in_memory(&state, false).await {
             tracing::error!("Warmup failed: {e}");
             return 1;
         }

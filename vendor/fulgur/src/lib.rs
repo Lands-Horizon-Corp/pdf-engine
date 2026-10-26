@@ -563,7 +563,7 @@ pub mod template;
 pub mod units;
 
 pub use asset::AssetBundle;
-pub use blitz_adapter::{DocFontFace, reload_system_fonts, set_extra_fonts, with_doc_font_faces};
+pub use blitz_adapter::{DocFontFace, document_needs_system_fonts, reload_system_fonts, set_extra_fonts, set_static_extra_fonts, set_static_fonts, with_doc_font_faces};
 std::thread_local! {
     static IMAGE_INTERPOLATION: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
 }

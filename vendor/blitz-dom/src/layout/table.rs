@@ -34,7 +34,12 @@ pub enum TableItemKind {
 pub struct TableItem {
     kind: TableItemKind,
     node_id: usize,
-    style: taffy::Style<Atom>,
+    /// Where the item sits in the table's grid. pdf-engine patch: the rest of its style is its node's own
+    /// (`TableItemStyle` reads it from there), not a copy of about 470 bytes for every row and cell.
+    grid_row: taffy::Line<taffy::GridPlacement<Atom>>,
+    grid_column: taffy::Line<taffy::GridPlacement<Atom>>,
+    /// A cell's `width` is taken by the column, so the cell itself is `auto`.
+    width_auto: bool,
     /// The 1-based grid row a cell starts in, and how many rows it spans (`rowspan`).
     row_start: u16,
     row_span: u16,
@@ -91,7 +96,7 @@ pub(crate) fn build_table_context(
         let span = item.row_span.min(row.saturating_sub(item.row_start) + 1).max(1);
         if span != item.row_span {
             item.row_span = span;
-            item.style.grid_row = taffy::Line {
+            item.grid_row = taffy::Line {
                 start: style_helpers::line(item.row_start as i16),
                 end: style_helpers::span(span),
             };
@@ -160,25 +165,21 @@ pub(crate) fn collect_table_cells(
             *row += 1;
             *col = 0;
 
-            {
-                let stylo_style = &node.primary_styles().unwrap();
-                let mut style = stylo_taffy::to_taffy_style(stylo_style);
-                style.grid_column = taffy::Line {
+            cells.push(TableItem {
+                kind: TableItemKind::Row,
+                node_id,
+                grid_column: taffy::Line {
                     start: style_helpers::line(0),
                     end: style_helpers::line(-1),
-                };
-                style.grid_row = taffy::Line {
+                },
+                grid_row: taffy::Line {
                     start: style_helpers::line(*row as i16),
                     end: style_helpers::span(1),
-                };
-                cells.push(TableItem {
-                    kind: TableItemKind::Row,
-                    node_id,
-                    style,
-                    row_start: *row,
-                    row_span: 1,
-                });
-            }
+                },
+                width_auto: false,
+                row_start: *row,
+                row_span: 1,
+            });
 
             let children = std::mem::take(&mut doc.nodes[node_id].children);
             for child_id in children.iter().copied() {
@@ -203,7 +204,7 @@ pub(crate) fn collect_table_cells(
             while occupied.get(*col as usize).is_some_and(|&through| through >= *row) {
                 *col += 1;
             }
-            let mut style = stylo_taffy::to_taffy_style(stylo_style);
+            let style = stylo_taffy::to_taffy_style(stylo_style);
 
             // TODO: account for padding/border/margin
             if *row == 1 {
@@ -235,19 +236,18 @@ pub(crate) fn collect_table_cells(
                 }
             }
 
-            style.grid_column = taffy::Line {
-                start: style_helpers::line((*col + 1) as i16),
-                end: style_helpers::span(colspan),
-            };
-            style.grid_row = taffy::Line {
-                start: style_helpers::line(*row as i16),
-                end: style_helpers::span(rowspan),
-            };
-            style.size.width = style_helpers::auto();
             cells.push(TableItem {
                 kind: TableItemKind::Cell,
                 node_id,
-                style,
+                grid_column: taffy::Line {
+                    start: style_helpers::line((*col + 1) as i16),
+                    end: style_helpers::span(colspan),
+                },
+                grid_row: taffy::Line {
+                    start: style_helpers::line(*row as i16),
+                    end: style_helpers::span(rowspan),
+                },
+                width_auto: true,
                 row_start: *row,
                 row_span: rowspan,
             });
@@ -346,7 +346,8 @@ impl taffy::LayoutPartialTree for TableTreeWrapper<'_> {
         let cell = &self.ctx.items[usize::from(node_id)];
         match cell.kind {
             TableItemKind::Row => {
-                compute_leaf_layout(inputs, &cell.style, resolve_calc_value, |_, _| {
+                let style = TableItemStyle::of(cell, &self.doc.nodes[cell.node_id].style);
+                compute_leaf_layout(inputs, &style, resolve_calc_value, |_, _| {
                     taffy::Size::ZERO
                 })
             }
@@ -365,7 +366,7 @@ impl taffy::LayoutGridContainer for TableTreeWrapper<'_> {
         Self: 'a;
 
     type GridItemStyle<'a>
-        = &'a taffy::Style<Atom>
+        = TableItemStyle<'a>
     where
         Self: 'a;
 
@@ -374,6 +375,96 @@ impl taffy::LayoutGridContainer for TableTreeWrapper<'_> {
     }
 
     fn get_grid_child_style(&self, child_node_id: taffy::NodeId) -> Self::GridItemStyle<'_> {
-        &self.ctx.items[usize::from(child_node_id)].style
+        let item = &self.ctx.items[usize::from(child_node_id)];
+        TableItemStyle::of(item, &self.doc.nodes[item.node_id].style)
+    }
+}
+
+/// The style of a row or cell as the table's grid sees it: its node's own style, with the placement (and the
+/// cell's `auto` width) the table gave it. A view, so no style is copied per item.
+pub struct TableItemStyle<'a> {
+    base: &'a taffy::Style<Atom>,
+    grid_row: taffy::Line<taffy::GridPlacement<Atom>>,
+    grid_column: taffy::Line<taffy::GridPlacement<Atom>>,
+    width_auto: bool,
+}
+
+impl<'a> TableItemStyle<'a> {
+    fn of(item: &TableItem, base: &'a taffy::Style<Atom>) -> Self {
+        Self {
+            base,
+            grid_row: item.grid_row.clone(),
+            grid_column: item.grid_column.clone(),
+            width_auto: item.width_auto,
+        }
+    }
+}
+
+impl taffy::CoreStyle for TableItemStyle<'_> {
+    type CustomIdent = Atom;
+
+    fn box_generation_mode(&self) -> taffy::BoxGenerationMode {
+        taffy::CoreStyle::box_generation_mode(self.base)
+    }
+    fn is_block(&self) -> bool {
+        taffy::CoreStyle::is_block(self.base)
+    }
+    fn is_compressible_replaced(&self) -> bool {
+        taffy::CoreStyle::is_compressible_replaced(self.base)
+    }
+    fn box_sizing(&self) -> taffy::BoxSizing {
+        taffy::CoreStyle::box_sizing(self.base)
+    }
+    fn overflow(&self) -> taffy::Point<taffy::Overflow> {
+        taffy::CoreStyle::overflow(self.base)
+    }
+    fn scrollbar_width(&self) -> f32 {
+        taffy::CoreStyle::scrollbar_width(self.base)
+    }
+    fn position(&self) -> taffy::Position {
+        taffy::CoreStyle::position(self.base)
+    }
+    fn inset(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
+        taffy::CoreStyle::inset(self.base)
+    }
+    fn size(&self) -> taffy::Size<Dimension> {
+        let mut size = taffy::CoreStyle::size(self.base);
+        if self.width_auto {
+            size.width = style_helpers::auto();
+        }
+        size
+    }
+    fn min_size(&self) -> taffy::Size<Dimension> {
+        taffy::CoreStyle::min_size(self.base)
+    }
+    fn max_size(&self) -> taffy::Size<Dimension> {
+        taffy::CoreStyle::max_size(self.base)
+    }
+    fn aspect_ratio(&self) -> Option<f32> {
+        taffy::CoreStyle::aspect_ratio(self.base)
+    }
+    fn margin(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
+        taffy::CoreStyle::margin(self.base)
+    }
+    fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        taffy::CoreStyle::padding(self.base)
+    }
+    fn border(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        taffy::CoreStyle::border(self.base)
+    }
+}
+
+impl taffy::GridItemStyle for TableItemStyle<'_> {
+    fn grid_row(&self) -> taffy::Line<taffy::GridPlacement<Atom>> {
+        self.grid_row.clone()
+    }
+    fn grid_column(&self) -> taffy::Line<taffy::GridPlacement<Atom>> {
+        self.grid_column.clone()
+    }
+    fn align_self(&self) -> Option<taffy::AlignSelf> {
+        taffy::GridItemStyle::align_self(self.base)
+    }
+    fn justify_self(&self) -> Option<taffy::AlignSelf> {
+        taffy::GridItemStyle::justify_self(self.base)
     }
 }

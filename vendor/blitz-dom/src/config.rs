@@ -26,4 +26,7 @@ pub struct DocumentConfig {
     pub html_parser_provider: Option<Arc<dyn HtmlParserProvider>>,
     /// Parley `FontContext`
     pub font_ctx: Option<FontContext>,
+    /// pdf-engine patch: about how many nodes the document will have, so the node array is allocated once instead of
+    /// doubling (each doubling copies it, and the old and new arrays are both in memory while it does).
+    pub expected_nodes: Option<usize>,
 }

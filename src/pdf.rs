@@ -130,9 +130,17 @@ pub async fn finalize(pdf: Vec<u8>, password: Option<String>) -> Result<Bytes, A
 }
 
 /// Render a small document so fonts and caches are ready before the first real request.
-pub async fn warm_up_in_memory(state: &AppState) -> Result<Vec<u8>, AppError> {
+///
+/// `wide` includes scripts and emoji, so the system's fonts are looked at and cached too (the server does this); the
+/// Node, Electron and Tauri engine warms up on plain text and leaves the system's fonts alone until a document needs them.
+pub async fn warm_up_in_memory(state: &AppState, wide: bool) -> Result<Vec<u8>, AppError> {
+    let html = if wide {
+        "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>"
+    } else {
+        "<h1>Warm-up</h1><p>Warmup Test: &euro; | Invoice 1,234.50</p><table><tr><td>a</td><td>b</td></tr></table>"
+    };
     let job = RenderJob {
-        html: "<span>Warmup Test: ₱ € ¥ | 你好 | 🚀 ✅ | © ®</span>".to_string(),
+        html: html.to_string(),
         page: PageMm::parse("8.5in", "11in", "portrait").unwrap(),
         title: None,
         images: Vec::new(),
@@ -147,7 +155,7 @@ pub async fn warm_up_in_memory(state: &AppState) -> Result<Vec<u8>, AppError> {
 /// Warm up and save the result as `sample.pdf` in the working directory (HTTP server only).
 pub async fn warm_up(state: &AppState) -> Result<(), AppError> {
     tracing::info!("Warming up renderer...");
-    let pdf = warm_up_in_memory(state).await?;
+    let pdf = warm_up_in_memory(state, true).await?;
     tokio::fs::write("sample.pdf", &pdf).await?;
     tracing::info!("Renderer warmed up. 'sample.pdf' has been saved to the working directory.");
     Ok(())

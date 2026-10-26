@@ -6,6 +6,40 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-27
+
+Memory. One PDF, each library in a fresh process ([the benchmark](.public/benchmark/README.md)), peak memory of the whole
+process tree, including the Node process that runs it (about 55 MB):
+
+| | 1.4.0 | 1.4.1 |
+| --- | ---: | ---: |
+| Idle engine process (Node, Electron, Tauri) | 399 MB | 22 MB |
+| A 1-page PDF | 140 MB | 89 MB |
+| A 100-page PDF | 167 MB | 162 MB |
+| A 1000-page PDF | 1,311 MB (engine alone) | 803 MB |
+
+At 1 page pdf-engine now uses less than wkhtmltopdf (97 MB) and html-pdf (119 MB). From 100 pages on they still use less
+(115 and 141 MB at 100 pages, 282 and 323 MB at 1000): pdf-engine builds the whole document in memory, about 0.75 MB a page.
+
+### Changed
+
+- **System fonts are looked at only for a document that needs them** (Node, Electron and Tauri engine). Noto Sans (regular
+  and bold) and the math font are built in and used for a document they cover: Latin, Cyrillic, Greek and Vietnamese text,
+  currency and math symbols, and `font-family` lists that start with `Noto Sans` or `sans-serif`. Chinese, Japanese,
+  Arabic, emoji, another family first in the list, `serif`, `<code>`, `<pre>`, form controls and the `font` shorthand
+  read the computer's fonts as before. On macOS that read costs about 200 MB and 100 ms, which every document paid.
+  So `sans-serif` is Noto Sans in a plain document on every computer (it was the system's sans-serif), and italic is
+  slanted regular. The HTTP server and Docker image are unchanged.
+- Fonts are shared, never copied: one copy for every context and document, built-in fonts are not copied at all.
+
+### Fixed (memory)
+
+- A table row or cell kept a second copy of its style (about 470 bytes each).
+- Each node's layout cache allocated nine measurement slots (360 bytes) whether or not it was ever measured.
+- The node array doubled as the document grew, copying itself with both copies in memory; it is sized once.
+- Every container kept a second copy of its child list that nothing read.
+- The benchmark measured memory until the program exited, including the PDF checker it loads afterwards.
+
 ## [1.4.0] - 2026-10-27
 
 ### Added

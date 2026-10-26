@@ -225,7 +225,7 @@ impl BaseDocument {
         let device = make_device(&viewport, font_ctx.clone());
         let stylist = Stylist::new(device, QuirksMode::NoQuirks);
         let snapshots = SnapshotMap::new();
-        let nodes = Box::new(Slab::new());
+        let nodes = Box::new(Slab::with_capacity(config.expected_nodes.unwrap_or(0)));
         let guard = thread_lock();
         let nodes_to_id = HashMap::new();
 
@@ -1095,8 +1095,9 @@ impl BaseDocument {
                     }
                 }
 
-                *doc.nodes[node_id].layout_children.borrow_mut() = Some(layout_children.clone());
-                *doc.nodes[node_id].paint_children.borrow_mut() = Some(layout_children);
+                // pdf-engine patch: `paint_children` (a second copy of this list, for painting and hit testing in a
+                // window) is not made: a PDF is not painted that way, and nothing here reads it.
+                *doc.nodes[node_id].layout_children.borrow_mut() = Some(layout_children);
 
                 damage.remove(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                 // damage.insert(RestyleDamage::RELAYOUT | RestyleDamage::REPAINT);

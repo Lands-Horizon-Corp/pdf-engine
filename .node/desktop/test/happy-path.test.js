@@ -117,3 +117,17 @@ test('PDF/A: each level declares itself, is never encrypted, and the a levels ar
     }
     assert.doesNotMatch(text(await pdf.generate({ template: '<p>x</p>' })), /pdfaid/, 'an ordinary PDF is not PDF/A');
   }));
+
+test('plain documents use the bundled Noto Sans (regular and bold), on every machine', () =>
+  withEngine(async (pdf) => {
+    const bytes = text(await pdf.generate({ template: '<h1>Invoice</h1><p>Hello <b>bold</b> ₱1,234.50 Привет Γειά</p>' }));
+    assert.match(bytes, /NotoSans-Regular/);
+    assert.match(bytes, /NotoSans-Bold/);
+  }));
+
+test('text the bundled fonts lack, another font family, and code still use the system fonts', () =>
+  withEngine(async (pdf) => {
+    for (const template of ['<p>你好 世界</p>', '<p style="font-family:Arial">Arial</p>', '<pre>code</pre>', '<p>&#x1F600;</p>']) {
+      assert.ok(isPdf(await pdf.generate({ template })), template);
+    }
+  }));

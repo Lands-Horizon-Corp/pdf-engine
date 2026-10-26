@@ -350,7 +350,10 @@ pub fn with_doc_font_faces<R>(faces: Vec<DocFontFace>, f: impl FnOnce() -> R) ->
 fn register_doc_font_faces(ctx: &mut FontContext) {
     DOC_FONT_FACES.with(|cell| {
         for face in cell.borrow().iter() {
-            let blob: parley::fontique::Blob<u8> = (*face.data).clone().into();
+            // Shares the loaded bytes (no copy of the font for each document).
+            let blob: parley::fontique::Blob<u8> = parley::fontique::Blob::new(
+                Arc::clone(&face.data) as Arc<dyn AsRef<[u8]> + Send + Sync>,
+            );
             ctx.collection.register_fonts(
                 blob,
                 Some(parley::fontique::FontInfoOverride {
@@ -369,15 +372,248 @@ fn register_doc_font_faces(ctx: &mut FontContext) {
     });
 }
 
-// pdf-engine patch: font files supplied by the host application, added to the system fonts.
-static EXTRA_FONTS: std::sync::RwLock<Vec<Arc<Vec<u8>>>> = std::sync::RwLock::new(Vec::new());
+// pdf-engine patch: font files supplied by the host application, added to the system fonts. Kept as blobs, which
+// are shared (never copied) and keep one identity, so every context and every document reuses the parsed font.
+static EXTRA_FONTS: std::sync::RwLock<Vec<parley::fontique::Blob<u8>>> = std::sync::RwLock::new(Vec::new());
+
+// pdf-engine patch: fonts built into the host program, shared and never copied (see `set_static_fonts`): `STATIC_EXTRA`
+// joins every font context, `BUNDLED_FONTS` only the "light" one.
+static STATIC_EXTRA: std::sync::RwLock<Vec<parley::fontique::Blob<u8>>> = std::sync::RwLock::new(Vec::new());
+static BUNDLED_FONTS: std::sync::RwLock<Vec<parley::fontique::Blob<u8>>> = std::sync::RwLock::new(Vec::new());
+
+struct StaticBytes(&'static [u8]);
+
+impl AsRef<[u8]> for StaticBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+fn static_blob(bytes: &'static [u8]) -> parley::fontique::Blob<u8> {
+    parley::fontique::Blob::new(Arc::new(StaticBytes(bytes)) as Arc<dyn AsRef<[u8]> + Send + Sync>)
+}
 
 /// pdf-engine patch: use these font files (TrueType/OpenType/collections) in addition to the
 /// system fonts for documents parsed from now on. Replaces any earlier set.
 pub fn set_extra_fonts(fonts: Vec<Vec<u8>>) {
     *EXTRA_FONTS.write().unwrap_or_else(|e| e.into_inner()) =
-        fonts.into_iter().map(Arc::new).collect();
+        fonts.into_iter().map(parley::fontique::Blob::from).collect();
     reload_system_fonts();
+}
+
+/// pdf-engine patch: fonts built into the host program (`include_bytes!`), used without copying them. `extra` fonts are
+/// part of every font context; `bundled` fonts make the "light" one (see below) together with the extras. A document whose
+/// text, and the font families it names, these fonts cover is laid out with the light context, and the system's fonts
+/// are not even enumerated (on macOS that alone costs about 200 MB of memory and 100 ms). Any other document uses
+/// the system fonts as before. Without bundled fonts every document uses the system fonts.
+pub fn set_static_fonts(bundled: &[&'static [u8]]) {
+    *BUNDLED_FONTS.write().unwrap_or_else(|e| e.into_inner()) = bundled.iter().map(|f| static_blob(f)).collect();
+    reload_system_fonts();
+}
+
+/// pdf-engine patch: fonts built into the host program that every font context has (see `set_static_fonts`).
+pub fn set_static_extra_fonts(extra: &[&'static [u8]]) {
+    *STATIC_EXTRA.write().unwrap_or_else(|e| e.into_inner()) = extra.iter().map(|f| static_blob(f)).collect();
+    reload_system_fonts();
+}
+
+/// The light font context and which characters its fonts cover (a bitmap of the Basic Multilingual Plane).
+struct LightFonts {
+    ctx: FontContext,
+    covered: Vec<u64>,
+}
+
+impl LightFonts {
+    fn build() -> Option<Self> {
+        let bundled = BUNDLED_FONTS.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if bundled.is_empty() {
+            return None;
+        }
+        let mut ctx = FontContext {
+            collection: parley::fontique::Collection::new(parley::fontique::CollectionOptions {
+                system_fonts: false,
+                ..Default::default()
+            }),
+            source_cache: parley::fontique::SourceCache::new(Default::default()),
+        };
+        let mut extra = STATIC_EXTRA.read().unwrap_or_else(|e| e.into_inner()).clone();
+        extra.extend(EXTRA_FONTS.read().unwrap_or_else(|e| e.into_inner()).iter().cloned());
+        let mut covered = vec![0u64; 1024];
+        for blob in bundled.iter().chain(extra.iter()) {
+            ctx.collection.register_fonts(blob.clone(), None);
+            let data: &[u8] = blob.as_ref();
+            for index in 0u32.. {
+                let Ok(font) = skrifa::FontRef::from_index(data, index) else {
+                    break;
+                };
+                use skrifa::MetadataProvider;
+                for (cp, _) in font.charmap().mappings() {
+                    if cp < 0x10000 {
+                        covered[(cp >> 6) as usize] |= 1 << (cp & 63);
+                    }
+                }
+            }
+        }
+        map_empty_generic_families(&mut ctx);
+        Some(Self { ctx, covered })
+    }
+
+    fn covers(&self, c: char) -> bool {
+        let cp = c as u32;
+        cp < 0x10000 && self.covered[(cp >> 6) as usize] & (1 << (cp & 63)) != 0
+    }
+}
+
+static SHARED_LIGHT_FONTS: std::sync::RwLock<Option<Option<Arc<LightFonts>>>> = std::sync::RwLock::new(None);
+
+fn shared_light_fonts() -> Option<Arc<LightFonts>> {
+    if let Some(built) = SHARED_LIGHT_FONTS.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        return built.clone();
+    }
+    SHARED_LIGHT_FONTS
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(|| LightFonts::build().map(Arc::new))
+        .clone()
+}
+
+/// The font families a document may name and still be laid out with the light fonts: the ones they carry, the
+/// generic `sans-serif` (which they stand in for), and the families of the document's own `@font-face` rules.
+fn light_family_allowed(name: &str) -> bool {
+    let name = name.trim().trim_matches(|c| c == '\'' || c == '"').trim().to_ascii_lowercase();
+    matches!(
+        name.as_str(),
+        "noto sans" | "noto sans math" | "sans-serif" | "inherit" | "initial" | "unset" | ""
+    ) || DOC_FONT_FACES.with(|c| c.borrow().iter().any(|f| f.family.eq_ignore_ascii_case(&name)))
+}
+
+/// Whether laying out `html` needs the system's fonts: it has a character the light fonts lack (a numeric or unusual
+/// named entity, a CSS escape, or a non-ASCII character), names another font family, uses the `font` shorthand, or
+/// uses an element that defaults to another family (`code`, `pre`, form controls, `font`). One pass over the bytes.
+fn needs_system_fonts(html: &str, light: &LightFonts) -> bool {
+    const HEAVY_TAGS: [&str; 13] = [
+        "code", "pre", "tt", "kbd", "samp", "textarea", "input", "button", "select", "option", "font", "xmp", "listing",
+    ];
+    const SIMPLE_ENTITIES: [&str; 28] = [
+        "amp", "lt", "gt", "quot", "apos", "nbsp", "copy", "reg", "euro", "pound", "yen", "cent", "mdash", "ndash",
+        "hellip", "ldquo", "rdquo", "lsquo", "rsquo", "bull", "middot", "times", "divide", "deg", "plusmn", "trade",
+        "laquo", "raquo",
+    ];
+    let bytes = html.as_bytes();
+    if !html.is_ascii() && html.chars().any(|c| !c.is_ascii() && !light.covers(c)) {
+        return true;
+    }
+    let ci = |at: usize, word: &str| {
+        bytes.get(at..at + word.len()).is_some_and(|w| w.eq_ignore_ascii_case(word.as_bytes()))
+    };
+    let mut i = 0;
+    'scan: while i < bytes.len() {
+        match bytes[i] {
+            b'<' => {
+                let start = i + 1;
+                let end = bytes[start..]
+                    .iter()
+                    .position(|b| !b.is_ascii_alphanumeric())
+                    .map_or(bytes.len(), |p| start + p);
+                let tag = &html[start..end];
+                if HEAVY_TAGS.iter().any(|t| tag.eq_ignore_ascii_case(t)) {
+                    return true;
+                }
+                i = end.max(i + 1);
+            }
+            b'&' => {
+                let start = i + 1;
+                let end = bytes[start..]
+                    .iter()
+                    .take(12)
+                    .position(|b| *b == b';')
+                    .map(|p| start + p);
+                if let Some(end) = end {
+                    let name = &html[start..end];
+                    if let Some(num) = name.strip_prefix('#') {
+                        let code = match num.strip_prefix(['x', 'X']) {
+                            Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                            None => num.parse::<u32>().ok(),
+                        };
+                        match code.and_then(char::from_u32) {
+                            Some(c) if c.is_ascii() || light.covers(c) => {}
+                            _ => return true,
+                        }
+                    } else if !SIMPLE_ENTITIES.contains(&name) {
+                        return true;
+                    }
+                }
+                i += 1;
+            }
+            b'\\' => {
+                // A CSS escape such as `\1F600` or `\2022` can name any character.
+                if bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit()) {
+                    return true;
+                }
+                i += 1;
+            }
+            b'f' | b'F' if ci(i, "font") => {
+                let after = i + 4;
+                if ci(after, "-family") {
+                    let mut j = after + 7;
+                    while bytes.get(j).is_some_and(|b| b.is_ascii_whitespace()) {
+                        j += 1;
+                    }
+                    if bytes.get(j) != Some(&b':') {
+                        i = after;
+                        continue;
+                    }
+                    // The first family of the list that is available is the one used, and the light fonts have this one
+                    // when it is allowed: the names after it (`Arial`, `Helvetica`) are never looked up. A name may be
+                    // quoted. The declaration ends at `;`, `}`, `<`, or the quote that ends a `style="..."` attribute.
+                    let mut k = j + 1;
+                    while bytes.get(k).is_some_and(|b| b.is_ascii_whitespace()) {
+                        k += 1;
+                    }
+                    let (name_start, name_end) = match bytes.get(k) {
+                        Some(&q @ (b'"' | b'\'')) => {
+                            let from = k + 1;
+                            let to = bytes[from..].iter().position(|b| *b == q).map_or(bytes.len(), |p| from + p);
+                            (from, to)
+                        }
+                        _ => {
+                            let to = bytes[k..]
+                                .iter()
+                                .position(|b| matches!(b, b',' | b';' | b'}' | b'<' | b'"' | b'\''))
+                                .map_or(bytes.len(), |p| k + p);
+                            (k, to)
+                        }
+                    };
+                    let name = html[name_start..name_end].trim().trim_end_matches("!important").trim();
+                    if name.contains('(') || !light_family_allowed(name) {
+                        return true;
+                    }
+                    i = bytes[name_end..]
+                        .iter()
+                        .position(|b| matches!(b, b';' | b'}' | b'<' | b'"'))
+                        .map_or(bytes.len(), |p| name_end + p);
+                    continue 'scan;
+                } else {
+                    let mut j = after;
+                    while bytes.get(j).is_some_and(|b| b.is_ascii_whitespace()) {
+                        j += 1;
+                    }
+                    if bytes.get(j) == Some(&b':') {
+                        return true; // the `font` shorthand names a family too
+                    }
+                    i = after;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    false
+}
+
+/// Whether laying out `html` would use the system's fonts (`true`), or only the light ones set with
+/// `set_static_fonts` (`false`). Always `true` when there are no light fonts. For tests and diagnostics.
+pub fn document_needs_system_fonts(html: &str) -> bool {
+    shared_light_fonts().is_none_or(|light| needs_system_fonts(html, &light))
 }
 
 /// pdf-engine patch: a `FontContext` whose source cache already holds every discovered font
@@ -385,16 +621,22 @@ pub fn set_extra_fonts(fonts: Vec<Vec<u8>>) {
 /// fonts are opened and memory-mapped once per process instead of once per render.
 fn new_preloaded_font_context() -> FontContext {
     let mut ctx = FontContext::new();
-    for data in EXTRA_FONTS.read().unwrap_or_else(|e| e.into_inner()).iter() {
-        let blob: parley::fontique::Blob<u8> = (**data).clone().into();
-        ctx.collection.register_fonts(blob, None);
+    for blob in STATIC_EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        ctx.collection.register_fonts(blob.clone(), None);
+    }
+    for blob in EXTRA_FONTS.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        ctx.collection.register_fonts(blob.clone(), None);
     }
     map_empty_generic_families(&mut ctx);
-    let names: Vec<String> = ctx.collection.family_names().map(str::to_owned).collect();
-    for name in names {
-        if let Some(family) = ctx.collection.family_by_name(&name) {
-            for font in family.fonts() {
-                let _ = ctx.source_cache.get(font.source());
+    // Opening every installed font up front costs memory (on macOS about 190 MB resident) and the fonts a document
+    // uses are opened when it needs them, so this is only done where the font files are few (a server's curated set).
+    if cfg!(not(target_vendor = "apple")) {
+        let names: Vec<String> = ctx.collection.family_names().map(str::to_owned).collect();
+        for name in names {
+            if let Some(family) = ctx.collection.family_by_name(&name) {
+                for font in family.fonts() {
+                    let _ = ctx.source_cache.get(font.source());
+                }
             }
         }
     }
@@ -424,9 +666,12 @@ fn map_empty_generic_families(ctx: &mut FontContext) {
 /// pdf-engine patch: rediscover system fonts (e.g. after fonts were added) and use them for
 /// documents parsed from now on. Documents already being rendered keep their fonts.
 pub fn reload_system_fonts() {
-    let fresh = new_preloaded_font_context();
     crate::convert::clear_font_bytes_cache();
-    *SHARED_SYSTEM_FONTS.write().unwrap_or_else(|e| e.into_inner()) = Some(fresh);
+    // Both are built again when a document next needs them (the system fonts only if one does).
+    *SHARED_LIGHT_FONTS.write().unwrap_or_else(|e| e.into_inner()) = None;
+    let had_system = SHARED_SYSTEM_FONTS.read().unwrap_or_else(|e| e.into_inner()).is_some();
+    *SHARED_SYSTEM_FONTS.write().unwrap_or_else(|e| e.into_inner()) =
+        if had_system || BUNDLED_FONTS.read().unwrap_or_else(|e| e.into_inner()).is_empty() { Some(new_preloaded_font_context()) } else { None };
 }
 
 /// The single primitive that actually constructs an `HtmlDocument`.
@@ -451,7 +696,10 @@ fn parse_inner(
         // pdf-engine patch (see PATCHES.md): discover system fonts once per process and give
         // each document a clone, instead of letting Blitz rebuild the collection from
         // fontconfig on every parse. `FontContext` is designed to be a shared resource.
-        let mut ctx = shared_system_font_context();
+        let mut ctx = match shared_light_fonts() {
+            Some(light) if !needs_system_fonts(html, &light) => light.ctx.clone(),
+            _ => shared_system_font_context(),
+        };
         register_doc_font_faces(&mut ctx);
         Some(ctx)
     } else {
@@ -464,7 +712,9 @@ fn parse_inner(
             source_cache: parley::fontique::SourceCache::new(Default::default()),
         };
         for data in font_data {
-            let blob: parley::fontique::Blob<u8> = (**data).clone().into();
+            let blob: parley::fontique::Blob<u8> = parley::fontique::Blob::new(
+                Arc::clone(data) as Arc<dyn AsRef<[u8]> + Send + Sync>,
+            );
             ctx.collection.register_fonts(blob, None);
         }
         register_doc_font_faces(&mut ctx);
@@ -476,6 +726,9 @@ fn parse_inner(
         font_ctx,
         base_url: Some(base_url.unwrap_or_else(|| "file:///".to_string())),
         net_provider,
+        // Elements plus text nodes come to about the number of `<`, and the layout adds a few boxes of its own.
+        // Only address space is reserved: the pages of the array that are never used are never touched.
+        expected_nodes: Some((html.bytes().filter(|b| *b == b'<').count() * 11 / 10 + 64).min(4_000_000)),
         ..DocumentConfig::default()
     };
 
@@ -7351,3 +7604,4 @@ mod extract_html_title_tests {
         assert_eq!(super::extract_html_title(&doc), None);
     }
 }
+

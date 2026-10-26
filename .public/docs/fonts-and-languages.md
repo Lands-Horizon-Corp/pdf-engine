@@ -88,6 +88,15 @@ await pdf.reloadFonts();                        // after installing a font on th
 **Server:** copy the font into `/usr/share/fonts/pdf-engine` (in the image: mount a volume there), then
 `POST /api/fonts/reload`, or run with `FONT_WATCH=true` and it reloads when the folder changes.
 
+## The Node, Electron and Tauri engine: built-in fonts first
+
+The native engine of the Node package (`pdf-engine ipc`, and `pdf-engine print`) lays a document out with the fonts built
+into it (Noto Sans regular and bold, and a math font) when they cover it, and looks at the computer's fonts only for a
+document that needs them: text in a script they lack, another `font-family` than `Noto Sans` or `sans-serif`, `serif`
+or `monospace`, `<code>`, `<pre>` and form controls, or the `font` shorthand. This keeps an ordinary document at about
+20 MB instead of 400 MB on macOS. A document's own `@font-face` families count as covered. The HTTP server and Docker
+image do not do this: they use their curated font set as before.
+
 ## Notes
 
 - Fonts are loaded once per process and shared between documents, so adding fonts costs memory, not render time.

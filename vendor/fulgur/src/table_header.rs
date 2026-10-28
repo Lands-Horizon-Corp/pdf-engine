@@ -100,8 +100,10 @@ fn simulate(rows: &[RowInfo], header_height: f32, header_rows: usize, page_heigh
     starts
 }
 
-fn plan(doc: &BaseDocument, geometry: &PaginationGeometryTable, page_height: f32) -> Vec<Insertion> {
+fn plan(doc: &BaseDocument, geometry: &PaginationGeometryTable, page_height: f32) -> (Vec<Insertion>, Vec<usize>) {
     let mut out = Vec::new();
+    // body rows whose header copy no longer sits at the start of a page (see below)
+    let mut stale: Vec<usize> = Vec::new();
     for (table_id, node) in doc.tree().iter() {
         if node.element_data().is_none() || tag(doc, table_id) != Some("table") {
             continue;
@@ -143,6 +145,57 @@ fn plan(doc: &BaseDocument, geometry: &PaginationGeometryTable, page_height: f32
         if rows.len() < 2 {
             continue;
         }
+        // A page does not start in the middle of a small group of rows tied together by a `rowspan` cell (up to 4 rows): the break goes
+        // before the group's first row, so the group moves to the next page whole. A larger group is cut where the page ends (its
+        // spanning cell is split, see `plan_span_splits`).
+        let reach: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let span = element_children(doc, r.id)
+                    .into_iter()
+                    .filter_map(|c| {
+                        doc.get_node(c)
+                            .and_then(|n| n.element_data())
+                            .and_then(|e| crate::blitz_adapter::get_attr(e, "rowspan"))
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .max()
+                    .unwrap_or(1)
+                    .clamp(1, 1000);
+                if span <= 4 { i + span - 1 } else { i }
+            })
+            .collect();
+        // A copy is stale when the row after it would have fitted on the page before: the copies put in front of earlier pages pushed the
+        // rows down, so the break that was predicted (before this row) now falls elsewhere. Left in place it would break the page for
+        // nothing, so it is taken out again.
+        // (Left alone in a table with `rowspan` cells, where a row's height is not the room it needs.)
+        let any_rowspan = rows.iter().any(|r| {
+            element_children(doc, r.id).into_iter().any(|c| {
+                doc.get_node(c)
+                    .and_then(|n| n.element_data())
+                    .and_then(|e| crate::blitz_adapter::get_attr(e, "rowspan"))
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+                    .is_some_and(|n| n > 1)
+            })
+        });
+        if has_copies && !any_rowspan {
+            let gap = rows
+                .windows(2)
+                .find(|w| w[0].page == w[1].page)
+                .map_or(0.0, |w| (w[1].y - (w[0].y + w[0].height)).max(0.0));
+            for i in 1..rows.len() {
+                if copy_before.contains(&rows[i].id) {
+                    let (prev, row) = (&rows[i - 1], &rows[i]);
+                    // the row and the rest of its small `rowspan` group have to fit together
+                    let group_end = reach[i].min(rows.len() - 1).max(i);
+                    let needed: f32 = rows[i..=group_end].iter().map(|r| r.height).sum::<f32>() + gap * (group_end - i) as f32;
+                    if prev.page != row.page && prev.y + prev.height + gap + needed <= page_height + 0.5 {
+                        stale.push(rows[i].id);
+                    }
+                }
+            }
+        }
         let starts: Vec<usize> = if !has_copies && rows.last().map(|r| r.page) != rows.first().map(|r| r.page) {
             // First look at this table: predict every continuation page at once. The header height is the tallest cell
             // of each header row, added up; if the header was not laid out, fall back to the page-by-page rule below.
@@ -158,13 +211,22 @@ fn plan(doc: &BaseDocument, geometry: &PaginationGeometryTable, page_height: f32
         } else {
             react(&rows)
         };
+        let group_start = |mut i: usize| {
+            while i > 0 && (0..i).any(|j| reach[j] >= i) {
+                i = (0..i).find(|&j| reach[j] >= i).unwrap_or(i);
+            }
+            i
+        };
+        let mut starts: Vec<usize> = starts.into_iter().map(group_start).collect();
+        starts.sort_unstable();
+        starts.dedup();
         for i in starts {
-            if !copy_before.contains(&rows[i].id) {
+            if !copy_before.contains(&rows[i].id) && !stale.contains(&rows[i].id) {
                 out.push(Insertion { row: rows[i].id, header_rows: header_rows.clone() });
             }
         }
     }
-    out
+    (out, stale)
 }
 
 /// The rows that start a page after the first (as the layout stands now).
@@ -230,6 +292,30 @@ fn plan_span_splits(doc: &BaseDocument, container: usize, row: usize) -> (Vec<Sp
     (splits, row_cols)
 }
 
+/// The look a header cell gets from rules that name the `<thead>` (`thead th { background: ...; color: ... }`): a copy is put among the
+/// body rows, where those rules no longer match, so its background, text colour and font are written onto the copy as they computed
+/// on the original.
+fn header_look(doc: &BaseDocument, cell: usize) -> String {
+    let Some(st) = doc.get_node(cell).and_then(|n| n.primary_styles()) else {
+        return String::new();
+    };
+    let current = st.clone_color();
+    let rgba = |c: ::style::values::computed::Color| {
+        let c = c.resolve_to_absolute(&current).into_srgb_legacy();
+        let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        format!("rgba({},{},{},{:.3})", q(c.components.0), q(c.components.1), q(c.components.2), c.alpha.clamp(0.0, 1.0))
+    };
+    let mut out = String::new();
+    let bg = st.clone_background_color().resolve_to_absolute(&current).into_srgb_legacy();
+    if bg.alpha > 0.0 {
+        out.push_str(&format!("background-color:{};", rgba(st.clone_background_color())));
+    }
+    out.push_str(&format!("color:{};", rgba(::style::values::computed::Color::currentcolor())));
+    out.push_str(&format!("font-weight:{};", st.clone_font_weight().value()));
+    out.push_str(&format!("font-size:{}px;", st.clone_font_size().computed_size().px()));
+    out
+}
+
 /// Put header copies in front of every body row that starts a continuation page and has none yet. Returns how many
 /// rows were added (0 means the layout is final).
 pub(crate) fn repeat_table_headers(
@@ -237,8 +323,23 @@ pub(crate) fn repeat_table_headers(
     geometry: &PaginationGeometryTable,
     page_height_px: f32,
 ) -> usize {
-    let insertions = plan(doc, geometry, page_height_px);
+    let (insertions, stale) = plan(doc, geometry, page_height_px);
     let mut added = 0;
+    // Take out the copies that no longer start a page: the copy rows directly in front of the row.
+    for row in stale {
+        let Some(parent) = doc.get_node(row).and_then(|n| n.parent) else { continue };
+        let siblings = element_children(doc, parent);
+        let Some(pos) = siblings.iter().position(|&r| r == row) else { continue };
+        let copies: Vec<usize> = siblings[..pos].iter().rev().take_while(|&&r| is_copy(doc, r)).copied().collect();
+        if copies.is_empty() {
+            continue;
+        }
+        let mut m = doc.mutate();
+        for c in &copies {
+            m.remove_and_drop_node(*c);
+        }
+        added += copies.len();
+    }
     for ins in insertions {
         let container = doc.get_node(ins.row).and_then(|n| n.parent);
         let (splits, row_cols) = match container {
@@ -268,12 +369,39 @@ pub(crate) fn repeat_table_headers(
                 blitz_dom::QualName::new(None, blitz_dom::ns!(), blitz_dom::LocalName::from(COPY_ATTR)),
                 "1",
             );
-            if k == 0 {
-                // Opens the page, so the copy is never left alone at the bottom of the one before. The break is read from
-                // a cell (the table's layout children are its cells), and only the first cell of the row asks for it.
-                let first_cell = m.doc.get_node(copy).and_then(|n| n.children.iter().copied().find(|&c| m.doc.get_node(c).is_some_and(|c| c.element_data().is_some())));
-                if let Some(cell) = first_cell {
-                    m.set_style_property(cell, "break-before", "page");
+            // The cells of the copy, in order, and the cells of the row it was cloned from.
+            let copy_cells: Vec<usize> = m
+                .doc
+                .get_node(copy)
+                .map(|n| n.children.iter().copied().filter(|&c| m.doc.get_node(c).is_some_and(|c| c.element_data().is_some())).collect())
+                .unwrap_or_default();
+            let original_cells = element_children(m.doc, h);
+            let style_name = || blitz_dom::QualName::new(None, blitz_dom::ns!(), blitz_dom::LocalName::from("style"));
+            for (i, &cell) in copy_cells.iter().enumerate() {
+                let existing = m
+                    .doc
+                    .get_node(cell)
+                    .and_then(|n| n.element_data())
+                    .and_then(|e| crate::blitz_adapter::get_attr(e, "style"))
+                    .unwrap_or("")
+                    .trim_end_matches(|c: char| c == ';' || c.is_whitespace())
+                    .to_string();
+                let mut style_attr = String::new();
+                // the original's computed look goes first, so the cell's own inline style still wins
+                if let Some(&orig) = original_cells.get(i) {
+                    style_attr.push_str(&header_look(m.doc, orig));
+                }
+                if !existing.is_empty() {
+                    style_attr.push_str(&existing);
+                    style_attr.push(';');
+                }
+                // Opens the page, so the copy is never left alone at the bottom of the one before. The break rules are read from the
+                // text of the `style` attribute (not the parsed style), only the first cell of the row asks for it.
+                if k == 0 && i == 0 {
+                    style_attr.push_str("break-before:page;");
+                }
+                if !style_attr.is_empty() {
+                    m.set_attribute(cell, style_name(), &style_attr);
                 }
             }
             copies.push(copy);

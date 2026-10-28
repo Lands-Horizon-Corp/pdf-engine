@@ -1849,15 +1849,7 @@ fn fragment_block_subtree(
         .parent
         .and_then(|gp_id| doc.get_node(gp_id))
         .is_some_and(|gp| crate::blitz_adapter::is_orthogonal_to_parent(gp, parent));
-    // pdf-engine patch: the cells of a table row sit side by side like the items of a grid row, so a table gets the same row handling
-    // (a row that crosses a page break is cut in all its cells at once, and the rest continues from the same place).
-    let allow_same_row_rebase = crate::blitz_adapter::is_flex_or_grid_container_node(parent)
-        || parent.primary_styles().is_some_and(|st| {
-            matches!(
-                st.clone_display().inside(),
-                ::style::values::specified::box_::DisplayInside::Table
-            )
-        });
+    let allow_same_row_rebase = crate::blitz_adapter::is_flex_or_grid_container_node(parent);
     let suppress_page_check = allow_same_row_rebase
         || crate::blitz_adapter::is_atomic_inline_container_node(parent)
         || parent_is_orthogonal;
@@ -2360,9 +2352,19 @@ fn fragment_block_subtree(
         let first_child_may_move = page_start_y > 0.0 && child_h <= page_height_px;
         // pdf-engine patch: browsers slice a flex or grid item that crosses the page break (unless it asks
         // for `break-inside: avoid`); it does not jump to the next page whole.
+        // A table cell that spans rows (`rowspan`) is not cut: its group of rows moves to the next page together, otherwise the cell is
+        // cut while the cells beside it move whole and the rows come apart.
+        let spans_rows = child.element_data().is_some_and(|el| {
+            crate::blitz_adapter::get_attr(el, "rowspan")
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .is_some_and(|n| n > 1)
+        });
         let slice_item_here = !is_multicol
+            && !spans_rows
             && !child.element_data().is_some_and(|el| {
-                matches!(el.name.local.as_ref(), "table" | "img" | "svg")
+                // table rows stay whole: a row cut by the break puts its first fragment on one page and the rest on the next, and the
+                // header-repeat prediction then takes the next row for the first of the page
+                matches!(el.name.local.as_ref(), "table" | "img" | "svg" | "td" | "th")
             })
             && !matches!(
                 break_props.break_inside,

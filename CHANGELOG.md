@@ -9,7 +9,7 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 Pagination, right-to-left text and a Chrome parity score. Every page of a growing corpus (now 188 pages: whole documents,
 one-feature probes, right-to-left pages, 84 pagination pages and 16 complex tables) is made by headless Chrome and by pdf-engine,
 both drawn by the same rasteriser, and scored. The score is on the [demo page](https://lands-horizon-corp.github.io/pdf-engine/)
-and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 95.71 over all 188 pages (complex tables, the newest and hardest group, score 94.15: see Known gaps).
+and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 96.21 over all 188 pages (complex tables, the newest and hardest group, score 93.16: see Known gaps).
 
 ### Added
 
@@ -42,6 +42,11 @@ and described in [Parity with Chrome](.public/docs/parity.md). The first run sco
   nearest the top-left, with `hidden` removing it; the table's own `border` takes part. A cell's layout holds half of it on each side
   and the outer border is drawn from the table's edge inward, as a browser does. A table of mixed border styles and colours now
   matches Chrome (72 to 100).
+- **A repeated `<thead>` opens each page and keeps its look.** The copy is forced onto a new page (it could sit at the bottom of the page
+  before), it carries the original header's computed background, text colour and font (the copy lives among the body rows, where
+  `thead th { ... }` rules no longer match), a copy that no longer starts a page is taken out again (two long tables one after the other
+  got a stray header and a one-row page), and rows are never cut by a page break, so the header prediction stays right. Eleven of the
+  twelve table pagination pages now match Chrome at 99.8 to 100.
 - **`vertical-align` works in table cells** (`middle` is the default for `td`, also `top` and `bottom`): the content sits in the middle
   of the room the row gives it. It was always at the top of the cell.
 - **Table row backgrounds are painted.** `<tr style="background:...">` and zebra stripes (`tr:nth-child(even)`) were never drawn, because a row has no
@@ -67,9 +72,8 @@ and described in [Parity with Chrome](.public/docs/parity.md). The first run sco
   `padding-inline-*`, and `text-indent` at the start side.
 - `::before`/`::after` with `display: block` lay out side by side; an inline `<span>` with only a space
   paints no background; `column-rule` on a box that must split across columns.
-- A repeated `<thead>` can sit at the bottom of the page before when it fits there (it is not forced to open the next page), and a
-  table row is moved whole to the next page instead of being split across the break as Chrome does; the header copy also loses
-  `thead th` styling. Forcing the break alone adds pages, so it needs row splitting first.
+- A table row is moved whole to the next page, where Chrome cuts it at the page break and continues it after the repeated header
+  (so the last rows of a page can differ by one row). Matching that needs the header drawn as a page-level fragment, not a copied row.
 - Long documents drift from Chrome's page breaks because Chrome draws `sans-serif` as Helvetica and the engine as Noto Sans,
   which has looser line spacing.
 

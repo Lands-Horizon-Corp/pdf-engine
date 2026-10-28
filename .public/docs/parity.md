@@ -44,12 +44,13 @@ No tuning per case, no alignment of the two pages before comparing, and the thre
 
 ## Where it stands (28 October 2026, pdf-engine 1.4.1 plus the patches below, Chrome 156)
 
-Score **95.71, HEALTHY**: 164 pass, 18 close, 6 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
+Score **96.21, HEALTHY**: 168 pass, 14 close, 6 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
 
 What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `vendor/parley` and `vendor/blitz-dom`):
 
 - **Both sides use standards mode.** Several fixtures have no `<!doctype>`, which Chrome renders in quirks mode. The driver adds a
   doctype to both renderers: a change to the comparison, not to the engine. pdf-engine has no quirks mode.
+- **Repeated table headers** open every page, keep their styling and are removed again when a layout shift makes them stray.
 - **Tables:** `border-collapse: collapse` is a real collapsed-borders model (one border per shared edge, the widest and strongest
   wins), `vertical-align` works in cells, row backgrounds are painted, columns of a `width: 100%` table share the spare width in proportion to their content,
   a `rowspan` cell's `height` is spread over the rows it spans, `border-spacing` is applied, a cell with a nested table
@@ -71,11 +72,10 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 | --- | ---: | ---: |
 | columns | 34.4 | 0 of 1 |
 | backgrounds | 85.7 | 6 of 7 |
-| pagination: tables | 90.6 | 7 of 12 |
 | positioning | 91.8 | 2 of 3 |
 | box model and selectors | 91.9 | 7 of 8 |
-| whole documents | 93.5 | 15 of 20 |
-| complex tables | 94.2 | 12 of 16 |
+| complex tables | 93.2 | 11 of 16 |
+| whole documents | 93.6 | 15 of 20 |
 | pagination: headers and footers | 96.2 | 11 of 12 |
 | pagination: break-inside avoid | 96.6 | 11 of 12 |
 | right-to-left | 96.8 | 4 of 4 |
@@ -84,6 +84,7 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 | pagination: flex and grid | 97.7 | 11 of 12 |
 | borders | 99.2 | 15 of 16 |
 | pagination: forced breaks | 99.3 | 12 of 12 |
+| pagination: tables | 99.6 | 12 of 12 |
 | colour and opacity | 100.0 | 4 of 4 |
 | flexbox and grid | 100.0 | 3 of 3 |
 | images | 100.0 | 2 of 2 |

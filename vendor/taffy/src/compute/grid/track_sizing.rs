@@ -1045,13 +1045,16 @@ fn distribute_item_space_to_base_size(
                 filter = (|_| true) as fn(&GridTrack) -> bool;
             }
 
+            // pdf-engine patch: "beyond limits" means beyond the growth limits (CSS Grid 11.5.1 step 3). The limit check
+            // was kept, so a spanning item (a `rowspan` cell with a `height`) that needed more room than its tracks'
+            // limits allowed got none of it: only the first such cell in a table grew its rows.
             distribute_space_up_to_limits(
                 extra_space,
                 tracks,
                 filter,
                 &track_distribution_proportion,
                 get_base_size,
-                &track_limit, // Should apply only fit-content limit here?
+                |_| f32::INFINITY,
             );
         }
 

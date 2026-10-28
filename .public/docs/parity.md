@@ -44,12 +44,13 @@ No tuning per case, no alignment of the two pages before comparing, and the thre
 
 ## Where it stands (28 October 2026, pdf-engine 1.4.1 plus the patches below, Chrome 156)
 
-Score **93.81, HEALTHY**: 157 pass, 20 close, 11 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
+Score **94.48, DEGRADED**: 160 pass, 19 close, 9 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
 
 What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `vendor/parley` and `vendor/blitz-dom`):
 
 - **Both sides use standards mode.** Several fixtures have no `<!doctype>`, which Chrome renders in quirks mode. The driver adds a
   doctype to both renderers: a change to the comparison, not to the engine. pdf-engine has no quirks mode.
+- **Tables:** a `rowspan` cell's `height` is spread over the rows it spans, and `border-spacing` is applied.
 - **Right to left:** `dir` and `direction: rtl` set a paragraph's direction; a flex row flips in an rtl box.
 - **Inline boxes:** an `inline-block` with text sits on its text baseline and its margin is honoured.
 - **Images:** `<img>` of an SVG (a file or a data URI) and CSS `url()` backgrounds are drawn.
@@ -65,9 +66,9 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 | Category | Score | Pass |
 | --- | ---: | ---: |
 | columns | 34.4 | 0 of 1 |
-| complex tables | 79.0 | 6 of 16 |
 | backgrounds | 85.7 | 6 of 7 |
-| whole documents | 90.1 | 11 of 20 |
+| complex tables | 86.0 | 8 of 16 |
+| whole documents | 90.8 | 12 of 20 |
 | positioning | 91.8 | 2 of 3 |
 | box model and selectors | 91.9 | 7 of 8 |
 | borders | 92.9 | 14 of 16 |
@@ -86,10 +87,10 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 | transforms | 100.0 | 2 of 2 |
 | pagination: page count | 100.0 | 12 of 12 |
 
-Three categories are under 90, for these reasons:
+Categories under 90, for these reasons:
 
-- **complex tables** (16 cases, the newest group): merged headers, long tables, wide tables and invoices match Chrome (87 to 99), but
-  `border-collapse: separate` with rounded cells, nested tables, `outline` and vertical alignment inside `rowspan` cells do not yet.
+- **complex tables** (16 cases, the newest group): spans, merged headers, invoices, timetables, rounded cells and wide tables now match Chrome
+  (91 to 100); nested tables, `outline`, thick collapsed borders and some border styles do not yet.
 
 - **columns** (one case): `column-rule` on a box that must split across the columns when its only child is one empty tall block.
 - **backgrounds** (one case in seven): an inline `<span>` with only a space and some padding paints no background.

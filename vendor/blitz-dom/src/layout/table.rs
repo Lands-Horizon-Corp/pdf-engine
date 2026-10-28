@@ -68,6 +68,28 @@ pub(crate) fn build_table_context(
     style.grid_auto_columns = Vec::new();
     style.grid_auto_rows = Vec::new();
 
+    // pdf-engine patch: `border-spacing` in the separate-borders model (the default; the user-agent sheet sets 2px) is the
+    // gap between cells and also the space between the cells and the table's edge. It was parsed and never used.
+    if stylo_styles.clone_border_collapse()
+        == ::style::computed_values::border_collapse::T::Separate
+    {
+        let spacing = stylo_styles.clone_border_spacing();
+        let (sw, sh) = (spacing.0.width.0.px(), spacing.0.height.0.px());
+        style.gap = taffy::Size {
+            width: style_helpers::length(sw),
+            height: style_helpers::length(sh),
+        };
+        let pad = style
+            .padding
+            .resolve_or_zero(taffy::Size::NONE, |_, _| 0.0);
+        style.padding = taffy::Rect {
+            left: style_helpers::length(pad.left + sw),
+            right: style_helpers::length(pad.right + sw),
+            top: style_helpers::length(pad.top + sh),
+            bottom: style_helpers::length(pad.bottom + sh),
+        };
+    }
+
     let is_fixed = match stylo_styles.clone_table_layout() {
         TableLayout::Fixed => true,
         TableLayout::Auto => false,
@@ -432,10 +454,20 @@ impl taffy::CoreStyle for TableItemStyle<'_> {
         if self.width_auto {
             size.width = style_helpers::auto();
         }
+        // pdf-engine patch: `height` on a table row or cell is a minimum (CSS Tables 3 §3) for the row it sits in:
+        // the grid sees it as a minimum height, so a spanning cell's `height` is spread over the rows it spans.
+        if size.height.tag() == taffy::CompactLength::LENGTH_TAG {
+            size.height = style_helpers::auto();
+        }
         size
     }
     fn min_size(&self) -> taffy::Size<Dimension> {
-        taffy::CoreStyle::min_size(self.base)
+        let mut min = taffy::CoreStyle::min_size(self.base);
+        let height = taffy::CoreStyle::size(self.base).height;
+        if height.tag() == taffy::CompactLength::LENGTH_TAG && min.height.tag() == taffy::CompactLength::AUTO_TAG {
+            min.height = height;
+        }
+        min
     }
     fn max_size(&self) -> taffy::Size<Dimension> {
         taffy::CoreStyle::max_size(self.base)

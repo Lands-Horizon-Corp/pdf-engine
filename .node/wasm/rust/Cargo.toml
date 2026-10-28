@@ -1,6 +1,6 @@
 [package]
 name = "pdf-engine-wasm"
-version = "1.4.1"
+version = "1.5.0"
 edition = "2024"
 description = "pdf-engine for the browser: the same renderer, compiled to WebAssembly"
 license = "MIT"

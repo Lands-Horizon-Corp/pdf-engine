@@ -13,3 +13,7 @@ Copy of [blitz-dom](https://github.com/DioxusLabs/blitz) 0.2.4 (MIT OR Apache-2.
 | 6 | `src/config.rs`, `src/document.rs` | `DocumentConfig::expected_nodes` sizes the node array up front | The array doubled as the document grew, and each doubling copied it with the old and new arrays both in memory |
 | 7 | `src/layout/table.rs` | A table row or cell is laid out with a view (`TableItemStyle`) of its node's style plus its grid placement, instead of a stored copy of the style | Every row and cell held a second copy of its style (about 470 bytes) |
 | 8 | `src/document.rs`, `src/layout/damage.rs` | `paint_children` (a second copy of each container's child list, for painting and hit testing in a window) is not made | A PDF is not painted that way; nothing reads it |
+| 9 | `src/layout/construct.rs` | The paragraph's base direction (CSS `direction`, so `dir="rtl"` too) is passed to parley | `dir="rtl"` did nothing for Latin text. Needs the parley patch |
+| 10 | `assets/default.css` | `[dir=rtl]` and `[dir=ltr]` set `direction`; `dir="auto"` leaves the paragraph direction to the first strong letter (`construct.rs`) | The UA stylesheet used Gecko-only `:-moz-dir-attr-*` selectors, which never matched |
+| 11 | `src/layout/damage.rs` | In a `direction: rtl` box a flex row is flipped (`row` becomes `row-reverse` and back) | taffy has no `direction`; flex items in an rtl container started at the left |
+| 12 | `src/layout/inline.rs`, `construct.rs` | The first text baseline of an inline box is passed to parley (`InlineBox::baseline`) | See parley patch 2 |

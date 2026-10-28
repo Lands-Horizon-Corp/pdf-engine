@@ -95,6 +95,27 @@
   .about summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
   .about .links { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; }
   .about .small { color: var(--muted); font-size: 13px; }
+  .parity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0 0 10px; padding: 8px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .parity[hidden] { display: none; }
+  .parity b.score { font-size: 20px; }
+  .parity .health { font-weight: 700; padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; font-size: 12px; }
+  .parity .HEALTHY { color: var(--ok); } .parity .DEGRADED { color: #b7791f; } .parity .BROKEN { color: var(--err-text); }
+  .parity .muted { color: var(--muted); }
+  .parity { display: block; } .parity .top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+  .parity .top button { font: inherit; font-size: 12px; padding: 2px 10px; cursor: pointer; }
+  .parity table { border-collapse: collapse; margin-top: 10px; width: 100%; max-width: 760px; }
+  .parity th, .parity td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  .parity tbody tr { cursor: pointer; } .parity tbody tr:hover { background: var(--code-bg); }
+  .parity .case { margin: 12px 0; } .parity .case img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; display: block; margin-top: 4px; }
+  .parity .case .v { font-weight: 700; } .parity .v.pass { color: var(--ok); } .parity .v.close { color: #b7791f; } .parity .v.fail, .parity .v.error { color: var(--err-text); }
+  .parity .key { font-size: 12px; color: var(--muted); }
+  .parity .pics { position: relative; margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #fff; }
+  .parity .pics .labels { display: grid; grid-template-columns: 1fr 1fr 1fr; background: var(--code-bg); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 700; }
+  .parity .pics .labels span { padding: 4px 10px; } .parity .pics .labels span + span, .parity .pics .rule { border-left: 2px solid var(--accent); }
+  .parity .pics .labels .diff { font-weight: 400; color: var(--muted); }
+  .parity .pics .rule { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; }
+  .parity .pics .rule.r1 { left: 33.333%; } .parity .pics .rule.r2 { left: 66.666%; }
+  .parity .case .pics img { border: 0; border-radius: 0; margin: 0; width: 100%; }
 </style>
 </head>
 <body>
@@ -107,6 +128,20 @@
     <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/templates.md">Template guide</a>
   </nav>
 </header>
+
+<section class="parity" id="parity" hidden aria-label="Parity with Chrome">
+  <div class="top">
+    <span>Parity with Chrome</span> <b class="score" id="parity-score"></b><span class="muted">/ 100</span>
+    <span class="health" id="parity-health"></span>
+    <span class="muted" id="parity-detail"></span>
+    <button type="button" id="parity-toggle" aria-expanded="false">Show every category</button>
+    <a href="https://github.com/Lands-Horizon-Corp/pdf-engine/blob/master/.public/docs/parity.md">How it is measured</a>
+  </div>
+  <div id="parity-body" hidden>
+    <table id="parity-cats"><thead><tr><th>Category</th><th>Score</th><th>Cases</th><th>Pass</th><th>Close</th><th>Not yet</th></tr></thead><tbody></tbody></table>
+    <div id="parity-cases"></div>
+  </div>
+</section>
 
 <div class="bar">
   <label>Example
@@ -501,6 +536,39 @@ try {
   status.textContent = 'The engine could not load: ' + e.message;
 }
 window.__demo = { get ready() { return !!pdf; } };
+</script>
+<script>
+fetch('parity.json').then((r) => (r.ok ? r.json() : Promise.reject())).then((p) => {
+  const $ = (id) => document.getElementById(id);
+  $('parity-score').textContent = p.score.toFixed(1);
+  $('parity-health').textContent = p.health; $('parity-health').className = 'health ' + p.health;
+  $('parity-detail').textContent = p.pass + ' of ' + p.cases + ' pages match (' + p.close + ' close, ' + p.fail + ' not yet) against ' + p.reference.split(' (')[0] + ', engine ' + p.engineVersion;
+  const tbody = $('parity-cats').querySelector('tbody');
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  let open = null, showAll = false;
+  const showCases = () => {
+    const box = $('parity-cases');
+    if (!open) { box.innerHTML = ''; return; }
+    const rows = p.results.filter((r) => r.category === open && (showAll || r.verdict !== 'pass'));
+    box.innerHTML = '<h3>' + esc(open) + '</h3><label><input type="checkbox" id="parity-all"' + (showAll ? ' checked' : '') + '> show the cases that pass too</label>'
+      + '<div class="key">Each picture has three panels, left to right: Chrome, pdf-engine, and what differs.</div>'
+      + (rows.length ? rows.map((r) => '<div class="case"><span class="v ' + r.verdict + '">' + r.verdict + '</span> ' + r.score + ' · ' + esc(r.name) + (r.why ? ' <span class="muted">(' + esc(r.why) + ')</span>' : '') + '<div class="pics"><div class="labels"><span>Chrome (the reference)</span><span>pdf-engine</span><span>Difference <span class="diff">red: only in Chrome · blue: only in pdf-engine</span></span></div><span class="rule r1"></span><span class="rule r2"></span><img loading="lazy" src="' + esc(r.image) + '" alt="Chrome, pdf-engine and the difference for ' + esc(r.name) + '"></div></div>').join('') : '<p class="muted">Every case in this category passes.</p>');
+    $('parity-all').onchange = (e) => { showAll = e.target.checked; showCases(); };
+  };
+  for (const c of p.categories) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + esc(c.name) + '</td><td>' + c.score.toFixed(1) + '</td><td>' + c.cases + '</td><td>' + c.pass + '</td><td>' + c.close + '</td><td>' + c.fail + '</td>';
+    tr.onclick = () => { open = c.name; showAll = false; showCases(); $('parity-cases').scrollIntoView({ block: 'nearest' }); };
+    tbody.appendChild(tr);
+  }
+  $('parity-toggle').onclick = () => {
+    const hidden = $('parity-body').hidden;
+    $('parity-body').hidden = !hidden;
+    $('parity-toggle').setAttribute('aria-expanded', String(hidden));
+    $('parity-toggle').textContent = hidden ? 'Hide' : 'Show every category';
+  };
+  $('parity').hidden = false;
+}).catch(() => {});
 </script>
 </body>
 </html>

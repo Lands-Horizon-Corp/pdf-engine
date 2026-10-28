@@ -646,3 +646,101 @@ pub fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     std::fs::write(&p, bytes).unwrap();
     p
 }
+
+// ---------------------------------------------------------------------------------------------
+// Looking at the pixels
+// ---------------------------------------------------------------------------------------------
+
+/// A rendered page as RGBA pixels (white paper), for tests that check where things were drawn.
+pub struct Raster {
+    pub width: usize,
+    pub height: usize,
+    pub rgba: Vec<u8>,
+}
+
+/// One of the three flat test colours a span can be painted with; see [`Raster::centroid_x`].
+#[derive(Clone, Copy, Debug)]
+pub enum Ink {
+    Red,
+    Blue,
+    Green,
+    Any,
+}
+
+impl Ink {
+    fn matches(self, r: i32, g: i32, b: i32) -> bool {
+        match self {
+            Ink::Red => r - g > 90 && r - b > 90,
+            Ink::Blue => b - r > 90 && b - g > 90,
+            Ink::Green => g - r > 60 && g - b > 60,
+            Ink::Any => r + g + b < 3 * 200,
+        }
+    }
+}
+
+/// Rasterise page `page` (0-based) of a PDF at `scale` pixels per point.
+pub fn rasterize(pdf: &[u8], page: usize, scale: f32) -> Raster {
+    use hayro::hayro_interpret::InterpreterSettings;
+    use hayro::hayro_syntax::Pdf;
+    let document = Pdf::new(pdf.to_vec()).expect("hayro cannot read the PDF");
+    let pages = hayro::render_pdf(&document, scale, InterpreterSettings::default(), None)
+        .expect("hayro cannot rasterise the PDF");
+    let pixmap = pages.get(page).expect("no such page");
+    Raster {
+        width: pixmap.width() as usize,
+        height: pixmap.height() as usize,
+        rgba: pixmap.data_as_u8_slice().to_vec(),
+    }
+}
+
+impl Raster {
+    fn pixels(&self, ink: Ink) -> impl Iterator<Item = (usize, usize)> + '_ {
+        (0..self.height).flat_map(move |y| {
+            (0..self.width).filter_map(move |x| {
+                let p = &self.rgba[(y * self.width + x) * 4..][..4];
+                ink.matches(p[0] as i32, p[1] as i32, p[2] as i32)
+                    .then_some((x, y))
+            })
+        })
+    }
+
+    /// How many pixels are painted in this colour.
+    pub fn count(&self, ink: Ink) -> usize {
+        self.pixels(ink).count()
+    }
+
+    /// Mean x of the pixels in this colour, as a fraction of the page width (0 = left edge, 1 = right edge).
+    pub fn centroid_x(&self, ink: Ink) -> Option<f32> {
+        let (sum, n) = self
+            .pixels(ink)
+            .fold((0f64, 0usize), |(s, n), (x, _)| (s + x as f64, n + 1));
+        (n > 0).then(|| (sum / n as f64) as f32 / self.width as f32)
+    }
+
+    /// Mean y of the pixels in this colour, as a fraction of the page height.
+    pub fn centroid_y(&self, ink: Ink) -> Option<f32> {
+        let (sum, n) = self
+            .pixels(ink)
+            .fold((0f64, 0usize), |(s, n), (_, y)| (s + y as f64, n + 1));
+        (n > 0).then(|| (sum / n as f64) as f32 / self.height as f32)
+    }
+
+    /// Left and right edge of the ink, as fractions of the page width.
+    pub fn x_extent(&self, ink: Ink) -> Option<(f32, f32)> {
+        let (lo, hi) = self
+            .pixels(ink)
+            .fold((usize::MAX, 0usize), |(lo, hi), (x, _)| {
+                (lo.min(x), hi.max(x))
+            });
+        (hi >= lo && lo != usize::MAX)
+            .then(|| (lo as f32 / self.width as f32, hi as f32 / self.width as f32))
+    }
+}
+
+/// Render a document through the real engine and return the PDF.
+pub async fn render_pdf(html: &str) -> Vec<u8> {
+    let app = TestApp::builder().spawn().await;
+    let resp = app.to_bytes(form(html)).await;
+    assert_eq!(resp.status(), 200, "render failed: {html}");
+    resp.bytes().await.unwrap().to_vec()
+}

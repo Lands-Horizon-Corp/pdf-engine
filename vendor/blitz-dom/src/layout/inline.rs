@@ -8,6 +8,29 @@ use super::resolve_calc_value;
 use crate::BaseDocument;
 
 impl BaseDocument {
+    /// pdf-engine patch: the distance from the top of a box to the baseline of its first line of text, looking
+    /// through block children (taffy's block layout does not report baselines). `None` if it has no text.
+    fn first_text_baseline(&self, node_id: usize, depth: usize) -> Option<f32> {
+        let node = &self.nodes[node_id];
+        let el = node.data.downcast_element()?;
+        if let Some(inline) = &el.inline_layout_data {
+            let line = inline.layout.lines().next()?;
+            let l = &node.unrounded_layout;
+            return Some(l.padding.top + l.border.top + line.metrics().baseline / self.viewport.scale());
+        }
+        if depth > 8 {
+            return None;
+        }
+        node.children.iter().find_map(|&c| {
+            let child = &self.nodes[c];
+            if child.style.position == Position::Absolute {
+                return None;
+            }
+            self.first_text_baseline(c, depth + 1)
+                .map(|b| child.unrounded_layout.location.y + b)
+        })
+    }
+
     pub(crate) fn compute_inline_layout(
         &mut self,
         node_id: usize,
@@ -26,7 +49,7 @@ impl BaseDocument {
         // TODO: eliminate clone
         let style = self.nodes[node_id].style.clone();
 
-        let output = compute_leaf_layout(
+        let mut output = compute_leaf_layout(
             inputs,
             &style,
             resolve_calc_value,
@@ -52,10 +75,17 @@ impl BaseDocument {
                     if style.position == Position::Absolute {
                         ibox.width = 0.0;
                         ibox.height = 0.0;
+                        ibox.baseline = None;
                     } else {
                         let output = self.compute_child_layout(NodeId::from(ibox.id), child_inputs);
                         ibox.width = (margin.left + margin.right + output.size.width) * scale;
                         ibox.height = (margin.top + margin.bottom + output.size.height) * scale;
+                        // pdf-engine patch: an inline-block with text aligns its first text baseline with the line's
+                        ibox.baseline = output
+                            .first_baselines
+                            .y
+                            .or_else(|| self.first_text_baseline(ibox.id as usize, 0))
+                            .map(|b| (margin.top + b) * scale);
                     }
                 }
 
@@ -259,6 +289,18 @@ impl BaseDocument {
                 })
             },
         );
+
+        // pdf-engine patch: report the first line's baseline, so an inline-block with text can sit on it
+        if let Some(line) = inline_layout.layout.lines().next() {
+            let style = &self.nodes[node_id].style;
+            let pb = style
+                .padding
+                .resolve_or_zero(inputs.parent_size, resolve_calc_value)
+                + style
+                    .border
+                    .resolve_or_zero(inputs.parent_size, resolve_calc_value);
+            output.first_baselines.y = Some(pb.top + line.metrics().baseline / scale);
+        }
 
         // Put layout back
         self.nodes[node_id]

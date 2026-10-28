@@ -1074,3 +1074,7 @@ slot {
         background-color: transparent;
     }
 }
+
+/* pdf-engine patch: the dir attribute sets the direction (stylo has no :-moz-dir-attr-* matching) */
+[dir=rtl i] { direction: rtl; }
+[dir=ltr i] { direction: ltr; }

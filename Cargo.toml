@@ -49,6 +49,7 @@ tempfile = "3"
 flate2 = "1"
 axum = { version = "0.8.9", features = ["multipart"] }
 rqrr = "0.11.0"
+png = "0.18"
 
 # Patched fulgur: shares the system font context and font data across renders. See
 # vendor/fulgur/PATCHES.md.
@@ -62,6 +63,8 @@ fontique = { path = "vendor/fontique" }
 taffy = { path = "vendor/taffy" }
 # Patched krilla: adjustable zlib level. See vendor/krilla/PATCHES.md.
 krilla = { path = "vendor/krilla" }
+# Patched parley: a paragraph's base direction can be set. See vendor/parley/PATCHES.md.
+parley = { path = "vendor/parley" }
 # Patched blitz-dom: one user-agent stylesheet parse per thread. See vendor/blitz-dom/PATCHES.md.
 blitz-dom = { path = "vendor/blitz-dom" }
 

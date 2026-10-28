@@ -43,3 +43,4 @@ playwright-report/
 .public/benchmark/out/
 .public/benchmark/tools/
 .public/benchmark/browser/dist/
+.public/parity/out/

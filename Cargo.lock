@@ -3492,8 +3492,6 @@ dependencies = [
 [[package]]
 name = "parley"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26746861bb76dbc9bcd5ed1b0b55d2fedf291100961251702a031ab2abd2ce52"
 dependencies = [
  "fontique",
  "harfrust",
@@ -3535,6 +3533,7 @@ dependencies = [
  "notify",
  "nusb",
  "opendal",
+ "png 0.18.1",
  "pulldown-cmark",
  "qrcode",
  "regex",

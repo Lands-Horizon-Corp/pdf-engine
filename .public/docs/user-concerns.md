@@ -21,7 +21,8 @@ Contents: [The "export this page" button](#1-the-export-this-page-button) ·
 [Layout: pages, breaks, headers, fonts](#3-layout-pages-breaks-headers-fonts) ·
 [Quality of the output](#4-quality-of-the-output) · [Speed and scale](#5-speed-and-scale) ·
 [Security](#6-security) · [Accessibility and archiving](#7-accessibility-and-archiving) ·
-[Do you need a PDF at all?](#8-do-you-need-a-pdf-at-all) · [The plan](#9-the-plan-in-order)
+[Do you need a PDF at all?](#8-do-you-need-a-pdf-at-all) · [The plan](#9-the-plan-in-order) ·
+[Concerns raised about IronPress, our closest rival](#10-concerns-raised-about-ironpress-our-closest-rival)
 
 ---
 
@@ -143,3 +144,41 @@ Ordered by how often the concern comes up and how much it blocks real documents.
 
 Items 1 to 7 are the ones that decide whether a given report can move to pdf-engine; items 8 and 9 are about reach.
 The release notes ([CHANGELOG](../../CHANGELOG.md)) say when one lands.
+
+---
+
+## 10. Concerns raised about IronPress, our closest rival
+
+[IronPress](https://github.com/gastongouron/ironpress) is a pure-Rust HTML/CSS/Markdown to PDF crate that also compiles to
+WebAssembly, so it is the project people compare us with. Its launch thread on r/rust shows what users hit within a day
+of trying it. Each is a bug or complaint a user found in a rival, so each is a test we should pass **before** they find
+it in ours. The "Today" column is from our own docs and README; **items marked "check" have not been re-tested for this
+page** and need a test in `tests/` before we claim them.
+
+| Concern raised in the thread | Today | What we do, and what to do |
+| --- | --- | --- |
+| **Right-to-left text "completely broken"** (Arabic; IronPress had only a simple bidi approach). | 🟡 check | Text is shaped by Parley and Arabic, Hebrew, Urdu, Thaana and Syriac are laid out right to left ([Fonts](fonts-and-languages.md)). [`tests/bidi.rs`](../../tests/bidi.rs) has 38 cases: 27 pass and 11 are known gaps. A paragraph now follows `dir` / `direction: rtl` and a flex row flips in an rtl box. Still missing: `<bdo>` and `unicode-bidi` isolates, grid, table and list mirroring in rtl, `float: inline-start`, `padding-inline-*` and `text-indent` at the start side. |
+| **Too many fonts embedded: a small PDF was about 1 MB, 90% of it fonts, only one font used.** | ✅ check | Krilla subsets every font, keeping only the glyphs used. **To do:** add a test that fails if a one-line PDF is over a few tens of KB, and one that checks an unused bundled font is not in the file. |
+| **Fonts for other scripts should be on demand, not always bundled.** | 🟡 | Same as section 3: the browser package does not bundle CJK, Arabic, Thai or colour emoji. Optional packs fetched on demand are plan item 8. |
+| **Chinese, Japanese, Korean ignored in the playground** (no font loaded to stay small). | 🟡 | Same cause and same plan: no CJK font in the browser unless you load one. **To do:** make the playground say so instead of silently dropping the text, and offer one click to load a CJK font. |
+| **Code blocks (```) should use a fixed-width font.** | ✅ check | `<pre>` and `<code>` use a monospace family. **To do:** a test on Markdown fenced blocks specifically. |
+| **Extra line break around bullet points when there is a blank line before the list.** | ✅ check | **To do:** a test on Markdown lists with and without a blank line before them, nested lists, and a list straight after a heading. |
+| **"Use an existing text layout library (Parley, cosmic-text)."** | ✅ | We already do: Parley for shaping and line breaking. Worth saying on the front page, since a reader of that thread would want to know. |
+| **Deterministic output: same HTML, same bytes.** | 🟡 check | Claimed by IronPress. PDFs normally carry a creation date and an ID. **To do:** test that two renders are byte-identical, and offer a fixed date (or none) so a hash or a snapshot test is stable. |
+| **A live parity dashboard against Chromium, page by page** (their stated moat). | 🟡 | Done as [parity.md](parity.md): 88 pages rendered by Chrome and by us, drawn by the same rasteriser, scored, shown on the demo page. Today **87.86, HEALTHY**. Not yet run per commit in CI. |
+| **Bindings for other languages (they promise PyPI and RubyGems).** | 🔴 | Official clients are JavaScript only; other languages use the HTTP server or CLI. Same as plan item 9: PHP, Python, Go, C# examples first, then a published Python package. |
+| **Runs where Chromium cannot: Cloudflare Workers, Vercel Edge, Deno Deploy.** | 🟡 | The WebAssembly package runs in the browser and Node.js. We have **not tested** a specific edge runtime (section 2). **To do:** a smoke test and a short guide for Workers, Vercel Edge and Deno. |
+| **Server cost at scale for invoices, receipts, labels.** | ✅ | The core use case, measured in section 5. |
+| **"More functionality: look at Pandoc."** | ⚪ | Pandoc converts between document formats; we are a layout engine for templates and data. Not a goal. |
+| **Trust: an AI-written project is "against the rules" for some communities.** | ⚪ | Not a technical gap. What helps is what already exists: a [testing guide](testing.md), public benchmarks with the method, and every claim in this page marked honestly. |
+
+**Where we can beat them.** They shipped fast and the thread is mostly bug reports found by strangers. The cheapest way
+to win is to find those bugs first: turn every row marked "check" into a test, publish the Chromium parity score, and
+keep this page honest. Ordered by value:
+
+1. **RTL and bidi test suite** (the most upvoted complaint, 29 votes).
+2. **Chromium parity score**, per commit, page by page.
+3. **Size and determinism tests**: a tiny PDF stays tiny; two renders are byte-identical; fixed date option.
+4. **Markdown tests**: fenced code in monospace, list spacing.
+5. **On-demand font packs** and a playground that explains a missing CJK font.
+6. **Edge runtime guides** (Workers, Vercel, Deno) and **Python, PHP, Go, C# examples**.

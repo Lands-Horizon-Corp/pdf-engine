@@ -883,6 +883,22 @@ pub(crate) fn build_inline_layout_into(
 
     let root_line_height = resolve_line_height(parley_style.line_height, parley_style.font_size);
 
+    // pdf-engine patch: the paragraph's base direction is the CSS `direction` of its block (dir="rtl" sets it too)
+    // `dir="auto"` takes the direction of the first strong letter instead.
+    let dir_auto = root_node
+        .element_data()
+        .and_then(|el| el.attr(local_name!("dir")))
+        .is_some_and(|v| v.eq_ignore_ascii_case("auto"));
+    layout_ctx.base_direction_rtl = root_node_style
+        .as_ref()
+        .filter(|_| !dir_auto)
+        .map(|s| {
+            matches!(
+                s.get_inherited_box().clone_direction(),
+                style::properties::longhands::direction::computed_value::T::Rtl
+            )
+        });
+
     // Create a parley tree builder
     let mut builder = layout_ctx.tree_builder(font_ctx, scale, true, &parley_style);
 
@@ -1006,6 +1022,7 @@ pub(crate) fn build_inline_layout_into(
                                 // Width and height are set during layout
                                 width: 0.0,
                                 height: 0.0,
+                                baseline: None,
                             });
                         } else if *tag_name == local_name!("br") {
                             // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
@@ -1082,6 +1099,7 @@ pub(crate) fn build_inline_layout_into(
                             // Width and height are set during layout
                             width: 0.0,
                             height: 0.0,
+                            baseline: None,
                         });
                     }
                 };

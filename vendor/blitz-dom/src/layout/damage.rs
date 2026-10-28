@@ -349,6 +349,18 @@ impl BaseDocument {
 
             // if damage.intersects(RestyleDamage::RELAYOUT | CONSTRUCT_BOX) {
             node.style = stylo_taffy::to_taffy_style(style);
+            // pdf-engine patch: taffy has no `direction`, so in a right-to-left flex container the row axis is flipped
+            // (main-start is the right edge), which also flips `justify-content: flex-start`/`flex-end`.
+            if matches!(
+                style.get_inherited_box().clone_direction(),
+                ::style::properties::longhands::direction::computed_value::T::Rtl
+            ) {
+                node.style.flex_direction = match node.style.flex_direction {
+                    taffy::FlexDirection::Row => taffy::FlexDirection::RowReverse,
+                    taffy::FlexDirection::RowReverse => taffy::FlexDirection::Row,
+                    other => other,
+                };
+            }
             node.display_constructed_as = style.clone_display();
             float_role.apply(&mut node.style);
             // }

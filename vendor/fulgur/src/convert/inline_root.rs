@@ -574,13 +574,9 @@ pub(super) fn extract_paragraph(
 
                     let link = ctx.link_cache.lookup(doc, node_id);
                     let height = positioned.height.as_px().in_pt();
-                    // Read baseline from `out` (Drawables). The Drawables-aware
-                    // lookup queries `out.paragraphs[node_id]` (and
-                    // `block_styles[node_id]` for top-inset) directly.
-                    let baseline_shift =
-                        inline_box_baseline_offset_from_drawables(doc, out, node_id)
-                            .map(|bo| height - bo)
-                            .unwrap_or(crate::units::Pt::ZERO);
+                    // pdf-engine patch: parley now places the box on its own text baseline (`InlineBox::baseline`),
+                    // so no extra shift is applied here.
+                    let baseline_shift = crate::units::Pt::ZERO;
                     let computed_y =
                         positioned.y.as_px().in_pt() - accumulated_line_top + baseline_shift;
                     let visible = doc

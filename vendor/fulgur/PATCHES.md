@@ -20,7 +20,7 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 12 | `src/lib.rs`, `render.rs`, `image.rs` | `with_image_interpolation(on, f)`: images are drawn with the `/Interpolate` flag unless turned off for the thread | PDF/A forbids the flag, so the renderer turns it off for PDF/A documents |
 | 13 | `src/blitz_adapter.rs`, `lib.rs` | A "light" font context (fonts the host builds in, `set_static_fonts`) is used for a document its fonts cover, and the system fonts are looked at only for a document that needs them (`document_needs_system_fonts`); system fonts are not all opened up front on Apple platforms | Enumerating the system fonts cost about 200 MB resident and 100 ms on macOS, for every process, even for a receipt |
 | 14 | `src/blitz_adapter.rs` | Font bytes are shared as blobs, never copied: the host's fonts keep one identity in every context, `@font-face` fonts are shared with the document, and built-in fonts are `&'static` | A copy of every font for every document and every context |
-| 15 | `src/blitz_adapter.rs` | `expected_nodes` is passed from the number of `<` in the HTML | See blitz-dom patch 6 |
+| 15 | `src/blitz_adapter.rs` | `expected_nodes` is passed from the number of `<` in the HTML | See blitz-dom patch 6 || 16 | `src/convert/inline_root.rs` | No baseline shift for an inline box: parley places it on its text baseline | See parley patch 2. The shift double-counted, and the line was too tall |
 
 ## Upgrading fulgur
 

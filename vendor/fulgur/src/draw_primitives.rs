@@ -747,6 +747,17 @@ pub struct BlockStyle {
     pub overflow_y: Overflow,
     /// Box shadows in CSS declaration order (first = top-most in paint stack).
     pub box_shadows: Vec<BoxShadow>,
+    /// pdf-engine patch: the `outline`, drawn outside the border edge (after the offset) and never taking up room.
+    pub outline: Option<Outline>,
+}
+
+/// pdf-engine patch: a resolved `outline` (all lengths in pt).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Outline {
+    pub width: crate::units::Pt,
+    pub offset: crate::units::Pt,
+    pub color: [u8; 4],
+    pub style: BorderStyleValue,
 }
 
 /// CSS border-style values supported by fulgur.
@@ -1014,6 +1025,7 @@ impl BlockStyle {
             || self.border_widths.iter().any(|&w| w.to_f32() > 0.0)
             || self.padding.iter().any(|&p| p.to_f32() > 0.0)
             || !self.box_shadows.is_empty()
+            || self.outline.is_some()
     }
 
     /// Returns (left_inset, top_inset) for content positioning inside border+padding.
@@ -1543,6 +1555,38 @@ fn draw_border_line(
             }
         }
     }
+}
+
+/// pdf-engine patch: paint a block's `outline`: a border-like ring around the border box, `offset` away from it.
+/// (x, y, w, h) is the border box.
+pub(crate) fn draw_block_outline(
+    canvas: &mut Canvas<'_, '_>,
+    style: &BlockStyle,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let Some(o) = style.outline else {
+        return;
+    };
+    let (width, offset) = (o.width.to_f32(), o.offset.to_f32());
+    if width <= 0.0 || o.style == BorderStyleValue::None {
+        return;
+    }
+    let grow = offset + width;
+    let (ow, oh) = (w + 2.0 * grow, h + 2.0 * grow);
+    if ow <= 0.0 || oh <= 0.0 {
+        return;
+    }
+    let ring = BlockStyle {
+        border_color: o.color,
+        border_widths: [o.width; 4],
+        border_styles: [o.style; 4],
+        border_radii: style.border_radii.map(|r| r.map(|v| (v.to_f32() + grow.max(0.0)).as_pt())),
+        ..Default::default()
+    };
+    draw_block_border(canvas, &ring, x - grow, y - grow, ow, oh);
 }
 
 pub(crate) fn draw_block_border(

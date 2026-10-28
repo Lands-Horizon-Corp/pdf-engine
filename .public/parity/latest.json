@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-28T04:54:05.207Z",
+  "generatedAt": "2026-10-28T07:09:15.356Z",
   "engineVersion": "1.4.1",
   "reference": "Chrome 156.0.8078.47 (headless shell, Letter, no margin, backgrounds on)",
-  "health": "HEALTHY",
-  "score": 94.48,
-  "passRate": 85.1,
+  "health": "DEGRADED",
+  "score": 95.41,
+  "passRate": 86.7,
   "cases": 188,
-  "pass": 160,
+  "pass": 163,
   "close": 19,
-  "fail": 9,
+  "fail": 6,
   "error": 0,
   "thresholds": {
     "pass": 90,
@@ -18,17 +18,17 @@
   "groups": {
     "css": {
       "cases": 20,
-      "score": 90.78,
-      "pass": 12
+      "score": 91.93,
+      "pass": 14
     },
     "probe": {
       "cases": 64,
-      "score": 93.73,
-      "pass": 57
+      "score": 95.3,
+      "pass": 58
     },
     "bidi": {
       "cases": 4,
-      "score": 97.12,
+      "score": 96.01,
       "pass": 4
     },
     "break-inside": {
@@ -38,7 +38,7 @@
     },
     "complex-tables": {
       "cases": 16,
-      "score": 86,
+      "score": 89.43,
       "pass": 8
     },
     "fixed-header-footer": {
@@ -92,18 +92,10 @@
     {
       "name": "complex tables",
       "cases": 16,
-      "score": 86,
+      "score": 89.43,
       "pass": 8,
-      "close": 6,
-      "fail": 2
-    },
-    {
-      "name": "whole documents",
-      "cases": 20,
-      "score": 90.78,
-      "pass": 12,
-      "close": 7,
-      "fail": 1
+      "close": 8,
+      "fail": 0
     },
     {
       "name": "positioning",
@@ -122,11 +114,11 @@
       "fail": 1
     },
     {
-      "name": "borders",
-      "cases": 16,
-      "score": 92.92,
+      "name": "whole documents",
+      "cases": 20,
+      "score": 91.93,
       "pass": 14,
-      "close": 1,
+      "close": 5,
       "fail": 1
     },
     {
@@ -135,6 +127,14 @@
       "score": 95.02,
       "pass": 11,
       "close": 1,
+      "fail": 0
+    },
+    {
+      "name": "right-to-left",
+      "cases": 4,
+      "score": 96.01,
+      "pass": 4,
+      "close": 0,
       "fail": 0
     },
     {
@@ -152,14 +152,6 @@
       "pass": 11,
       "close": 0,
       "fail": 1
-    },
-    {
-      "name": "right-to-left",
-      "cases": 4,
-      "score": 97.12,
-      "pass": 4,
-      "close": 0,
-      "fail": 0
     },
     {
       "name": "pagination: images",
@@ -182,6 +174,14 @@
       "cases": 12,
       "score": 97.71,
       "pass": 11,
+      "close": 1,
+      "fail": 0
+    },
+    {
+      "name": "borders",
+      "cases": 16,
+      "score": 99.17,
+      "pass": 15,
       "close": 1,
       "fail": 0
     },
@@ -242,14 +242,30 @@
       "fail": 0
     }
   ],
-  "regressions": [],
-  "pixelScore": 85.86,
-  "worst": [
+  "regressions": [
     {
-      "name": "probe/outline",
-      "score": 0,
-      "verdict": "fail"
+      "name": "css/02_unicode",
+      "was": 95.63,
+      "now": 87.73
     },
+    {
+      "name": "css/14_images_svg",
+      "was": 93.57,
+      "now": 79.31
+    },
+    {
+      "name": "css/20_long_table_multipage",
+      "was": 69.18,
+      "now": 65.02
+    },
+    {
+      "name": "bidi/rtl-list-table",
+      "was": 96.33,
+      "now": 91.35
+    }
+  ],
+  "pixelScore": 87.89,
+  "worst": [
     {
       "name": "probe/span_background",
       "score": 0,
@@ -266,23 +282,13 @@
       "verdict": "fail"
     },
     {
-      "name": "complex-tables/10-nested-tables-in-cells",
-      "score": 54.01,
-      "verdict": "fail"
-    },
-    {
-      "name": "complex-tables/09-table-and-cell-outlines",
-      "score": 66.77,
+      "name": "css/20_long_table_multipage",
+      "score": 65.02,
       "verdict": "fail"
     },
     {
       "name": "probe/inline_block_with_text",
       "score": 67.5,
-      "verdict": "fail"
-    },
-    {
-      "name": "css/20_long_table_multipage",
-      "score": 69.18,
       "verdict": "fail"
     },
     {
@@ -292,7 +298,22 @@
     },
     {
       "name": "complex-tables/07-mixed-border-styles-and-colours",
-      "score": 72.18,
+      "score": 71.92,
+      "verdict": "close"
+    },
+    {
+      "name": "css/13_floats_inline",
+      "score": 73.13,
+      "verdict": "close"
+    },
+    {
+      "name": "image-boundaries/09-inline-images-in-text",
+      "score": 73.89,
+      "verdict": "close"
+    },
+    {
+      "name": "probe/z_index",
+      "score": 75.47,
       "verdict": "close"
     }
   ]

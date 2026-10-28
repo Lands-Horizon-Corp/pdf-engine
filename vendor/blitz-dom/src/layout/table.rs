@@ -43,6 +43,8 @@ pub struct TableItem {
     /// The 1-based grid row a cell starts in, and how many rows it spans (`rowspan`).
     row_start: u16,
     row_span: u16,
+    /// pdf-engine patch: half of `border-spacing` (horizontal, vertical), added to the cell's margin.
+    half_spacing: (f32, f32),
 }
 
 pub(crate) fn build_table_context(
@@ -68,6 +70,7 @@ pub(crate) fn build_table_context(
     style.grid_auto_columns = Vec::new();
     style.grid_auto_rows = Vec::new();
 
+    let mut half_spacing = (0.0f32, 0.0f32);
     // pdf-engine patch: `border-spacing` in the separate-borders model (the default; the user-agent sheet sets 2px) is the
     // gap between cells and also the space between the cells and the table's edge. It was parsed and never used.
     if stylo_styles.clone_border_collapse()
@@ -75,18 +78,15 @@ pub(crate) fn build_table_context(
     {
         let spacing = stylo_styles.clone_border_spacing();
         let (sw, sh) = (spacing.0.width.0.px(), spacing.0.height.0.px());
-        style.gap = taffy::Size {
-            width: style_helpers::length(sw),
-            height: style_helpers::length(sh),
-        };
+        half_spacing = (sw / 2.0, sh / 2.0);
         let pad = style
             .padding
             .resolve_or_zero(taffy::Size::NONE, |_, _| 0.0);
         style.padding = taffy::Rect {
-            left: style_helpers::length(pad.left + sw),
-            right: style_helpers::length(pad.right + sw),
-            top: style_helpers::length(pad.top + sh),
-            bottom: style_helpers::length(pad.bottom + sh),
+            left: style_helpers::length(pad.left + sw / 2.0),
+            right: style_helpers::length(pad.right + sw / 2.0),
+            top: style_helpers::length(pad.top + sh / 2.0),
+            bottom: style_helpers::length(pad.bottom + sh / 2.0),
         };
     }
 
@@ -130,6 +130,10 @@ pub(crate) fn build_table_context(
         .map(|dim| TrackSizingFunction::from(dim).into())
         .collect();
     style.grid_template_rows = vec![style_helpers::auto(); row as usize];
+
+    for item in items.iter_mut().filter(|i| i.kind == TableItemKind::Cell) {
+        item.half_spacing = half_spacing;
+    }
 
     let layout_children = items
         .iter()
@@ -199,6 +203,7 @@ pub(crate) fn collect_table_cells(
                     end: style_helpers::span(1),
                 },
                 width_auto: false,
+                half_spacing: (0.0, 0.0),
                 row_start: *row,
                 row_span: 1,
             });
@@ -270,6 +275,7 @@ pub(crate) fn collect_table_cells(
                     end: style_helpers::span(rowspan),
                 },
                 width_auto: true,
+                half_spacing: (0.0, 0.0),
                 row_start: *row,
                 row_span: rowspan,
             });
@@ -409,6 +415,7 @@ pub struct TableItemStyle<'a> {
     grid_row: taffy::Line<taffy::GridPlacement<Atom>>,
     grid_column: taffy::Line<taffy::GridPlacement<Atom>>,
     width_auto: bool,
+    half_spacing: (f32, f32),
 }
 
 impl<'a> TableItemStyle<'a> {
@@ -418,6 +425,7 @@ impl<'a> TableItemStyle<'a> {
             grid_row: item.grid_row.clone(),
             grid_column: item.grid_column.clone(),
             width_auto: item.width_auto,
+            half_spacing: item.half_spacing,
         }
     }
 }
@@ -476,7 +484,27 @@ impl taffy::CoreStyle for TableItemStyle<'_> {
         taffy::CoreStyle::aspect_ratio(self.base)
     }
     fn margin(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
-        taffy::CoreStyle::margin(self.base)
+        let mut m = taffy::CoreStyle::margin(self.base);
+        let (hx, hy) = self.half_spacing;
+        if hx > 0.0 || hy > 0.0 {
+            // pdf-engine patch: half the table's `border-spacing` on every side of a cell, so two cells are a whole
+            // spacing apart and the first and last are half a spacing in (the table adds the other half as padding).
+            // A grid `gap` did the same but made a table with thousands of rows quadratically slow.
+            let add = |side: taffy::LengthPercentageAuto, by: f32| {
+                if side.is_auto() {
+                    side
+                } else {
+                    let raw = side.into_raw();
+                    let base = if raw.tag() == taffy::CompactLength::LENGTH_TAG { raw.value() } else { 0.0 };
+                    style_helpers::length(base + by)
+                }
+            };
+            m.left = add(m.left, hx);
+            m.right = add(m.right, hx);
+            m.top = add(m.top, hy);
+            m.bottom = add(m.bottom, hy);
+        }
+        m
     }
     fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
         taffy::CoreStyle::padding(self.base)

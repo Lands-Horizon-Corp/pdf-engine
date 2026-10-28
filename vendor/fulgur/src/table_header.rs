@@ -66,16 +66,23 @@ fn row_box(doc: &BaseDocument, geometry: &PaginationGeometryTable, row: usize) -
 /// The first layout leaves no room for the headers it is about to add, so every continuation page holds fewer rows than it
 /// showed. Walking the rows again with that room taken away tells where every page will start, so all the copies go in at
 /// once and the loop only has to correct what the estimate got slightly wrong.
-fn simulate(rows: &[RowInfo], header_height: f32, page_height: f32) -> Vec<usize> {
+fn simulate(rows: &[RowInfo], header_height: f32, header_rows: usize, page_height: f32) -> Vec<usize> {
     let mut starts = Vec::new();
     let Some(first) = rows.first() else { return starts };
+    // The space between two rows on the same page (`border-spacing`, margins), which a row's own height leaves out. Without
+    // it every page was predicted one row too long and the loop below corrected one page per pass.
+    let gap = rows
+        .windows(2)
+        .find(|w| w[0].page == w[1].page)
+        .map_or(0.0, |w| (w[1].y - (w[0].y + w[0].height)).max(0.0));
+    let header_with_gaps = header_height + gap * (header_rows as f32 + 1.0);
     let mut cursor = first.y + first.height;
     for (i, row) in rows.iter().enumerate().skip(1) {
-        if cursor + row.height > page_height + 0.5 {
+        if cursor + gap + row.height > page_height + 0.5 {
             starts.push(i);
-            cursor = header_height + row.height;
+            cursor = header_with_gaps + row.height;
         } else {
-            cursor += row.height;
+            cursor += gap + row.height;
         }
     }
     starts
@@ -132,7 +139,7 @@ fn plan(doc: &BaseDocument, geometry: &PaginationGeometryTable, page_height: f32
                 .filter_map(|&r| row_box(doc, geometry, r).map(|(_, _, h)| h))
                 .sum();
             if header_height > 0.0 && header_height < page_height / 2.0 {
-                simulate(&rows, header_height, page_height)
+                simulate(&rows, header_height, header_rows.len(), page_height)
             } else {
                 react(&rows)
             }

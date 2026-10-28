@@ -2866,6 +2866,7 @@ fn draw_block_inner_paint(
             total_width,
             total_height,
         );
+        crate::draw_primitives::draw_block_outline(canvas, &entry.style, x, y, total_width, total_height);
     }
 }
 
@@ -2942,6 +2943,7 @@ fn paint_table_outer_frame(
         total_width,
         total_height,
     );
+    crate::draw_primitives::draw_block_outline(canvas, &entry.style, x, y, total_width, total_height);
 }
 
 /// Push a `compute_overflow_clip_path` clip around the table's outer

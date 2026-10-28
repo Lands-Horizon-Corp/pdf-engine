@@ -44,13 +44,15 @@ No tuning per case, no alignment of the two pages before comparing, and the thre
 
 ## Where it stands (28 October 2026, pdf-engine 1.4.1 plus the patches below, Chrome 156)
 
-Score **94.48, DEGRADED**: 160 pass, 19 close, 9 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
+Score **95.41, HEALTHY**: 163 pass, 19 close, 6 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
 
 What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `vendor/parley` and `vendor/blitz-dom`):
 
 - **Both sides use standards mode.** Several fixtures have no `<!doctype>`, which Chrome renders in quirks mode. The driver adds a
   doctype to both renderers: a change to the comparison, not to the engine. pdf-engine has no quirks mode.
-- **Tables:** a `rowspan` cell's `height` is spread over the rows it spans, and `border-spacing` is applied.
+- **Tables:** a `rowspan` cell's `height` is spread over the rows it spans, `border-spacing` is applied, a cell with a nested table
+  grows its row, and `outline` is drawn.
+- **`line-height: normal`** is 1.15 (was 1.2), the browsers' value for their default fonts.
 - **Right to left:** `dir` and `direction: rtl` set a paragraph's direction; a flex row flips in an rtl box.
 - **Inline boxes:** an `inline-block` with text sits on its text baseline and its margin is honoured.
 - **Images:** `<img>` of an SVG (a file or a data URI) and CSS `url()` backgrounds are drawn.
@@ -67,18 +69,18 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 | --- | ---: | ---: |
 | columns | 34.4 | 0 of 1 |
 | backgrounds | 85.7 | 6 of 7 |
-| complex tables | 86.0 | 8 of 16 |
-| whole documents | 90.8 | 12 of 20 |
+| complex tables | 89.4 | 8 of 16 |
 | positioning | 91.8 | 2 of 3 |
 | box model and selectors | 91.9 | 7 of 8 |
-| borders | 92.9 | 14 of 16 |
+| whole documents | 91.9 | 14 of 20 |
 | pagination: tables | 95.0 | 11 of 12 |
+| right-to-left | 96.0 | 4 of 4 |
 | pagination: headers and footers | 96.2 | 11 of 12 |
 | pagination: break-inside avoid | 96.6 | 11 of 12 |
-| right-to-left | 97.1 | 4 of 4 |
 | pagination: images | 97.2 | 11 of 12 |
 | inline and floats | 97.3 | 11 of 12 |
 | pagination: flex and grid | 97.7 | 11 of 12 |
+| borders | 99.2 | 15 of 16 |
 | pagination: forced breaks | 99.3 | 12 of 12 |
 | colour and opacity | 100.0 | 4 of 4 |
 | flexbox and grid | 100.0 | 3 of 3 |
@@ -89,8 +91,8 @@ What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `v
 
 Categories under 90, for these reasons:
 
-- **complex tables** (16 cases, the newest group): spans, merged headers, invoices, timetables, rounded cells and wide tables now match Chrome
-  (91 to 100); nested tables, `outline`, thick collapsed borders and some border styles do not yet.
+- **complex tables** (16 cases, the newest group): spans, merged headers, invoices, timetables, rounded cells, nested tables and outlines now
+  match Chrome (87 to 100); thick collapsed borders and some border styles do not yet.
 
 - **columns** (one case): `column-rule` on a box that must split across the columns when its only child is one empty tall block.
 - **backgrounds** (one case in seven): an inline `<span>` with only a space and some padding paints no background.
@@ -98,5 +100,5 @@ Categories under 90, for these reasons:
   looser line spacing, so a long table fits 45 rows a page against Chrome's 47 and every later row sits a little lower.
   Floats are approximated (the right float sits at the top), which costs a few points on the floats page.
 
-Other failures: `outline` is not drawn, `::before`/`::after` with `display: block` lay out side by side, and an `inline-block`
+Other failures: `::before`/`::after` with `display: block` lay out side by side, and an `inline-block`
 with text in some layouts.

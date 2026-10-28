@@ -51,6 +51,26 @@ pub(super) fn apply_to(style: &mut BlockStyle, ctx: &StyleContext<'_>) {
         ],
     ];
 
+    // pdf-engine patch: `outline` (width, style, colour and offset), which was ignored.
+    style.outline = {
+        use style::values::computed::outline::OutlineStyle;
+        let outline = ctx.styles.get_outline();
+        let bs = match outline.outline_style {
+            OutlineStyle::Auto => Some(BorderStyleValue::Solid),
+            OutlineStyle::BorderStyle(b) => Some(map_border_style(b)),
+        };
+        let width_px = outline.outline_width.to_f32_px();
+        let offset_px = outline.outline_offset.px();
+        bs.filter(|bs| *bs != BorderStyleValue::None && width_px > 0.0).map(|bs| {
+            crate::draw_primitives::Outline {
+                width: width_px.as_px().in_pt(),
+                offset: offset_px.as_px().in_pt(),
+                color: resolve(ctx.styles.clone_outline_color()),
+                style: bs,
+            }
+        })
+    };
+
     style.border_styles = [
         map_border_style(ctx.styles.clone_border_top_style()),
         map_border_style(ctx.styles.clone_border_right_style()),

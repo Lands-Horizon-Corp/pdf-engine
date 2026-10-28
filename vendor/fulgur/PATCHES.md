@@ -31,7 +31,9 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 23 | `src/pagination_layout.rs` | After a row or item that crossed a page, the next row keeps the flex/grid `gap` | The gap was dropped, so everything after a split item sat too high |
 | 24 | `src/pagination_layout.rs` | A body that holds only inline content (text and `<br>`, spans, inline-blocks) is split into lines across pages | Everything after the first page of a plain-text body was clipped |
 | 25 | `src/render.rs`, `src/background.rs` | The background of a box that a page break cut is laid out for the whole box and clipped to each slice | A gradient or image restarted on every page slice |
-| 26 | `src/render.rs` | Margin boxes (`@top-center`, `@bottom-right`, ...) get the default alignment: left, centre or right by position, and vertically in the middle of the margin | The text sat at the top-left of every box |
+| 26 | `src/render.rs` | Margin boxes (`@top-center`, `@bottom-right`, ...) get the default alignment: left, centre or right by position, and vertically in the middle of the margin | The text sat at the top-left of every box || 27 | `src/convert/style/border.rs`, `src/draw_primitives.rs`, `src/render.rs` | `outline` (width, style, colour, offset) is read and painted as a ring outside the border box, for blocks and tables | `outline` was ignored |
+| 27 | `src/convert/style/border.rs`, `src/draw_primitives.rs`, `src/render.rs` | `outline` (width, style, colour, offset) is read and painted as a ring outside the border box, for blocks and tables | `outline` was ignored |
+| 28 | `src/table_header.rs` | The page-start prediction for repeated `<thead>` rows includes the space between rows (`border-spacing`) | With the default 2px spacing every page was predicted one row too long, so a table of thousands of rows needed about 40 layout passes (2.7 s for 4,000 rows) |
 
 ## Upgrading fulgur
 

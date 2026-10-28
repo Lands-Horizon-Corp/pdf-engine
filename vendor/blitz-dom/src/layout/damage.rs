@@ -335,6 +335,24 @@ impl BaseDocument {
         let doc_id = self.id();
 
         let float_role = self.float_role(node_id);
+        // pdf-engine patch: a table cell that holds block-level content (a nested table, a `div`) takes its `height` as a
+        // minimum, so the row grows to fit what is inside instead of the content overflowing into the next row. A
+        // text-only cell keeps the fixed height: the engine's fallback font has taller lines than a browser's default
+        // font, and growing every such row would push long tables onto extra pages.
+        let cell_height_is_minimum = {
+            use ::style::values::specified::box_::{DisplayInside, DisplayOutside};
+            let node = &self.nodes[node_id];
+            node.is_element()
+                && node
+                    .primary_styles()
+                    .is_some_and(|st| st.clone_display().inside() == DisplayInside::TableCell)
+                && node.children.iter().any(|&c| {
+                    self.nodes[c].is_element()
+                        && self.nodes[c]
+                            .primary_styles()
+                            .is_some_and(|st| st.clone_display().outside() == DisplayOutside::Block)
+                })
+        };
         let display = {
             let node = self.nodes.get_mut(node_id).unwrap();
             let _damage = node.damage().unwrap_or(ALL_DAMAGE);
@@ -360,6 +378,13 @@ impl BaseDocument {
                     taffy::FlexDirection::RowReverse => taffy::FlexDirection::Row,
                     other => other,
                 };
+            }
+            if cell_height_is_minimum
+                && node.style.size.height.tag() == taffy::CompactLength::LENGTH_TAG
+                && node.style.min_size.height.tag() == taffy::CompactLength::AUTO_TAG
+            {
+                node.style.min_size.height = node.style.size.height;
+                node.style.size.height = taffy::Dimension::auto();
             }
             node.display_constructed_as = style.clone_display();
             float_role.apply(&mut node.style);

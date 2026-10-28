@@ -1053,7 +1053,31 @@ pub(crate) fn build_inline_layout_into(
                             // dbg!(node_id);
                             // dbg!(&style);
 
+                            // pdf-engine patch: inline padding/border take horizontal space; a zero-width
+                            // spacer with letter-spacing reserves it (Blitz does not lay out inline padding).
+                            let (pad_l, pad_r) = node
+                                .primary_styles()
+                                .map(|s| {
+                                    let px = |l: &style::values::computed::LengthPercentage| {
+                                        l.to_length().map(|v| v.px()).unwrap_or(0.0)
+                                    };
+                                    let p = s.get_padding();
+                                    let b = s.get_border();
+                                    (
+                                        px(&p.padding_left.0) + b.border_left_width.to_f32_px(),
+                                        px(&p.padding_right.0) + b.border_right_width.to_f32_px(),
+                                    )
+                                })
+                                .unwrap_or((0.0, 0.0));
+                            let mut spacer = style.clone();
+                            // a distinct font size forces its own shaping run so the letter-spacing does not leak into the text
                             builder.push_style_span(style);
+                            if pad_l > 0.0 {
+                                spacer.letter_spacing = pad_l;
+                                builder.push_style_span(spacer.clone());
+                                builder.push_text("\u{200B}");
+                                builder.pop_style_span();
+                            }
 
                             if let Some(before_id) = node.before {
                                 build_inline_layout_recursive(
@@ -1087,6 +1111,12 @@ pub(crate) fn build_inline_layout_into(
                                 );
                             }
 
+                            if pad_r > 0.0 {
+                                spacer.letter_spacing = pad_r;
+                                builder.push_style_span(spacer);
+                                builder.push_text("\u{200B}");
+                                builder.pop_style_span();
+                            }
                             builder.pop_style_span();
                         }
                     }

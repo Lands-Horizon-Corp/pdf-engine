@@ -6,20 +6,26 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
-Pagination, right-to-left text and a Chrome parity score. Every page of a growing corpus (now 188 pages: whole documents,
-one-feature probes, right-to-left pages, 84 pagination pages and 16 complex tables) is made by headless Chrome and by pdf-engine,
+## [1.5.0] - 2026-10-28
+
+Pagination, right-to-left text and a Chrome parity score. Every page of a growing corpus (now 212 pages: whole documents,
+one-feature probes, right-to-left pages, 84 pagination pages, 16 complex tables, 12 bulleted lists and 12 text pages) is made by headless Chrome and by pdf-engine,
 both drawn by the same rasteriser, and scored. The score is on the [demo page](https://lands-horizon-corp.github.io/pdf-engine/)
-and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 96.21 over all 188 pages (complex tables, the newest and hardest group, score 93.16: see Known gaps).
+and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 96.46 over all 212 pages (complex tables, the newest and hardest group, score 93.16: see Known gaps).
 
 ### Added
 
 - **Chrome parity score and health** (`node .public/parity/parity.mjs`, `--check` for CI), with a per-category breakdown and a
   Chrome | pdf-engine | difference picture for every page on the demo.
 - **Right-to-left tests** (`tests/bidi.rs`, 38 cases; 27 pass, 11 known gaps are ignored with a reason).
+- **Bulleted-list and text parity pages** (12 each: nested and ordered lists, list styles, wrapping, long lists across pages; alignment, weights, spacing, white-space, long articles).
 - **Pagination parity pages** in seven categories, and a **complex tables** category (spans, colours, border styles, outlines,
   rounded cells, nested tables, heatmaps, long tables).
 
 ### Fixed
+
+- **Inline `<span>` backgrounds, borders and padding are painted** (they were ignored, so a highlighted word or a padded badge was invisible). Horizontal padding and border take room in the line, and an empty or space-only span still shows its box.
+- **Letter and word spacing no longer leak** into the text that follows a span with different spacing (vendored parley).
 
 - **A page filled exactly lost its last row**, so every long document needed one page too many (279.4 mm was 959.9999 px).
 - **Content lost at a page break.** A body with only text and `<br>` lines was clipped to the first page; a block inside a wrapper
@@ -70,10 +76,10 @@ and described in [Parity with Chrome](.public/docs/parity.md). The first run sco
   where two collapsed borders of different styles meet, and column widths where Chrome's Helvetica and our Noto Sans differ in glyph width.
 - Right-to-left: `<bdo>` and `unicode-bidi: isolate`, grid, table and list mirroring in an rtl box, `float: inline-start`,
   `padding-inline-*`, and `text-indent` at the start side.
-- `::before`/`::after` with `display: block` lay out side by side; an inline `<span>` with only a space
-  paints no background; `column-rule` on a box that must split across columns.
+- `::before`/`::after` with `display: block` lay out side by side; `column-rule` on a box that must split across columns.
 - A table row is moved whole to the next page, where Chrome cuts it at the page break and continues it after the repeated header
   (so the last rows of a page can differ by one row). Matching that needs the header drawn as a page-level fragment, not a copied row.
+- Text pages differ where Chrome's Helvetica and our Noto Sans differ in glyph width (justified text, sub/superscript, very long articles).
 - Long documents drift from Chrome's page breaks because Chrome draws `sans-serif` as Helvetica and the engine as Noto Sans,
   which has looser line spacing.
 

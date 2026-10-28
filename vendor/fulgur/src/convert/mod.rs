@@ -1190,6 +1190,43 @@ fn get_text_color(doc: &BaseDocument, node_id: usize) -> [u8; 4] {
     [0, 0, 0, 255] // Default: black
 }
 
+/// pdf-engine patch: background/border of an inline (non-box) element, so spans paint like Chrome.
+pub(super) fn get_inline_bg(
+    doc: &BaseDocument,
+    node_id: usize,
+    ascent: f32,
+    descent: f32,
+) -> Option<crate::paragraph::InlineBg> {
+    let node = doc.get_node(node_id)?;
+    let styles = node.primary_styles()?;
+    if !styles.clone_display().is_inline_flow() {
+        return None;
+    }
+    let color = absolute_to_rgba(styles.clone_background_color().resolve_to_absolute(&styles.clone_color()));
+    let b = styles.get_border();
+    let bw = b.border_top_width.to_f32_px();
+    let bc = absolute_to_rgba(
+        styles
+            .clone_border_top_color()
+            .resolve_to_absolute(&styles.clone_color()),
+    );
+    let has_border = bw > 0.0 && bc[3] > 0;
+    if color[3] == 0 && !has_border {
+        return None;
+    }
+    let pad = styles.get_padding();
+    let px = |l: &::style::values::computed::LengthPercentage| l.to_length().map(|v| v.px()).unwrap_or(0.0);
+    Some(crate::paragraph::InlineBg {
+        color,
+        ascent,
+        descent,
+        pad_top: px(&pad.padding_top.0) * 0.75,
+        pad_bottom: px(&pad.padding_bottom.0) * 0.75,
+        border: if has_border { bw * 0.75 } else { 0.0 },
+        border_color: bc,
+    })
+}
+
 /// Get text-decoration properties from a DOM node's computed styles.
 fn get_text_decoration(doc: &BaseDocument, node_id: usize) -> TextDecoration {
     if let Some(node) = doc.get_node(node_id)
@@ -1225,7 +1262,7 @@ fn get_text_decoration(doc: &BaseDocument, node_id: usize) -> TextDecoration {
         let deco_color = styles.clone_text_decoration_color();
         let color = absolute_to_rgba(deco_color.resolve_to_absolute(&current_color));
 
-        return TextDecoration { line, style, color };
+        return TextDecoration { line, style, color, bg: None };
     }
     TextDecoration::default()
 }

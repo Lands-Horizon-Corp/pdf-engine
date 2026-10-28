@@ -37,6 +37,7 @@ patches below, used via `[patch.crates-io]` in the root `Cargo.toml`. Each is ma
 | 29 | `src/convert/style/mod.rs` | A table cell with no background of its own takes the background of its row or row group | A table row has no box in the PDF, so `<tr style="background:...">` and zebra stripes (`tr:nth-child(even)`) were never painted |
 | 30 | `src/table_header.rs` | A repeated header is measured by the single-row cells of a row (a `rowspan` cell is as tall as its whole group), and a `rowspan` cell that reaches over the row a copy is put in front of is cut in two, the second part carrying on after the copy | With `rowspan` group cells, header copies went in at every group (not every page) and pushed the copy's cells out of their columns |
 | 31 | `src/convert/style/mod.rs`, `src/convert/style/border.rs`, `src/draw_primitives.rs` | A cell of a collapsed-borders table paints the border its edges resolved to (the winner's style and colour); on the table's outer edge the border is drawn from half its width outside the cell | See blitz-dom patch 18 |
+| 32 | `src/paragraph.rs`, `src/convert/mod.rs`, `src/convert/inline_root.rs` | `InlineBg`: background colour, border and vertical padding of an inline (non-box) element are painted behind each of its glyph runs | Backgrounds on `<span>` were not painted at all |
 
 ## Upgrading fulgur
 

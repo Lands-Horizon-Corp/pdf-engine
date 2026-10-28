@@ -1,6 +1,6 @@
 {
   "name": "@lands-horizon-corp/pdf-engine",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "HTML to PDF for Node.js, Electron and Tauri, with receipt and label printing (ESC/POS, ZPL). The Rust pdf-engine over stdin/stdout: no HTTP, no port, no headless Chrome.",
   "main": "index.js",
   "types": "index.d.ts",

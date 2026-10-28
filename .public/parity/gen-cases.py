@@ -7,7 +7,7 @@ import base64, os, shutil, struct, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'cases')
-CATEGORIES = ['page-count', 'forced-breaks', 'break-inside', 'table-pagination', 'image-boundaries', 'flex-grid-pages', 'fixed-header-footer', 'complex-tables']
+CATEGORIES = ['page-count', 'forced-breaks', 'break-inside', 'table-pagination', 'image-boundaries', 'flex-grid-pages', 'fixed-header-footer', 'complex-tables', 'bulleted-lists', 'text']
 for c in CATEGORIES:
     shutil.rmtree(os.path.join(OUT, c), ignore_errors=True)
     os.makedirs(os.path.join(OUT, c))
@@ -267,5 +267,40 @@ write(c, '15-wide-table-18-columns', TB + 'td,th{padding:2px 3px;height:18px}', 
 # 16. a checker of coloured merged cells (spans in both directions on every row)
 ck = '<table><tbody>' + ''.join('<tr>' + ''.join(f'<td colspan="{1 + (i + j) % 2}" rowspan="1" style="background:{cols[(i + j) % 6]}22;height:30px;text-align:center">{i}-{j}</td>' for j in range(0, 8, 1) if (i + j) % 3 != 2 or j % 2 == 0) + '</tr>' for i in range(30)) + '</tbody></table>'
 write(c, '16-irregular-merged-cells', TB + 'table{table-layout:auto}', ck)
+
+# ---- bulleted lists ----
+c = 'bulleted-lists'
+LS = 'ul,ol{margin:0 0 10px;padding-left:28px}li{margin:3px 0;line-height:20px}h3{margin:10px 0 4px;font-size:15px}'
+def items(n, p='Item'):
+    return ''.join(f'<li>{p} {i + 1}</li>' for i in range(n))
+write(c, '01-simple-bullets', LS, '<ul>' + items(8) + '</ul>')
+write(c, '02-nested-three-levels', LS, '<ul>' + ''.join(f'<li>Top {i}<ul><li>Mid {i}.1<ul><li>Deep {i}.1.1</li><li>Deep {i}.1.2</li></ul></li><li>Mid {i}.2</li></ul></li>' for i in range(1, 6)) + '</ul>')
+write(c, '03-bullet-styles', LS, ''.join(f'<h3>{t}</h3><ul style="list-style-type:{t}">{items(3)}</ul>' for t in ['disc', 'circle', 'square', 'none']))
+write(c, '04-ordered-styles', LS, ''.join(f'<h3>{t}</h3><ol style="list-style-type:{t}">{items(4)}</ol>' for t in ['decimal', 'lower-alpha', 'upper-roman', 'lower-roman', 'upper-alpha']))
+write(c, '05-ordered-start-reversed', LS, '<ol start="5">' + items(4) + '</ol><ol reversed>' + items(4) + '</ol><ol><li value="10">Ten</li><li>Eleven</li><li value="3">Three</li><li>Four</li></ol>')
+write(c, '06-long-list-across-pages', LS, '<ul>' + items(120, 'Bullet') + '</ul>')
+write(c, '07-wrapping-items', LS + 'ul{width:420px}', '<ul>' + ''.join(f'<li>Item {i} has a longer description that wraps onto a second and possibly a third line inside the list item box.</li>' for i in range(1, 9)) + '</ul>')
+write(c, '08-list-style-position-inside', LS, '<ul style="list-style-position:inside">' + items(5) + '</ul><ol style="list-style-position:inside">' + items(5) + '</ol>')
+write(c, '09-mixed-ordered-unordered', LS, '<ol>' + ''.join(f'<li>Step {i}<ul><li>detail a</li><li>detail b</li></ul></li>' for i in range(1, 7)) + '</ol>')
+write(c, '10-styled-items', LS + 'li:nth-child(odd){background:#eef2ff}li b{color:#b91c1c}', '<ul>' + ''.join(f'<li><b>Label {i}:</b> value {i}</li>' for i in range(1, 11)) + '</ul>')
+write(c, '11-definition-and-inline-markers', LS + 'dt{font-weight:bold}dd{margin:0 0 6px 24px}', '<dl>' + ''.join(f'<dt>Term {i}</dt><dd>Definition {i}</dd>' for i in range(1, 9)) + '</dl><ul style="list-style:none;padding:0">' + ''.join(f'<li>&#10003; Done {i}</li>' for i in range(1, 5)) + '</ul>')
+write(c, '12-big-nested-list-pagination', LS, '<ul>' + ''.join(f'<li>Section {i}<ul>' + items(6, 'Sub') + '</ul></li>' for i in range(1, 15)) + '</ul>')
+
+# ---- text ----
+c = 'text'
+TX = 'p{margin:0 0 10px;line-height:20px}h1{font-size:26px;margin:0 0 10px}h2{font-size:20px;margin:14px 0 8px}'
+LOREM = 'The quick brown fox jumps over the lazy dog while the five boxing wizards jump quickly. '
+write(c, '01-headings-and-paragraphs', TX, '<h1>Heading one</h1><p>' + LOREM * 3 + '</p><h2>Heading two</h2><p>' + LOREM * 4 + '</p><h2>Another heading</h2><p>' + LOREM * 2 + '</p>')
+write(c, '02-text-align', TX + 'p{width:420px;border:1px solid #cbd5e1;padding:6px}', ''.join(f'<p style="text-align:{a}">{a}: ' + LOREM * 2 + '</p>' for a in ['left', 'right', 'center', 'justify']))
+write(c, '03-font-weights-and-styles', TX, '<p><b>Bold</b> <i>italic</i> <b><i>bold italic</i></b> <u>underline</u> <s>strike</s> <small>small</small> <sub>sub</sub> <sup>sup</sup> normal</p>' * 6)
+write(c, '04-font-sizes', TX, ''.join(f'<p style="font-size:{s}px;line-height:1.3">Size {s}px sample text</p>' for s in [8, 10, 12, 14, 18, 24, 32, 44]))
+write(c, '05-letter-and-word-spacing', TX, ''.join(f'<p style="letter-spacing:{l}px;word-spacing:{w}px">spacing {l} / {w}: ' + LOREM + '</p>' for l, w in [(0, 0), (1, 0), (2, 0), (0, 6), (0.5, 3)]))
+write(c, '06-text-transform-and-indent', TX, ''.join(f'<p style="text-transform:{t};text-indent:24px">{t}: ' + LOREM + '</p>' for t in ['none', 'uppercase', 'lowercase', 'capitalize']))
+write(c, '07-line-heights', TX, ''.join(f'<p style="line-height:{h};width:360px;border-left:3px solid #2563eb;padding-left:6px">line-height {h}: ' + LOREM * 2 + '</p>' for h in ['1', '1.15', '1.5', '2']))
+write(c, '08-colours-and-decoration', TX, ''.join(f'<p style="color:{col};text-decoration:{d}">{d} in {col}: ' + LOREM + '</p>' for col, d in [('#dc2626', 'underline'), ('#16a34a', 'line-through'), ('#2563eb', 'overline'), ('#9333ea', 'underline dotted'), ('#d97706', 'underline wavy')]))
+write(c, '09-white-space-and-wrap', TX + 'div{width:300px;border:1px solid #94a3b8;margin-bottom:8px;padding:4px}', ''.join(f'<div style="white-space:{w}">{w}:   spaced   text\nwith a newline and a really_long_unbroken_token_that_overflows_the_box</div>' for w in ['normal', 'pre', 'pre-wrap', 'nowrap', 'pre-line']))
+write(c, '10-long-article-pagination', TX, '<h1>Article</h1>' + ''.join(f'<h2>Section {i}</h2><p>' + LOREM * 8 + '</p><p>' + LOREM * 5 + '</p>' for i in range(1, 9)))
+write(c, '11-orphans-widows-and-breaks', TX + 'p{orphans:3;widows:3}', ''.join(f'<p>Paragraph {i}. ' + LOREM * 6 + '</p>' for i in range(1, 30)))
+write(c, '12-inline-mix', TX, ''.join(f'<p>Plain <span style="background:#fde68a">highlighted</span> <span style="color:#dc2626;font-weight:bold">red bold</span> <code style="background:#e2e8f0;padding:1px 4px">code {i}</code> <a href="#">link</a> and <em>emphasis</em> end.</p>' for i in range(1, 13)))
 
 print('wrote', sum(len(os.listdir(os.path.join(OUT, c))) for c in CATEGORIES), 'cases')

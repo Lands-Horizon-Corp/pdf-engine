@@ -51,6 +51,20 @@ pub struct TextDecoration {
     pub line: TextDecorationLine,
     pub style: TextDecorationStyle,
     pub color: [u8; 4],
+    /// pdf-engine patch: background/border of the inline element owning the run.
+    pub bg: Option<InlineBg>,
+}
+
+/// Background (and uniform border) painted behind an inline element's text.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineBg {
+    pub color: [u8; 4],
+    pub ascent: f32,
+    pub descent: f32,
+    pub pad_top: f32,
+    pub pad_bottom: f32,
+    pub border: f32,
+    pub border_color: [u8; 4],
 }
 
 impl TextDecoration {
@@ -517,6 +531,63 @@ fn draw_decoration_line(
     canvas.surface.set_stroke(None);
 }
 
+fn draw_inline_bg(
+    canvas: &mut Canvas<'_, '_>,
+    run: &ShapedGlyphRun,
+    bg: &InlineBg,
+    x: crate::units::Pt,
+    baseline_y: crate::units::Pt,
+) {
+    let w: f32 = run
+        .glyphs
+        .iter()
+        .map(|g| (g.x_advance * run.font_size).to_f32())
+        .sum();
+    let left = (x + run.x_offset).to_f32();
+    let top = baseline_y.to_f32() - bg.ascent - bg.pad_top - bg.border;
+    let h = bg.ascent + bg.descent + bg.pad_top + bg.pad_bottom + 2.0 * bg.border;
+    let Some(rect) = krilla::geom::Rect::from_xywh(left, top, w, h) else {
+        return;
+    };
+    let mut pb = krilla::geom::PathBuilder::new();
+    pb.push_rect(rect);
+    let Some(path) = pb.finish() else { return };
+    let paint = |c: [u8; 4]| krilla::paint::Fill {
+        paint: krilla::color::rgb::Color::new(c[0], c[1], c[2]).into(),
+        opacity: krilla::num::NormalizedF32::new(c[3] as f32 / 255.0)
+            .unwrap_or(krilla::num::NormalizedF32::ONE),
+        rule: Default::default(),
+    };
+    if bg.border > 0.0 && bg.border_color[3] > 0 {
+        canvas.surface.set_stroke(None);
+        canvas.surface.set_fill(Some(paint(bg.border_color)));
+        canvas.surface.draw_path(&path);
+        if let Some(inner) = krilla::geom::Rect::from_xywh(
+            left,
+            top + bg.border,
+            w,
+            (h - 2.0 * bg.border).max(0.0),
+        ) {
+            let mut pb = krilla::geom::PathBuilder::new();
+            pb.push_rect(inner);
+            if let Some(p) = pb.finish() {
+                canvas.surface.set_fill(Some(paint(if bg.color[3] > 0 {
+                    bg.color
+                } else {
+                    [255, 255, 255, 0]
+                })));
+                if bg.color[3] > 0 {
+                    canvas.surface.draw_path(&p);
+                }
+            }
+        }
+    } else if bg.color[3] > 0 {
+        canvas.surface.set_stroke(None);
+        canvas.surface.set_fill(Some(paint(bg.color)));
+        canvas.surface.draw_path(&path);
+    }
+}
+
 /// A contiguous span of runs sharing the same decoration attributes.
 struct DecorationSpan {
     x: crate::units::Pt,
@@ -754,6 +825,13 @@ pub fn draw_shaped_lines(
         let line_top_abs = y + line_top;
         let baseline_y = y + line.baseline;
 
+        for item in &line.items {
+            if let LineItem::Text(run) = item {
+                if let Some(bg) = run.decoration.bg {
+                    draw_inline_bg(canvas, run, &bg, x, baseline_y);
+                }
+            }
+        }
         for item in &line.items {
             match item {
                 LineItem::Text(run) => {
@@ -1937,6 +2015,7 @@ mod text_decoration_tests {
             line: TextDecorationLine::UNDERLINE,
             style: TextDecorationStyle::Solid,
             color: [0, 0, 0, 255],
+            bg: None,
         };
         assert!(d.same_appearance(&d));
     }
@@ -1947,6 +2026,7 @@ mod text_decoration_tests {
             line: TextDecorationLine::UNDERLINE,
             style: TextDecorationStyle::Solid,
             color: [0, 0, 0, 255],
+            bg: None,
         };
         let b = TextDecoration {
             color: [255, 0, 0, 255],
@@ -1961,6 +2041,7 @@ mod text_decoration_tests {
             line: TextDecorationLine::UNDERLINE,
             style: TextDecorationStyle::Solid,
             color: [0, 0, 0, 255],
+            bg: None,
         };
         let b = TextDecoration {
             style: TextDecorationStyle::Dashed,
@@ -1975,6 +2056,7 @@ mod text_decoration_tests {
             line: TextDecorationLine::UNDERLINE,
             style: TextDecorationStyle::Solid,
             color: [0, 0, 0, 255],
+            bg: None,
         };
         let b = TextDecoration {
             line: TextDecorationLine::LINE_THROUGH,

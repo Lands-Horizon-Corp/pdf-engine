@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-10-28T09:44:48.801Z",
+  "generatedAt": "2026-10-28T10:19:49.423Z",
   "engineVersion": "1.4.1",
   "reference": "Chrome 156.0.8078.47 (headless shell, Letter, no margin, backgrounds on)",
   "health": "HEALTHY",
-  "score": 96.21,
-  "passRate": 89.4,
-  "cases": 188,
-  "pass": 168,
-  "close": 14,
+  "score": 96.46,
+  "passRate": 88.2,
+  "cases": 212,
+  "pass": 187,
+  "close": 19,
   "fail": 6,
   "error": 0,
   "thresholds": {
@@ -18,12 +18,12 @@
   "groups": {
     "css": {
       "cases": 20,
-      "score": 93.61,
+      "score": 93.59,
       "pass": 15
     },
     "probe": {
       "cases": 64,
-      "score": 95.3,
+      "score": 96.64,
       "pass": 58
     },
     "bidi": {
@@ -35,6 +35,11 @@
       "cases": 12,
       "score": 96.63,
       "pass": 11
+    },
+    "bulleted-lists": {
+      "cases": 12,
+      "score": 100,
+      "pass": 12
     },
     "complex-tables": {
       "cases": 16,
@@ -70,6 +75,11 @@
       "cases": 12,
       "score": 99.64,
       "pass": 12
+    },
+    "text": {
+      "cases": 12,
+      "score": 89.67,
+      "pass": 7
     }
   },
   "categories": [
@@ -82,11 +92,11 @@
       "fail": 1
     },
     {
-      "name": "backgrounds",
-      "cases": 7,
-      "score": 85.71,
-      "pass": 6,
-      "close": 0,
+      "name": "text",
+      "cases": 12,
+      "score": 89.67,
+      "pass": 7,
+      "close": 4,
       "fail": 1
     },
     {
@@ -116,7 +126,7 @@
     {
       "name": "whole documents",
       "cases": 20,
-      "score": 93.61,
+      "score": 93.59,
       "pass": 15,
       "close": 5,
       "fail": 0
@@ -166,6 +176,14 @@
       "cases": 12,
       "score": 97.71,
       "pass": 11,
+      "close": 1,
+      "fail": 0
+    },
+    {
+      "name": "backgrounds",
+      "cases": 7,
+      "score": 97.96,
+      "pass": 6,
       "close": 1,
       "fail": 0
     },
@@ -234,6 +252,14 @@
       "fail": 0
     },
     {
+      "name": "bulleted lists",
+      "cases": 12,
+      "score": 100,
+      "pass": 12,
+      "close": 0,
+      "fail": 0
+    },
+    {
       "name": "pagination: page count",
       "cases": 12,
       "score": 100,
@@ -243,13 +269,8 @@
     }
   ],
   "regressions": [],
-  "pixelScore": 89.96,
+  "pixelScore": 88.74,
   "worst": [
-    {
-      "name": "probe/span_background",
-      "score": 0,
-      "verdict": "fail"
-    },
     {
       "name": "probe/multicolumn_rule",
       "score": 34.38,
@@ -258,6 +279,11 @@
     {
       "name": "probe/before_after_content",
       "score": 35,
+      "verdict": "fail"
+    },
+    {
+      "name": "text/03-font-weights-and-styles",
+      "score": 61.15,
       "verdict": "fail"
     },
     {
@@ -276,6 +302,11 @@
       "verdict": "fail"
     },
     {
+      "name": "text/10-long-article-pagination",
+      "score": 70.02,
+      "verdict": "close"
+    },
+    {
       "name": "css/13_floats_inline",
       "score": 73.13,
       "verdict": "close"
@@ -288,11 +319,6 @@
     {
       "name": "probe/z_index",
       "score": 75.47,
-      "verdict": "close"
-    },
-    {
-      "name": "css/14_images_svg",
-      "score": 79.31,
       "verdict": "close"
     }
   ]

@@ -256,7 +256,7 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 <button id="pdf">Download PDF</button>
 
 <script type="module">
-  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1.4.1/index.js';
+  import { PDFEngine } from 'https://cdn.jsdelivr.net/npm/@lands-horizon-corp/pdf-engine-wasm@1.5.0/index.js';
 
   const pdf = new PDFEngine();                    // the module and its fonts load next to index.js
 
@@ -270,7 +270,7 @@ a CDN that serves npm files as they are (jsDelivr or unpkg), from a `<script typ
 </script>
 ```
 
-- Pin a version (`@1.4.1`, as above) so the files and the module always match. Module scripts run after the page has
+- Pin a version (`@1.5.0`, as above) so the files and the module always match. Module scripts run after the page has
   parsed, so there is nothing to wait for; use `await pdf.ping()` to load the engine ahead of the first click.
 - The template language is `{{ value }}` and `{% for %}` / `{% if %}` (not Handlebars `{{#each}}`).
 - Open the page from a web server (`http://` or `https://`), not as a `file://` file: browsers do not load

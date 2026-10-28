@@ -44,7 +44,7 @@ No tuning per case, no alignment of the two pages before comparing, and the thre
 
 ## Where it stands (28 October 2026, pdf-engine 1.4.1 plus the patches below, Chrome 156)
 
-Score **96.21, HEALTHY**: 168 pass, 14 close, 6 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
+Score **96.46, HEALTHY**: 187 pass, 19 close, 6 fail, of 212 cases. The first run, on 88 cases, scored 80.3.
 
 What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `vendor/parley` and `vendor/blitz-dom`):
 

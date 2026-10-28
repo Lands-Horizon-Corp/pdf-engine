@@ -31,7 +31,7 @@ const sources = [
   ['bidi', join(here, 'cases')],
   ...caseDirs.map((d) => [d, join(here, 'cases', d)]),
 ];
-const FOLDER_LABELS = { 'page-count': 'pagination: page count', 'forced-breaks': 'pagination: forced breaks', 'break-inside': 'pagination: break-inside avoid', 'table-pagination': 'pagination: tables', 'image-boundaries': 'pagination: images', 'flex-grid-pages': 'pagination: flex and grid', 'fixed-header-footer': 'pagination: headers and footers', 'complex-tables': 'complex tables' };
+const FOLDER_LABELS = { 'page-count': 'pagination: page count', 'forced-breaks': 'pagination: forced breaks', 'break-inside': 'pagination: break-inside avoid', 'table-pagination': 'pagination: tables', 'image-boundaries': 'pagination: images', 'flex-grid-pages': 'pagination: flex and grid', 'fixed-header-footer': 'pagination: headers and footers', 'complex-tables': 'complex tables', 'bulleted-lists': 'bulleted lists', 'text': 'text' };
 const cases = sources.flatMap(([group, dir]) =>
   existsSync(dir)
     ? readdirSync(dir).filter((f) => f.endsWith('.html')).sort().map((f) => ({ group, name: `${group}/${basename(f, '.html')}`, file: join(dir, f) }))

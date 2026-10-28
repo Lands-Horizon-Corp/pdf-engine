@@ -481,7 +481,16 @@ pub(super) fn extract_paragraph(
 
                     let brush = &glyph_run.style().brush;
                     let color = get_text_color(doc, brush.id);
-                    let decoration = get_text_decoration(doc, brush.id);
+                    let mut decoration = get_text_decoration(doc, brush.id);
+                    {
+                        let rm = run.metrics();
+                        decoration.bg = super::get_inline_bg(
+                            doc,
+                            brush.id,
+                            rm.ascent * 0.75,
+                            rm.descent * 0.75,
+                        );
+                    }
                     let link = ctx.link_cache.lookup(doc, brush.id);
 
                     // Advance or reset the per-Run offset counter.

@@ -23,11 +23,15 @@ const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';
 const PASS = 90;
 const CLOSE = 70;
 
+// cases/*.html are the right-to-left pages; every folder in cases/ is a category of its own (see gen-cases.py).
+const caseDirs = existsSync(join(here, 'cases')) ? readdirSync(join(here, 'cases'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort() : [];
 const sources = [
   ['css', join(root, 'tests/fixtures/css')],
   ['probe', join(root, 'tests/fixtures/probes')],
   ['bidi', join(here, 'cases')],
+  ...caseDirs.map((d) => [d, join(here, 'cases', d)]),
 ];
+const FOLDER_LABELS = { 'page-count': 'pagination: page count', 'forced-breaks': 'pagination: forced breaks', 'break-inside': 'pagination: break-inside avoid', 'table-pagination': 'pagination: tables', 'image-boundaries': 'pagination: images', 'flex-grid-pages': 'pagination: flex and grid', 'fixed-header-footer': 'pagination: headers and footers', 'complex-tables': 'complex tables' };
 const cases = sources.flatMap(([group, dir]) =>
   existsSync(dir)
     ? readdirSync(dir).filter((f) => f.endsWith('.html')).sort().map((f) => ({ group, name: `${group}/${basename(f, '.html')}`, file: join(dir, f) }))
@@ -56,6 +60,7 @@ const page = await browser.newPage();
 const categoryOf = (c) => {
   if (c.group === 'bidi') return 'right-to-left';
   if (c.group === 'css') return 'whole documents';
+  if (FOLDER_LABELS[c.group]) return FOLDER_LABELS[c.group];
   const n = c.name.replace('probe/', '');
   const rules = [[/^(border|outline)/, 'borders'], [/^(bg|span_background)/, 'backgrounds'], [/^(color|opacity)/, 'colour and opacity'], [/^(inline|float)/, 'inline and floats'], [/^table/, 'tables'], [/^(flex|grid)/, 'flexbox and grid'], [/^(transform)/, 'transforms'], [/^(position|z_index)/, 'positioning'], [/^img/, 'images'], [/^(multicolumn)/, 'columns'], [/^(box|block|css_var|nth|before|media|page)/, 'box model and selectors']];
   return rules.find(([re]) => re.test(n))?.[1] ?? 'other';

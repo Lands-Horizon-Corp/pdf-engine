@@ -277,6 +277,9 @@ fn run_pass_inner<'a>(
 impl<'a> PaginationLayoutTree<'a> {
     pub fn new(doc: &'a mut BaseDocument, page_height_px: f32) -> Self {
         let body_id = find_body_id(doc);
+        // pdf-engine patch: 279.4 mm is 1055.9999 px, so content that fills the page exactly (32 rows of 30 px in 960 px)
+        // lost its last row. A hundredth of a pixel is far below anything visible.
+        let page_height_px = (page_height_px * 100.0).round() / 100.0;
         Self {
             doc,
             page_height_px,
@@ -419,6 +422,29 @@ impl<'a> PaginationLayoutTree<'a> {
             .unwrap_or_default();
         let body_w = body_layout.size.width;
         let body_x = body_layout.location.x;
+
+        // pdf-engine patch: a body that holds only inline content (text and `<br>`, spans, inline-blocks) is itself
+        // the paragraph, so its lines are split at the page edges like any paragraph's. It used to be walked as a
+        // block with children, so everything after the first page was clipped.
+        if let Some(body_node) = self.doc.get_node(body_id) {
+            let line_metrics = collect_inline_line_metrics(body_node);
+            if line_metrics.len() > 1 {
+                let (last_page, _, emitted) = fragment_inline_root(
+                    &mut self.geometry,
+                    body_id,
+                    body_x,
+                    body_w,
+                    0.0,
+                    0,
+                    self.page_height_px,
+                    &line_metrics,
+                );
+                for p in 0..=last_page {
+                    record_subtree_descendants(&mut self.geometry, self.doc, body_id, p, 0.0, body_x, 0);
+                }
+                return emitted;
+            }
+        }
 
         // fulgur-s67g Phase 2.3 (counter parity follow-up): record
         // body itself as a fragment on page 0. body's own
@@ -850,7 +876,17 @@ impl<'a> PaginationLayoutTree<'a> {
                     })
                 });
             let available_strip = (self.page_height_px - cursor_y).max(0.0);
+            let one_row_moves_whole = cursor_y > 0.0
+                && cursor_y + child_h > self.page_height_px
+                && is_one_row_container_fitting_a_page(
+                    self.doc,
+                    child_id,
+                    child_h,
+                    self.page_height_px,
+                )
+                && !has_forced_break_below(self.doc, child_id, self.column_styles, 0);
             let needs_recursion = has_splittable_children
+                && !one_row_moves_whole
                 && (!is_multicol || multicol_has_span_all)
                 && (has_forced_break_below(self.doc, child_id, self.column_styles, 0)
                     || has_page_name_change_below(
@@ -904,7 +940,30 @@ impl<'a> PaginationLayoutTree<'a> {
             // `avoid_inside` above (it just suppresses the inline
             // split branch; remaining-strip overflow handling is
             // identical).
-            if cursor_y > 0.0 && cursor_y + child_h > self.page_height_px {
+            // pdf-engine patch: a one-row flex/grid container that straddles the break is sliced in place when its first
+            // line of text fits above the break (as browsers do); otherwise it moves whole.
+            let is_flex_grid =
+                child_node.is_some_and(crate::blitz_adapter::is_flex_or_grid_container_node);
+            let sliceable_kind = !is_multicol
+                && !child_node.is_some_and(|n| {
+                    n.element_data()
+                        .is_some_and(|el| matches!(el.name.local.as_ref(), "table" | "img" | "svg"))
+                });
+            let slice_row_here = cursor_y > 0.0
+                && cursor_y + child_h > self.page_height_px
+                && child_h <= self.page_height_px
+                && !avoid_inside
+                && sliceable_kind
+                && (!is_flex_grid
+                    || is_one_row_container_fitting_a_page(
+                        self.doc,
+                        child_id,
+                        child_h,
+                        self.page_height_px,
+                    ))
+                && self.page_height_px - cursor_y
+                    >= first_line_room_needed(self.doc, child_id, 0).max(1.0);
+            if !slice_row_here && cursor_y > 0.0 && cursor_y + child_h > self.page_height_px {
                 page_index += 1;
                 cursor_y = 0.0;
             }
@@ -958,7 +1017,7 @@ impl<'a> PaginationLayoutTree<'a> {
             let has_transform = child
                 .primary_styles()
                 .is_some_and(|s| !s.get_box().transform.0.is_empty());
-            if !has_transform && child_h > self.page_height_px + 1.0 {
+            if !has_transform && (child_h > self.page_height_px + 1.0 || slice_row_here) {
                 let first_slice_h = (self.page_height_px - cursor_y).min(child_h);
                 self.geometry
                     .entry(child_id)
@@ -1330,6 +1389,79 @@ fn record_subtree_descendants(
 /// cursor on the current page. `page_h_px` lets the simulator detect
 /// grandchildren taller than a full page (which would themselves
 /// recurse and therefore split, regardless of `available_h`).
+/// pdf-engine patch: a flex or grid container whose items all sit in one row (same top), with no forced break below
+/// it, that would fit a fresh page. Its items cannot be split between, so entering it only lets its first item
+/// overflow the page and be clipped; the whole container belongs on the next page instead.
+fn is_one_row_container_fitting_a_page(
+    doc: &BaseDocument,
+    node_id: usize,
+    child_h: f32,
+    page_h_px: f32,
+) -> bool {
+    let Some(node) = doc.get_node(node_id) else {
+        return false;
+    };
+    if !crate::blitz_adapter::is_flex_or_grid_container_node(node) || child_h > page_h_px {
+        return false;
+    }
+    let mut top: Option<f32> = None;
+    for &id in &node.children {
+        let Some(c) = doc.get_node(id) else { continue };
+        if c.text_data()
+            .is_some_and(|t| t.content.chars().all(char::is_whitespace))
+        {
+            continue;
+        }
+        let y = c.final_layout.location.y;
+        match top {
+            None => top = Some(y),
+            Some(t) if (t - y).abs() > 0.5 => return false,
+            _ => {}
+        }
+    }
+    top.is_some()
+}
+
+/// pdf-engine patch: how much of a box must fit on the page for its first line of text to land there (padding and
+/// border above it, plus the line). A browser never cuts through a line, so a box with less room than this moves to the
+/// next page whole instead of leaving a sliver. 0 for a box with no text.
+fn first_line_room_needed(doc: &BaseDocument, node_id: usize, depth: usize) -> f32 {
+    if depth > 8 {
+        return 0.0;
+    }
+    let Some(node) = doc.get_node(node_id) else {
+        return 0.0;
+    };
+    // A replaced element (an image, an svg) is never cut: all of it has to fit.
+    if node.element_data().is_some_and(|el| {
+        matches!(el.name.local.as_ref(), "img" | "svg" | "canvas" | "video" | "object")
+    }) {
+        return node.final_layout.size.height;
+    }
+    if let Some(el) = node.element_data()
+        && let Some(inline) = &el.inline_layout_data
+        && let Some(line) = inline.layout.lines().next()
+    {
+        let l = &node.final_layout;
+        return l.padding.top + l.border.top + line.metrics().line_height;
+    }
+    for &c in &node.children {
+        let Some(child) = doc.get_node(c) else { continue };
+        if child
+            .text_data()
+            .is_some_and(|t| t.content.chars().all(char::is_whitespace))
+        {
+            continue;
+        }
+        let need = first_line_room_needed(doc, c, depth + 1);
+        if need > 0.0 {
+            let l = &node.final_layout;
+            return l.padding.top + l.border.top + child.final_layout.location.y + need;
+        }
+    }
+    0.0
+}
+
 fn would_split_block_subtree(
     doc: &BaseDocument,
     parent_id: usize,
@@ -1855,7 +1987,10 @@ fn fragment_block_subtree(
                     cursor_y = rs.max_end_cursor_y;
                     if rs.max_end_page > rs.start_page {
                         page_start_y = 0.0;
-                        origin_pending_target_y = Some(rs.max_end_cursor_y);
+                        // pdf-engine patch: keep the gap (flex/grid `gap`, margins) between the row that crossed the
+                        // page break and the next one; it was dropped, so everything after a split item sat too high.
+                        let row_gap = (this_top_in_parent - rs.row_bottom).max(0.0);
+                        origin_pending_target_y = Some(rs.max_end_cursor_y + row_gap);
                         origin_pending_same_row = None;
                     } else {
                         page_start_y = rs.start_page_start_y;
@@ -2031,8 +2166,13 @@ fn fragment_block_subtree(
         // fulgur-7hf5: see body-direct branch — multicol containers
         // are atomic from the fragmenter's perspective.
         let is_multicol = crate::blitz_adapter::is_multicol_container(child);
+        let one_row_moves_whole = child_page_y > page_start_y
+            && child_page_y + child_h > page_height_px
+            && is_one_row_container_fitting_a_page(doc, child_id, child_h, page_height_px)
+            && !has_forced_break_below(doc, child_id, column_styles, 0);
         let needs_recursion = !child.children.is_empty()
             && !is_multicol
+            && !one_row_moves_whole
             && (has_forced_break_below(doc, child_id, column_styles, 0)
                 || has_page_name_change_below(doc, child_id, used_page_names, 0)
                 || would_split_block_subtree(doc, child_id, available_strip, page_height_px, 0));
@@ -2201,7 +2341,29 @@ fn fragment_block_subtree(
         // Use `child_page_y + child_h` (the actual placement bottom)
         // rather than `cursor_y + child_h` so a parallel sibling
         // returning to a smaller page-local y is checked correctly.
-        if child_page_y > page_start_y && child_page_y + child_h > page_height_px {
+        // pdf-engine patch: a container that began part-way down a page (`page_start_y > 0`) does not exempt its first
+        // child from the cut: a child that does not fit the rest of the page moves to the next one. Without this,
+        // `<div><div style="height:300px"></div></div>` near the page bottom was clipped.
+        let first_child_may_move = page_start_y > 0.0 && child_h <= page_height_px;
+        // pdf-engine patch: browsers slice a flex or grid item that crosses the page break (unless it asks
+        // for `break-inside: avoid`); it does not jump to the next page whole.
+        let slice_item_here = !is_multicol
+            && !child.element_data().is_some_and(|el| {
+                matches!(el.name.local.as_ref(), "table" | "img" | "svg")
+            })
+            && !matches!(
+                break_props.break_inside,
+                Some(crate::draw_primitives::BreakInside::Avoid)
+            )
+            && child_page_y + child_h > page_height_px
+            && page_height_px - child_page_y >= first_line_room_needed(doc, child_id, 0).max(1.0)
+            && !child
+                .primary_styles()
+                .is_some_and(|s| !s.get_box().transform.0.is_empty());
+        if !slice_item_here
+            && (child_page_y > page_start_y || first_child_may_move)
+            && child_page_y + child_h > page_height_px
+        {
             let should_emit = row_state
                 .as_mut()
                 .map(|rs| rs.emitted_parent_pages.insert(page_index))
@@ -2229,6 +2391,83 @@ fn fragment_block_subtree(
             child_page_y = 0.0;
         }
 
+        // pdf-engine patch: a leaf taller than a whole page (a 1400 px grid cell, a tall block in a wrapper) is
+        // sliced across pages, as the top-level fragmenter does, instead of being clipped at the page bottom.
+        let oversize_has_transform = child
+            .primary_styles()
+            .is_some_and(|s| !s.get_box().transform.0.is_empty());
+        if !oversize_has_transform && (child_h > page_height_px + 1.0 || slice_item_here) {
+            let first_slice_h = (page_height_px - child_page_y).max(0.0).min(child_h);
+            geometry.entry(child_id).or_default().fragments.push(Fragment {
+                page_index,
+                x: child_x_in_body.as_px(),
+                y: child_page_y.as_px(),
+                width: child_w.as_px(),
+                height: first_slice_h.as_px(),
+            });
+            record_subtree_descendants(
+                geometry,
+                doc,
+                child_id,
+                page_index,
+                child_page_y,
+                child_x_in_body,
+                depth + 1,
+            );
+            let mut remaining = child_h - first_slice_h;
+            let mut last_slice_h = first_slice_h;
+            if remaining > 0.0 {
+                // the parent covers the rest of this page, then every following page the slices land on
+                if row_state
+                    .as_mut()
+                    .map(|rs| rs.emitted_parent_pages.insert(page_index))
+                    .unwrap_or(true)
+                {
+                    geometry.entry(parent_id).or_default().fragments.push(Fragment {
+                        page_index,
+                        x: parent_x_in_body.as_px(),
+                        y: page_start_y.as_px(),
+                        width: parent_w.as_px(),
+                        height: (page_height_px - page_start_y).as_px(),
+                    });
+                }
+                while remaining > 0.0 && page_index < crate::MAX_PAGES {
+                    page_index += 1;
+                    last_slice_h = remaining.min(page_height_px);
+                    geometry.entry(child_id).or_default().fragments.push(Fragment {
+                        page_index,
+                        x: child_x_in_body.as_px(),
+                        y: 0.0_f32.as_px(),
+                        width: child_w.as_px(),
+                        height: last_slice_h.as_px(),
+                    });
+                    remaining -= last_slice_h;
+                    if remaining > 0.0
+                        && row_state
+                            .as_mut()
+                            .map(|rs| rs.emitted_parent_pages.insert(page_index))
+                            .unwrap_or(true)
+                    {
+                        geometry.entry(parent_id).or_default().fragments.push(Fragment {
+                            page_index,
+                            x: parent_x_in_body.as_px(),
+                            y: 0.0_f32.as_px(),
+                            width: parent_w.as_px(),
+                            height: page_height_px.as_px(),
+                        });
+                    }
+                }
+                if let Some(rs) = row_state.as_mut() {
+                    rs.crossed_by_recursion = true;
+                }
+                // later siblings continue below the last slice
+                page_start_y = 0.0;
+                page_taffy_origin = this_top_in_parent + child_h - last_slice_h;
+                cursor_y = last_slice_h;
+            } else {
+                cursor_y = cursor_y.max(child_page_y + child_h);
+            }
+        } else {
         // Child fits the strip (or is an atomic oversized leaf that
         // simply overflows below the page bottom — with a single
         // in-flow child there is no valid interior split point, so
@@ -2260,6 +2499,7 @@ fn fragment_block_subtree(
         // `cursor_y` to `max(cursor_y, child_page_y + child_h)` —
         // the per-row max bottom).
         cursor_y = cursor_y.max(child_page_y + child_h);
+        }
 
         // Honour `break-after: page` after the child fragment lands
         // (and the descendant walk records same-page entries).

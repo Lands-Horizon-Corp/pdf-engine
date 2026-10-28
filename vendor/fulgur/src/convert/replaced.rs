@@ -199,6 +199,26 @@ fn convert_image(
     let Some(data) = bundle.get_image(src).cloned() else {
         return false;
     };
+    // pdf-engine patch: an `<img>` whose source is an SVG (a file or a data: URI) is parsed here and drawn as vector
+    // graphics. Blitz only parses an SVG image through a network provider, which the engine does not have.
+    if matches!(crate::image::AssetKind::detect(&data), crate::image::AssetKind::Svg) {
+        let Ok(tree) = usvg::Tree::from_data(&data, &usvg::Options::default()) else {
+            return false;
+        };
+        let (content_w, content_h, opacity, visible) =
+            maybe_insert_block_for_replaced(node, assets, out);
+        out.svgs.insert(
+            node.id,
+            crate::drawables::SvgEntry {
+                tree: std::sync::Arc::new(tree),
+                width: content_w.as_pt(),
+                height: content_h.as_pt(),
+                opacity,
+                visible,
+            },
+        );
+        return true;
+    }
     let Some(format) = ImageRender::detect_format(&data) else {
         return false;
     };

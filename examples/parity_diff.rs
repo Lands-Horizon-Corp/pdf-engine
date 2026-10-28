@@ -168,7 +168,17 @@ fn main() {
             "wrong": page_wrong,
             "similarity": if page_ink == 0 { 100.0 } else { 100.0 * (1.0 - page_wrong as f64 / page_ink as f64) },
         }));
-        panels.push((w * 3, h, sheet));
+        // Keep the picture sharp: no downscaling, but cut the empty paper below the last ink of either page.
+        let last_ink = (0..h)
+            .rev()
+            .find(|&y| {
+                (0..w)
+                    .any(|x| is_ink(px(a, x as i64, y as i64)) || is_ink(px(b, x as i64, y as i64)))
+            })
+            .map_or(0, |y| y + 1);
+        let keep = (last_ink + 24).min(h).max(1);
+        sheet.truncate(w * 3 * keep * 4);
+        panels.push((w * 3, keep, sheet));
     }
 
     // Stack the pages into one image, scaled down so a long document stays a reasonable file.
@@ -183,23 +193,7 @@ fn main() {
             }
             top += h;
         }
-        let (mut iw, mut ih, mut img) = (width, height, image);
-        while iw > 1600 {
-            let (nw, nh) = (iw / 2, ih / 2);
-            let mut out = vec![0u8; nw * nh * 4];
-            for y in 0..nh {
-                for x in 0..nw {
-                    for c in 0..4 {
-                        let s = |dx: usize, dy: usize| {
-                            img[((y * 2 + dy) * iw + x * 2 + dx) * 4 + c] as u32
-                        };
-                        out[(y * nw + x) * 4 + c] =
-                            ((s(0, 0) + s(1, 0) + s(0, 1) + s(1, 1)) / 4) as u8;
-                    }
-                }
-            }
-            (iw, ih, img) = (nw, nh, out);
-        }
+        let (iw, ih, img) = (width, height, image);
         if let Ok(file) = std::fs::File::create(&args[3]) {
             let mut enc = png::Encoder::new(std::io::BufWriter::new(file), iw as u32, ih as u32);
             enc.set_color(png::ColorType::Rgba);

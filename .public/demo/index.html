@@ -56,6 +56,15 @@
   .params input[type=text], .params input[type=password] { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 4px 8px; width: 92px; }
   .params input.pw { width: 130px; }
   .params [hidden] { display: none !important; }
+  .more { background: var(--panel); border-bottom: 1px solid var(--line); }
+  .more > summary { cursor: pointer; padding: 8px 16px; font-size: 13px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; }
+  .more > summary::-webkit-details-marker { display: none; }
+  .more > summary::before { content: "\25B8"; display: inline-block; transition: transform .15s; color: var(--muted); }
+  .more[open] > summary::before { transform: rotate(90deg); }
+  .more > summary .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .more > summary:hover { background: var(--code-bg); }
+  .more .params, .more .speed { border-bottom: 0; border-top: 1px solid var(--line); }
+  @media (max-width: 640px) { .more > summary .hint { display: none; } }
   .speed { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 13px; }
   .speed .title { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
   .speed label { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
@@ -154,6 +163,8 @@
   <span class="status" id="status" aria-live="polite">Loading the engine…</span>
 </div>
 
+<details class="more" id="more">
+  <summary>More options <span class="hint">page size, orientation, compression, password, workers, speed test</span></summary>
 <div class="params" role="group" aria-label="PDF options">
   <span class="title">Options</span>
   <label>Page size
@@ -193,6 +204,7 @@
   <button id="speedRun">Make them all</button>
   <span id="speedResult">Makes the current example again and again, with different numbers each time, and times it. Nothing is uploaded.</span>
 </div>
+</details>
 
 <main>
   <section class="col" aria-label="Editor">
@@ -535,6 +547,11 @@ try {
 } catch (e) {
   status.textContent = 'The engine could not load: ' + e.message;
 }
+try {
+  const more = document.getElementById('more');
+  if (localStorage.getItem('demo-more') === 'open') more.open = true;
+  more.addEventListener('toggle', () => { try { localStorage.setItem('demo-more', more.open ? 'open' : 'closed'); } catch {} });
+} catch {}
 window.__demo = { get ready() { return !!pdf; } };
 </script>
 <script>
@@ -545,20 +562,22 @@ fetch('parity.json').then((r) => (r.ok ? r.json() : Promise.reject())).then((p) 
   $('parity-detail').textContent = p.pass + ' of ' + p.cases + ' pages match (' + p.close + ' close, ' + p.fail + ' not yet) against ' + p.reference.split(' (')[0] + ', engine ' + p.engineVersion;
   const tbody = $('parity-cats').querySelector('tbody');
   const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  let open = null, showAll = false;
+  let open = null, onlyDiff = false;
   const showCases = () => {
     const box = $('parity-cases');
     if (!open) { box.innerHTML = ''; return; }
-    const rows = p.results.filter((r) => r.category === open && (showAll || r.verdict !== 'pass'));
-    box.innerHTML = '<h3>' + esc(open) + '</h3><label><input type="checkbox" id="parity-all"' + (showAll ? ' checked' : '') + '> show the cases that pass too</label>'
+    const all = p.results.filter((r) => r.category === open).sort((a, b) => a.score - b.score);
+    const rows = onlyDiff ? all.filter((r) => r.verdict !== 'pass') : all;
+    box.innerHTML = '<h3>' + esc(open) + ' <span class="muted">(' + rows.length + ' of ' + all.length + ' cases, worst first)</span></h3>'
+      + '<label><input type="checkbox" id="parity-diff"' + (onlyDiff ? ' checked' : '') + '> only the cases that differ from Chrome</label>'
       + '<div class="key">Each picture has three panels, left to right: Chrome, pdf-engine, and what differs.</div>'
-      + (rows.length ? rows.map((r) => '<div class="case"><span class="v ' + r.verdict + '">' + r.verdict + '</span> ' + r.score + ' · ' + esc(r.name) + (r.why ? ' <span class="muted">(' + esc(r.why) + ')</span>' : '') + '<div class="pics"><div class="labels"><span>Chrome (the reference)</span><span>pdf-engine</span><span>Difference <span class="diff">red: only in Chrome · blue: only in pdf-engine</span></span></div><span class="rule r1"></span><span class="rule r2"></span><img loading="lazy" src="' + esc(r.image) + '" alt="Chrome, pdf-engine and the difference for ' + esc(r.name) + '"></div></div>').join('') : '<p class="muted">Every case in this category passes.</p>');
-    $('parity-all').onchange = (e) => { showAll = e.target.checked; showCases(); };
+      + (rows.length ? rows.map((r) => '<div class="case"><span class="v ' + r.verdict + '">' + r.verdict + '</span> ' + r.score + ' · ' + esc(r.name) + (r.why ? ' <span class="muted">(' + esc(r.why) + ')</span>' : '') + '<div class="pics"><div class="labels"><span>Chrome (the reference)</span><span>pdf-engine</span><span>Difference <span class="diff">red: only in Chrome · blue: only in pdf-engine</span></span></div><span class="rule r1"></span><span class="rule r2"></span><img loading="lazy" src="' + esc(r.image) + '" alt="Chrome, pdf-engine and the difference for ' + esc(r.name) + '"></div></div>').join('') : '<p class="muted">Every case in this category matches Chrome.</p>');
+    $('parity-diff').onchange = (e) => { onlyDiff = e.target.checked; showCases(); };
   };
   for (const c of p.categories) {
     const tr = document.createElement('tr');
     tr.innerHTML = '<td>' + esc(c.name) + '</td><td>' + c.score.toFixed(1) + '</td><td>' + c.cases + '</td><td>' + c.pass + '</td><td>' + c.close + '</td><td>' + c.fail + '</td>';
-    tr.onclick = () => { open = c.name; showAll = false; showCases(); $('parity-cases').scrollIntoView({ block: 'nearest' }); };
+    tr.onclick = () => { open = c.name; onlyDiff = false; showCases(); $('parity-cases').scrollIntoView({ block: 'nearest' }); };
     tbody.appendChild(tr);
   }
   $('parity-toggle').onclick = () => {

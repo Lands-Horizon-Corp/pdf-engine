@@ -207,6 +207,29 @@ impl Default for FulgurEngine {
     }
 }
 
+/// True when an `@page` rule in the document declares a `size`.
+fn css_sets_page_size(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find("@page") {
+        let start = from + at + 5;
+        from = start;
+        let Some(open) = lower[start..].find('{') else {
+            break;
+        };
+        // the rule's own declarations come before its first nested margin-box block
+        let body = &lower[start + open + 1..];
+        let end = body.find(['{', '}']).unwrap_or(body.len());
+        let decls = &body[..end];
+        if decls.split(';').any(|d| {
+            d.trim_start().starts_with("size") && d.trim_start()[4..].trim_start().starts_with(':')
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
 impl FulgurEngine {
     /// One render. `pdf_ua` asks for a PDF/UA conforming file (which needs a document outline, so a page with no
     /// headings cannot claim it); `job.accessible` without it still gives a tagged PDF with a language and a title.
@@ -217,10 +240,14 @@ impl FulgurEngine {
             let key = src.strip_prefix("./").unwrap_or(src);
             assets.images.insert(key.to_string(), data.clone());
         }
-        let mut builder = Engine::builder()
-            .page_size(PageSize::custom(job.page.width, job.page.height))
-            .assets(assets)
-            .system_fonts(true);
+        // A request that left the page size at its default (Letter, portrait) lets the document's own
+        // `@page { size: ... }` decide, as a browser does. Any other size in the request is final.
+        let default_letter =
+            (job.page.width - 215.9).abs() < 0.01 && (job.page.height - 279.4).abs() < 0.01;
+        let mut builder = Engine::builder().assets(assets).system_fonts(true);
+        if !(default_letter && css_sets_page_size(&job.html)) {
+            builder = builder.page_size(PageSize::custom(job.page.width, job.page.height));
+        }
         if let Some(t) = &job.title {
             builder = builder.title(t.clone());
         }

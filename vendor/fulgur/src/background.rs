@@ -499,6 +499,29 @@ pub fn draw_background(
     }
 }
 
+/// pdf-engine patch: the background of one slice of a box that a page break cut. The whole box's background is laid
+/// out (so a gradient or an image runs on across the slices, as in a browser) and clipped to this slice.
+/// `offset` is how far into the box the slice starts, `full_h` the height of the whole box.
+pub fn draw_background_slice(
+    canvas: &mut Canvas<'_, '_>,
+    style: &BlockStyle,
+    x: f32,
+    y: f32,
+    w: f32,
+    slice_h: f32,
+    offset: f32,
+    full_h: f32,
+) {
+    let Some(clip) = build_rect_path(x, y, w, slice_h) else {
+        return;
+    };
+    canvas
+        .surface
+        .push_clip_path(&clip, &krilla::paint::FillRule::default());
+    draw_background(canvas, style, x, y - offset, w, full_h);
+    canvas.surface.pop();
+}
+
 fn build_rect_path(x: f32, y: f32, w: f32, h: f32) -> Option<krilla::geom::Path> {
     let rect = krilla::geom::Rect::from_xywh(x, y, w, h)?;
     let mut pb = krilla::geom::PathBuilder::new();

@@ -86,6 +86,27 @@ pub fn image_sources(html: &str) -> Vec<String> {
         }
         pos = tag_end.max(start + 4);
     }
+    // CSS `url(...)` images (backgrounds, `content: url()`): data: images and files with an image extension.
+    // Fonts in `@font-face` are not images and are loaded elsewhere.
+    let mut pos = 0;
+    while let Some(at) = find_ci(bytes, b"url(", pos) {
+        let rest = &html[at + 4..];
+        let end = rest.find(')').unwrap_or(rest.len());
+        pos = at + 4 + end.max(1);
+        let raw = decode_entities(rest[..end].trim());
+        let src = raw.trim_matches(|c| c == '"' || c == '\'').trim();
+        let lower = src.to_ascii_lowercase();
+        let is_image = lower.starts_with("data:image/")
+            || [".png", ".jpg", ".jpeg", ".gif", ".svg"].iter().any(|e| {
+                lower
+                    .split(['?', '#'])
+                    .next()
+                    .is_some_and(|p| p.ends_with(e))
+            });
+        if is_image && !out.iter().any(|o| o == src) {
+            out.push(src.to_string());
+        }
+    }
     out
 }
 

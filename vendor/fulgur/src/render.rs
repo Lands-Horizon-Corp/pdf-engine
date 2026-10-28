@@ -1198,7 +1198,19 @@ pub(crate) fn dispatch_fragment(
             }
             return;
         }
+        if is_split {
+            let pt = |f: &crate::pagination_layout::Fragment| f.height.in_pt().to_f32();
+            let offset: f32 = geom
+                .fragments
+                .iter()
+                .filter(|f| f.page_index < page_index)
+                .map(pt)
+                .sum();
+            let full: f32 = geom.fragments.iter().map(pt).sum();
+            BG_SLICE.with(|c| c.set(Some((offset, full))));
+        }
         draw_block_v2(canvas, block, x_pt, y_pt, frag, is_split);
+        BG_SLICE.with(|c| c.set(None));
     }
     if let Some(img) = drawables.images.get(&node_id) {
         draw_image_v2(canvas, img, x_pt, y_pt);
@@ -2786,6 +2798,12 @@ fn paint_root_block_v2(
 /// wrap. Used by `draw_list_item_with_block` so the list-item's
 /// marker and body block share a single opacity transparency group
 /// (CSS opacity §2).
+std::thread_local! {
+    /// pdf-engine patch: (offset into the box, height of the whole box), in pt, of the slice being drawn. Set around
+    /// `draw_block_v2` for a block a page break cut.
+    static BG_SLICE: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
+}
+
 fn draw_block_inner_paint(
     canvas: &mut crate::draw_primitives::Canvas<'_, '_>,
     entry: &crate::drawables::BlockEntry,
@@ -2825,7 +2843,21 @@ fn draw_block_inner_paint(
 
     if entry.visible {
         crate::background::draw_box_shadows(canvas, &entry.style, x, y, total_width, total_height);
-        crate::background::draw_background(canvas, &entry.style, x, y, total_width, total_height);
+        match BG_SLICE.with(|c| c.get()).filter(|_| is_split) {
+            Some((offset, full_h)) => crate::background::draw_background_slice(
+                canvas,
+                &entry.style,
+                x,
+                y,
+                total_width,
+                total_height,
+                offset,
+                full_h,
+            ),
+            None => {
+                crate::background::draw_background(canvas, &entry.style, x, y, total_width, total_height)
+            }
+        }
         crate::draw_primitives::draw_block_border(
             canvas,
             &entry.style,
@@ -3905,9 +3937,41 @@ impl<'a> MarginBoxRenderer<'a> {
                 width_key(rect.height.to_f32()),
             );
             if !self.render_cache.contains_key(&cache_key) {
+                // pdf-engine patch: the default alignment of a margin box (CSS Paged Media 3 §5.3): text is
+                // left-aligned in a `-left` box, centred in a `-center` box and right-aligned in a `-right` box,
+                // and sits in the middle of the margin vertically, as browsers draw it.
+                let (text_align, vertical) = match pos {
+                    MarginBoxPosition::TopCenter | MarginBoxPosition::BottomCenter => {
+                        ("center", "center")
+                    }
+                    MarginBoxPosition::TopRight | MarginBoxPosition::BottomRight => {
+                        ("right", "center")
+                    }
+                    MarginBoxPosition::TopLeft
+                    | MarginBoxPosition::BottomLeft
+                    | MarginBoxPosition::TopLeftCorner
+                    | MarginBoxPosition::TopRightCorner
+                    | MarginBoxPosition::BottomLeftCorner
+                    | MarginBoxPosition::BottomRightCorner => ("left", "center"),
+                    MarginBoxPosition::LeftTop | MarginBoxPosition::RightTop => {
+                        ("left", "flex-start")
+                    }
+                    MarginBoxPosition::LeftMiddle | MarginBoxPosition::RightMiddle => {
+                        ("left", "center")
+                    }
+                    MarginBoxPosition::LeftBottom | MarginBoxPosition::RightBottom => {
+                        ("left", "flex-end")
+                    }
+                };
+                // A column, so a block (a running header with a border) still fills the box's width.
                 let render_html = format!(
-                    "<html><head><style>{}</style></head><body style=\"margin:0;padding:0;\">{}</body></html>",
-                    self.margin_css, html
+                    "<html><head><style>{}</style></head><body style=\"margin:0;padding:0;\"><div style=\"display:flex;flex-direction:column;justify-content:{};text-align:{};width:{}px;height:{}px\">{}</div></body></html>",
+                    self.margin_css,
+                    vertical,
+                    text_align,
+                    rect.width.in_px().to_f32(),
+                    rect.height.in_px().to_f32(),
+                    html
                 );
                 let mut render_doc = crate::blitz_adapter::parse_and_layout(
                     &render_html,

@@ -6,6 +6,53 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
 ## [Unreleased]
 
+Pagination, right-to-left text and a Chrome parity score. Every page of a growing corpus (now 188 pages: whole documents,
+one-feature probes, right-to-left pages, 84 pagination pages and 16 complex tables) is made by headless Chrome and by pdf-engine,
+both drawn by the same rasteriser, and scored. The score is on the [demo page](https://lands-horizon-corp.github.io/pdf-engine/)
+and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 93.81 over all 188 pages (about 95 without the complex tables, the newest and
+hardest group: see Known gaps).
+
+### Added
+
+- **Chrome parity score and health** (`node .public/parity/parity.mjs`, `--check` for CI), with a per-category breakdown and a
+  Chrome | pdf-engine | difference picture for every page on the demo.
+- **Right-to-left tests** (`tests/bidi.rs`, 38 cases; 27 pass, 11 known gaps are ignored with a reason).
+- **Pagination parity pages** in seven categories, and a **complex tables** category (spans, colours, border styles, outlines,
+  rounded cells, nested tables, heatmaps, long tables).
+
+### Fixed
+
+- **A page filled exactly lost its last row**, so every long document needed one page too many (279.4 mm was 959.9999 px).
+- **Content lost at a page break.** A body with only text and `<br>` lines was clipped to the first page; a block inside a wrapper
+  that did not fit the rest of the page, a flex row of images, and a flex item or grid cell taller than a page were clipped at
+  the bottom of the page and the rest was dropped.
+- **A box that straddles a page break is cut at the break** when its first line of text fits above it (as browsers do), and moves
+  whole otherwise. Images, tables, multi-column boxes and `break-inside: avoid` are never cut. The `gap` after a cut item is kept.
+- **A gradient or background image continues across the pages** a box is cut over, instead of restarting on each.
+- **`dir="rtl"` and `direction: rtl` set the direction of a paragraph** (they had no effect on Latin text, `text-align: start`
+  or the order of runs), and a flex row flips in a right-to-left box.
+- **An `inline-block` with text sits on its text baseline** (it was about 70 px too low) and its `margin` is honoured.
+- **SVG images are drawn:** `<img>` of an SVG (a file or a data URI) and CSS `url()` backgrounds, which were not collected at all.
+- **`@page { size }` is honoured** when the request leaves the page size at its default (Letter).
+- **Margin boxes** (`@top-center`, `@bottom-right`, ...) are aligned left, centre or right and centred vertically in the margin.
+
+### Known gaps (found by the parity pages, not fixed here)
+
+- Complex tables: `border-collapse: separate` with rounded cells, nested tables, `outline`, and vertical alignment inside `rowspan`
+  cells differ from Chrome.
+- Right-to-left: `<bdo>` and `unicode-bidi: isolate`, grid, table and list mirroring in an rtl box, `float: inline-start`,
+  `padding-inline-*`, and `text-indent` at the start side.
+- `outline` is not drawn; `::before`/`::after` with `display: block` lay out side by side; an inline `<span>` with only a space
+  paints no background; `column-rule` on a box that must split across columns.
+- Long documents drift from Chrome's page breaks because Chrome draws `sans-serif` as Helvetica and the engine as Noto Sans,
+  which has looser line spacing.
+
+### Engine internals
+
+The layout engine's vendored copies carry the fixes: `vendor/parley` (new: a paragraph's base direction, the baseline of an inline
+box), `vendor/blitz-dom` and `vendor/fulgur` (pagination, backgrounds, margin boxes, SVG images). Each change is in that crate's
+`PATCHES.md`. The Node, Electron and Tauri package and the browser package take them from this source when they are built.
+
 ## [1.4.1] - 2026-10-27
 
 Memory. One PDF, each library in a fresh process ([the benchmark](.public/benchmark/README.md)), peak memory of the whole

@@ -577,8 +577,19 @@ pub(super) fn extract_paragraph(
                     // pdf-engine patch: parley now places the box on its own text baseline (`InlineBox::baseline`),
                     // so no extra shift is applied here.
                     let baseline_shift = crate::units::Pt::ZERO;
-                    let computed_y =
-                        positioned.y.as_px().in_pt() - accumulated_line_top + baseline_shift;
+                    // pdf-engine patch: the box is placed at its margin edge, the content starts a margin further in.
+                    let margin = doc
+                        .get_node(node_id)
+                        .map(|n| {
+                            use taffy::ResolveOrZero as _;
+                            n.style
+                                .margin
+                                .resolve_or_zero(taffy::Size::NONE, |_, _| 0.0)
+                        })
+                        .unwrap_or(taffy::Rect::ZERO);
+                    let computed_y = positioned.y.as_px().in_pt() - accumulated_line_top
+                        + baseline_shift
+                        + margin.top.as_px().in_pt();
                     let visible = doc
                         .get_node(node_id)
                         .map(super::style::extract_opacity_visible)
@@ -588,7 +599,7 @@ pub(super) fn extract_paragraph(
                         node_id: content,
                         width: positioned.width.as_px().in_pt(),
                         height,
-                        x_offset: positioned.x.as_px().in_pt(),
+                        x_offset: positioned.x.as_px().in_pt() + margin.left.as_px().in_pt(),
                         computed_y,
                         link,
                         opacity: 1.0,

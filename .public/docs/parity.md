@@ -14,8 +14,10 @@ image for every case, is `.public/parity/out/report.html`.
 
 ## What is compared
 
-Every HTML file in `tests/fixtures/css` (20 documents), `tests/fixtures/probes` (64 one-feature pages) and
-`.public/parity/cases` (right-to-left and mixed-direction pages) is made into a PDF by Chrome (Letter, no margin,
+Every HTML file in `tests/fixtures/css` (20 documents), `tests/fixtures/probes` (64 one-feature pages),
+`.public/parity/cases` (right-to-left and mixed-direction pages) and `.public/parity/cases/<category>/` (84 pagination pages,
+12 in each of seven categories, and 16 complex tables: page count, forced breaks, `break-inside: avoid`, tables, images at a page break, flex and
+grid across pages, and fixed headers and footers; made by `gen-cases.py`) is made into a PDF by Chrome (Letter, no margin,
 backgrounds on, `@page` size respected) and by pdf-engine. **Both PDFs are drawn by the same rasteriser** (hayro, at 96 dpi),
 so the difference is in the PDFs, not in the viewer.
 
@@ -42,15 +44,58 @@ No tuning per case, no alignment of the two pages before comparing, and the thre
 
 ## Where it stands (28 October 2026, pdf-engine 1.4.1 plus the patches below, Chrome 156)
 
-Score **87.86, HEALTHY**: 65 pass, 11 close, 12 fail (of 88). It was 80.3 at the first run.
-What moved it:
+Score **93.81, HEALTHY**: 157 pass, 20 close, 11 fail, of 188 cases. The first run, on 88 cases, scored 80.3.
 
-- **Both sides use standards mode.** Several fixtures have no `<!doctype>`, which Chrome renders in quirks mode (it drops the
-  first element's top margin). The driver now adds a doctype to both renderers. This is most of the first jump, and it is a
-  change to the comparison, not to the engine. pdf-engine has no quirks mode.
-- **`dir` and `direction: rtl` now set a paragraph's direction** (patched parley and blitz-dom), and a flex row flips in an rtl box.
-- **An `inline-block` with text now sits on its text baseline** (badges and buttons used to be about 70 px too low).
+What moved it (every engine change is in the `PATCHES.md` of `vendor/fulgur`, `vendor/parley` and `vendor/blitz-dom`):
 
-Still failing: `<img>` of an SVG, `outline`, a span with only a space (its background is not drawn), `transform` and `opacity`
-pages, `column-rule`, `::before`/`::after` blocks, a long table across pages, and `@page { size }`, which is not applied (the
-page size comes from the request).
+- **Both sides use standards mode.** Several fixtures have no `<!doctype>`, which Chrome renders in quirks mode. The driver adds a
+  doctype to both renderers: a change to the comparison, not to the engine. pdf-engine has no quirks mode.
+- **Right to left:** `dir` and `direction: rtl` set a paragraph's direction; a flex row flips in an rtl box.
+- **Inline boxes:** an `inline-block` with text sits on its text baseline and its margin is honoured.
+- **Images:** `<img>` of an SVG (a file or a data URI) and CSS `url()` backgrounds are drawn.
+- **Pagination** (the largest group):
+  - a page filled exactly no longer loses its last row (279.4 mm was 959.9999 px, so every long document needed one page too many);
+  - a block, flex item or grid cell that straddles a page break is cut at the break when its first line of text fits above it,
+    and moves whole otherwise (as browsers do); images, tables and `break-inside: avoid` are never cut;
+  - a body that holds only text and `<br>` lines is split across pages (it used to be clipped to the first page);
+  - a gradient or background image continues across the slices of a cut box;
+  - `@page { size }` is honoured when the request leaves the page size at its default;
+  - margin boxes (`@top-center`, `@bottom-right`, ...) are aligned left, centre or right and centred vertically.
+
+| Category | Score | Pass |
+| --- | ---: | ---: |
+| columns | 34.4 | 0 of 1 |
+| complex tables | 79.0 | 6 of 16 |
+| backgrounds | 85.7 | 6 of 7 |
+| whole documents | 90.1 | 11 of 20 |
+| positioning | 91.8 | 2 of 3 |
+| box model and selectors | 91.9 | 7 of 8 |
+| borders | 92.9 | 14 of 16 |
+| pagination: tables | 95.0 | 11 of 12 |
+| pagination: headers and footers | 96.2 | 11 of 12 |
+| pagination: break-inside avoid | 96.6 | 11 of 12 |
+| right-to-left | 97.1 | 4 of 4 |
+| pagination: images | 97.2 | 11 of 12 |
+| inline and floats | 97.3 | 11 of 12 |
+| pagination: flex and grid | 97.7 | 11 of 12 |
+| pagination: forced breaks | 99.3 | 12 of 12 |
+| colour and opacity | 100.0 | 4 of 4 |
+| flexbox and grid | 100.0 | 3 of 3 |
+| images | 100.0 | 2 of 2 |
+| tables | 100.0 | 6 of 6 |
+| transforms | 100.0 | 2 of 2 |
+| pagination: page count | 100.0 | 12 of 12 |
+
+Three categories are under 90, for these reasons:
+
+- **complex tables** (16 cases, the newest group): merged headers, long tables, wide tables and invoices match Chrome (87 to 99), but
+  `border-collapse: separate` with rounded cells, nested tables, `outline` and vertical alignment inside `rowspan` cells do not yet.
+
+- **columns** (one case): `column-rule` on a box that must split across the columns when its only child is one empty tall block.
+- **backgrounds** (one case in seven): an inline `<span>` with only a space and some padding paints no background.
+- **whole documents** (90.1): mostly **font metrics**. Chrome draws `sans-serif` as Helvetica and the engine as Noto Sans, which has
+  looser line spacing, so a long table fits 45 rows a page against Chrome's 47 and every later row sits a little lower.
+  Floats are approximated (the right float sits at the top), which costs a few points on the floats page.
+
+Other failures: `outline` is not drawn, `::before`/`::after` with `display: block` lay out side by side, and an `inline-block`
+with text in some layouts.

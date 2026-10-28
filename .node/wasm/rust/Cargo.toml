@@ -39,6 +39,8 @@ fontique = { path = "../../../vendor/fontique" }
 taffy = { path = "../../../vendor/taffy" }
 # Patched krilla: adjustable zlib level. See vendor/krilla/PATCHES.md.
 krilla = { path = "../../../vendor/krilla" }
+# Patched parley: a paragraph's base direction, inline box baseline, run spacing. See vendor/parley/PATCHES.md.
+parley = { path = "../../../vendor/parley" }
 # Patched blitz-dom: one user-agent stylesheet parse per thread. See vendor/blitz-dom/PATCHES.md.
 blitz-dom = { path = "../../../vendor/blitz-dom" }
 

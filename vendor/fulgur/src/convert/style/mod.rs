@@ -1,6 +1,7 @@
 use crate::asset::AssetBundle;
 use crate::blitz_adapter::Node;
 use crate::draw_primitives::BlockStyle;
+use crate::units::F32Units;
 
 mod background;
 mod border;
@@ -24,6 +25,8 @@ pub(super) struct StyleContext<'a> {
 }
 
 /// Extract visual style (background, borders, padding, background-image) from a node.
+use ::style::values::specified::box_::DisplayInside;
+
 pub(super) fn extract_block_style(node: &Node, assets: Option<&AssetBundle>) -> BlockStyle {
     let layout = node.final_layout;
     let mut style = BlockStyle::default();
@@ -53,6 +56,77 @@ pub(super) fn extract_block_style(node: &Node, assets: Option<&AssetBundle>) -> 
         // the original temporal order in which `style.background_layers` is
         // populated. VRT golden bytes depend on this ordering.
         background::apply_to(&mut style, &ctx);
+    }
+
+    // pdf-engine patch: a cell of a `border-collapse: collapse` table paints the border its edges resolved to (the layout
+    // already holds half of each width): the winner's style and colour, not its own, and on the table's outer edge the
+    // border reaches half its width outside the cell.
+    if let Some(cb) = node.element_data().and_then(|e| e.collapsed_border.as_deref()) {
+        style.border_styles = cb.styles.map(border::map_border_style);
+        let colors = cb.colors.map(absolute_to_rgba);
+        style.border_color = colors[0];
+        style.border_side_colors = (!colors.iter().all(|c| *c == colors[0])).then_some(colors);
+        style.collapsed_outer = cb.outer;
+        if cb.outer.iter().any(|&o| o) {
+            // The whole border of an outer side is drawn from the table's own edge inward, as a browser does. The table's edge is
+            // as far outside the cell as the cell sits inside the table (the layout rounds both to whole pixels).
+            let mut ext = [0.0f32; 4];
+            let mut up = node.parent.map(|p| node.with(p));
+            for _ in 0..4 {
+                let Some(a) = up else { break };
+                if a.primary_styles().is_some_and(|st| matches!(st.clone_display().inside(), DisplayInside::Table)) {
+                    let (loc, size, table) = (node.final_layout.location, node.final_layout.size, a.final_layout.size);
+                    ext = [
+                        loc.y,
+                        table.width - (loc.x + size.width),
+                        table.height - (loc.y + size.height),
+                        loc.x,
+                    ]
+                    .map(|v| v.max(0.0));
+                    break;
+                }
+                up = a.parent.map(|p| a.with(p));
+            }
+            for side in 0..4 {
+                if cb.outer[side] {
+                    style.border_widths[side] = cb.widths[side].as_px().in_pt();
+                    style.collapsed_outer_extent[side] = ext[side].as_px().in_pt();
+                }
+            }
+        }
+    }
+
+    // pdf-engine patch: a table row has no box of its own in the PDF (its cells are the boxes), so its `background` was never
+    // painted: striped tables (`tr:nth-child(even)`) and highlighted rows (`<tr style="background:...">`) came out plain.
+    // A cell with no background of its own takes its row's (or row group's) colour.
+    if style.background_color.is_none()
+        && style.background_layers.is_empty()
+        && node.primary_styles().is_some_and(|st| {
+            matches!(st.clone_display().inside(), DisplayInside::TableCell)
+        })
+    {
+        let mut ancestor = node.parent.map(|p| node.with(p));
+        for _ in 0..2 {
+            let Some(a) = ancestor else { break };
+            let is_row_like = a.primary_styles().is_some_and(|st| {
+                matches!(
+                    st.clone_display().inside(),
+                    DisplayInside::TableRow
+                        | DisplayInside::TableRowGroup
+                        | DisplayInside::TableHeaderGroup
+                        | DisplayInside::TableFooterGroup
+                )
+            });
+            if !is_row_like {
+                break;
+            }
+            let color = extract_block_style(a, assets).background_color;
+            if color.is_some() {
+                style.background_color = color;
+                break;
+            }
+            ancestor = a.parent.map(|p| a.with(p));
+        }
     }
 
     style

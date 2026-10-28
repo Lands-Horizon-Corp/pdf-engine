@@ -293,7 +293,12 @@ impl LayoutPartialTree for BaseDocument {
                             doc: tree,
                             ctx: context,
                         };
-                        return compute_grid_layout(&mut table_wrapper, node_id, inputs);
+                        let output = compute_grid_layout(&mut table_wrapper, node_id, inputs);
+                        // pdf-engine patch: `vertical-align` of the cells, once the rows have their heights
+                        if inputs.run_mode == taffy::RunMode::PerformLayout {
+                            table_wrapper.align_cells_vertically();
+                        }
+                        return output;
                     }
 
                     if node.flags.is_inline_root() {

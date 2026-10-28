@@ -386,6 +386,21 @@ impl BaseDocument {
                 node.style.min_size.height = node.style.size.height;
                 node.style.size.height = taffy::Dimension::auto();
             }
+            // pdf-engine patch: the border of a cell of a collapsed-borders table is half the width its edges resolved to
+            // (see layout/table.rs); the style was just rebuilt from the CSS, which has the cell's own full width.
+            if let Some(cb) = node
+                .data
+                .downcast_element()
+                .and_then(|e| e.collapsed_border.as_deref())
+            {
+                let half = |w: f32| taffy::style_helpers::length(w / 2.0);
+                node.style.border = taffy::Rect {
+                    top: half(cb.widths[0]),
+                    right: half(cb.widths[1]),
+                    bottom: half(cb.widths[2]),
+                    left: half(cb.widths[3]),
+                };
+            }
             node.display_constructed_as = style.clone_display();
             float_role.apply(&mut node.style);
             // }

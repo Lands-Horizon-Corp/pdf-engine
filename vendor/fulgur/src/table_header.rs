@@ -50,8 +50,20 @@ struct RowInfo {
 
 /// The size of a row: its cells' fragments (the row itself has none). The tallest cell is the row.
 fn row_box(doc: &BaseDocument, geometry: &PaginationGeometryTable, row: usize) -> Option<(u32, f32, f32)> {
+    // A cell with a `rowspan` is as tall as all the rows it covers, so it says nothing about this one row: the row is
+    // measured by its other cells. A row made only of such cells falls back to all of them.
+    let spans = |cell: usize| {
+        doc.get_node(cell)
+            .and_then(|n| n.element_data())
+            .and_then(|e| crate::blitz_adapter::get_attr(e, "rowspan"))
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .is_some_and(|n| n > 1)
+    };
+    let cells = element_children(doc, row);
+    let single: Vec<usize> = cells.iter().copied().filter(|&c| !spans(c)).collect();
+    let measured = if single.is_empty() { cells } else { single };
     let mut found: Option<(u32, f32, f32)> = None;
-    for cell in element_children(doc, row) {
+    for cell in measured {
         if let Some(f) = geometry.get(&cell).and_then(|g| g.fragments.first()) {
             let (y, h) = (f.y.to_f32(), f.height.to_f32());
             found = Some(match found {
@@ -160,6 +172,64 @@ fn react(rows: &[RowInfo]) -> Vec<usize> {
     (1..rows.len()).filter(|&i| rows[i].page > rows[i - 1].page).collect()
 }
 
+/// A `rowspan` cell that reaches over the row a header copy is about to be put in front of. The copy is a row of its own, so
+/// the cell cannot span it (its first column would be taken, and the header copy's cells pushed out of their columns): it is
+/// cut in two, as a browser cuts it at a page break. The first part ends before the copy; a second, empty part with the same
+/// style carries on after it.
+struct SpanSplit {
+    cell: usize,
+    /// The first part's `rowspan`, and the second part's.
+    first_span: usize,
+    rest_span: usize,
+    /// The column the cell starts in, so the second part is put back in the same one.
+    col: usize,
+}
+
+/// The cells of `row`'s section that must be cut before `row`, and the column each of `row`'s own cells starts in.
+fn plan_span_splits(doc: &BaseDocument, container: usize, row: usize) -> (Vec<SpanSplit>, Vec<(usize, usize)>) {
+    let rows: Vec<usize> = element_children(doc, container).into_iter().filter(|&r| tag(doc, r) == Some("tr")).collect();
+    let Some(target) = rows.iter().position(|&r| r == row) else {
+        return (Vec::new(), Vec::new());
+    };
+    let attr_usize = |cell: usize, name: &str| -> usize {
+        doc.get_node(cell)
+            .and_then(|n| n.element_data())
+            .and_then(|e| crate::blitz_adapter::get_attr(e, name))
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .unwrap_or(1)
+    };
+    let mut occupied: Vec<usize> = Vec::new(); // occupied[col] = the first row index that column is free again
+    let mut splits = Vec::new();
+    let mut row_cols = Vec::new();
+    for (ri, &r) in rows.iter().enumerate().take(target + 1) {
+        let mut col = 0;
+        for cell in element_children(doc, r) {
+            if !matches!(tag(doc, cell), Some("td") | Some("th")) {
+                continue;
+            }
+            while occupied.get(col).is_some_and(|&free_at| free_at > ri) {
+                col += 1;
+            }
+            let rowspan = attr_usize(cell, "rowspan").clamp(1, 1000);
+            let colspan = attr_usize(cell, "colspan").clamp(1, 1000);
+            if ri < target && ri + rowspan > target {
+                splits.push(SpanSplit { cell, first_span: target - ri, rest_span: ri + rowspan - target, col });
+            }
+            if ri == target {
+                row_cols.push((cell, col));
+            }
+            if occupied.len() < col + colspan {
+                occupied.resize(col + colspan, 0);
+            }
+            for c in col..col + colspan {
+                occupied[c] = ri + rowspan;
+            }
+            col += colspan;
+        }
+    }
+    (splits, row_cols)
+}
+
 /// Put header copies in front of every body row that starts a continuation page and has none yet. Returns how many
 /// rows were added (0 means the layout is final).
 pub(crate) fn repeat_table_headers(
@@ -170,7 +240,26 @@ pub(crate) fn repeat_table_headers(
     let insertions = plan(doc, geometry, page_height_px);
     let mut added = 0;
     for ins in insertions {
+        let container = doc.get_node(ins.row).and_then(|n| n.parent);
+        let (splits, row_cols) = match container {
+            Some(c) => plan_span_splits(doc, c, ins.row),
+            None => (Vec::new(), Vec::new()),
+        };
         let mut m = doc.mutate();
+        // Cut the `rowspan` cells that reach over the row, and put the second part of each back in its column.
+        let rowspan_attr = || blitz_dom::QualName::new(None, blitz_dom::ns!(), blitz_dom::LocalName::from("rowspan"));
+        for split in &splits {
+            let rest = m.deep_clone_node(split.cell);
+            m.remove_and_drop_all_children(rest);
+            m.set_attribute(rest, rowspan_attr(), &split.rest_span.to_string());
+            m.set_attribute(split.cell, rowspan_attr(), &split.first_span.to_string());
+            // before the first cell of the row that starts in a later column, or at the end of the row
+            let before = row_cols.iter().find(|&&(_, c)| c > split.col).map(|&(cell, _)| cell);
+            match before {
+                Some(anchor) => m.insert_nodes_before(anchor, &[rest]),
+                None => m.append_children(ins.row, &[rest]),
+            }
+        }
         let mut copies = Vec::with_capacity(ins.header_rows.len());
         for (k, &h) in ins.header_rows.iter().enumerate() {
             let copy = m.deep_clone_node(h);

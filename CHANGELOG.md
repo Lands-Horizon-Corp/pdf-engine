@@ -9,7 +9,7 @@ image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 Pagination, right-to-left text and a Chrome parity score. Every page of a growing corpus (now 188 pages: whole documents,
 one-feature probes, right-to-left pages, 84 pagination pages and 16 complex tables) is made by headless Chrome and by pdf-engine,
 both drawn by the same rasteriser, and scored. The score is on the [demo page](https://lands-horizon-corp.github.io/pdf-engine/)
-and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 95.41 over all 188 pages (complex tables, the newest and hardest group, score 89.43: see Known gaps).
+and described in [Parity with Chrome](.public/docs/parity.md). The first run scored 80.3; it is now 95.71 over all 188 pages (complex tables, the newest and hardest group, score 94.15: see Known gaps).
 
 ### Added
 
@@ -36,6 +36,21 @@ and described in [Parity with Chrome](.public/docs/parity.md). The first run sco
   so every later group of rows came out too short); `border-spacing` is applied (cells touched, and tables were smaller than
   in a browser); a `height` on a row or cell is a minimum for its row, and a cell that holds a nested table or a block grows
   its row to fit it (it used to overflow into the next row).
+- **`border-collapse: collapse` is a real collapsed-borders model.** Every cell used to draw its own full borders, so a shared edge came
+  out twice as thick (1px + 1px = 2px, 4px + 4px = 8px) and the neighbours' styles and colours overpainted each other. Each shared edge
+  now has one border: the widest, then the strongest style (double, solid, dashed, dotted, ridge, outset, groove, inset), then the one
+  nearest the top-left, with `hidden` removing it; the table's own `border` takes part. A cell's layout holds half of it on each side
+  and the outer border is drawn from the table's edge inward, as a browser does. A table of mixed border styles and colours now
+  matches Chrome (72 to 100).
+- **`vertical-align` works in table cells** (`middle` is the default for `td`, also `top` and `bottom`): the content sits in the middle
+  of the room the row gives it. It was always at the top of the cell.
+- **Table row backgrounds are painted.** `<tr style="background:...">` and zebra stripes (`tr:nth-child(even)`) were never drawn, because a row has no
+  box of its own in the PDF; its cells now take the row's (or row group's) background.
+- **A `width: 100%` table lays its columns out as a browser does:** the spare width is shared in proportion to the columns'
+  content widths, not equally, and a cell that spans columns adds its width to them (a "Description" column made only of
+  `colspan` cells used to come out narrow).
+- **A repeated `<thead>` over `rowspan` group cells.** The header was put in at every group instead of every page, and pushed the copy's
+  cells out of their columns; a `rowspan` cell that crosses a page break is now cut in two there, as a browser does.
 - **`outline` is drawn** (width, style, colour and offset) for blocks and tables; it was ignored.
 - **`line-height: normal` is 1.15** times the font size (it was 1.2), the value browsers use for their default fonts. Long documents and
   tall tables drifted. CJK and Arabic text, whose fonts have taller lines in a browser, now sit a little tighter than before.
@@ -46,12 +61,15 @@ and described in [Parity with Chrome](.public/docs/parity.md). The first run sco
 
 ### Known gaps (found by the parity pages, not fixed here)
 
-- Complex tables: the row height of `border-collapse: collapse` with thick borders, double/groove/ridge border styles, and the
-  corner where two collapsed borders of different styles meet differ from Chrome.
+- Complex tables: the row height of `border-collapse: collapse` with thick borders, double/groove/ridge border styles, the corner
+  where two collapsed borders of different styles meet, and column widths where Chrome's Helvetica and our Noto Sans differ in glyph width.
 - Right-to-left: `<bdo>` and `unicode-bidi: isolate`, grid, table and list mirroring in an rtl box, `float: inline-start`,
   `padding-inline-*`, and `text-indent` at the start side.
 - `::before`/`::after` with `display: block` lay out side by side; an inline `<span>` with only a space
   paints no background; `column-rule` on a box that must split across columns.
+- A repeated `<thead>` can sit at the bottom of the page before when it fits there (it is not forced to open the next page), and a
+  table row is moved whole to the next page instead of being split across the break as Chrome does; the header copy also loses
+  `thead th` styling. Forcing the break alone adds pages, so it needs row splitting first.
 - Long documents drift from Chrome's page breaks because Chrome draws `sans-serif` as Helvetica and the engine as Noto Sans,
   which has looser line spacing.
 

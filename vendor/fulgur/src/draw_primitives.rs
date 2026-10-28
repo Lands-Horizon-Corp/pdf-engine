@@ -749,6 +749,12 @@ pub struct BlockStyle {
     pub box_shadows: Vec<BoxShadow>,
     /// pdf-engine patch: the `outline`, drawn outside the border edge (after the offset) and never taking up room.
     pub outline: Option<Outline>,
+    /// pdf-engine patch: the sides (top, right, bottom, left) of a collapsed-border table cell on the table's outer edge, where the
+    /// border reaches half its width outside the cell.
+    pub collapsed_outer: [bool; 4],
+    /// pdf-engine patch: for those sides, how far outside the cell the table's edge is (the table's own border width), where the
+    /// whole border is drawn from.
+    pub collapsed_outer_extent: [crate::units::Pt; 4],
 }
 
 /// pdf-engine patch: a resolved `outline` (all lengths in pt).
@@ -1600,6 +1606,18 @@ pub(crate) fn draw_block_border(
     let [bt, br, bb, bl] = style.border_widths.map(crate::units::Pt::to_f32);
     let [st, sr, sb, sl] = style.border_styles;
     if !(bt > 0.0 || br > 0.0 || bb > 0.0 || bl > 0.0) {
+        return;
+    }
+    // pdf-engine patch: on the outer edge of a collapsed-border table the cell holds half the border and the other half
+    // lies outside it, so the whole border is drawn from half a width outside the cell.
+    if style.collapsed_outer.iter().any(|&o| o) {
+        let [o_t, o_r, o_b, o_l] = style.collapsed_outer;
+        let [e_t, e_r, e_b, e_l] = style.collapsed_outer_extent.map(crate::units::Pt::to_f32);
+        let grow = |outer: bool, e: f32| if outer { e } else { 0.0 };
+        let (gt, gr, gb, gl) = (grow(o_t, e_t), grow(o_r, e_r), grow(o_b, e_b), grow(o_l, e_l));
+        let mut widened = style.clone();
+        widened.collapsed_outer = [false; 4];
+        draw_block_border(canvas, &widened, x - gl, y - gt, w + gl + gr, h + gt + gb);
         return;
     }
     let bc = &style.border_color;

@@ -20,6 +20,19 @@ use url::Url;
 use super::{Attribute, Attributes};
 use crate::layout::table::TableContext;
 
+/// pdf-engine patch: the border of a table cell in the collapsed-borders model (`border-collapse: collapse`), after the
+/// conflicts with its neighbours (and the table) are resolved (CSS 2.1 section 17.6.2.1): one border per shared edge, the
+/// widest, then the strongest style, then the one nearest the top-left. The cell's layout holds half of each width.
+#[derive(Debug, Clone)]
+pub struct CollapsedBorder {
+    /// Top, right, bottom, left: the whole width of the border on that edge, in CSS px.
+    pub widths: [f32; 4],
+    pub styles: [style::values::specified::BorderStyle; 4],
+    pub colors: [style::color::AbsoluteColor; 4],
+    /// True for the sides on the table's outer edge, where the border reaches half its width outside the cell.
+    pub outer: [bool; 4],
+}
+
 #[derive(Debug, Clone)]
 pub struct ElementData {
     /// The elements tag name, namespace and prefix
@@ -55,6 +68,9 @@ pub struct ElementData {
 
     /// The element's template contents (\<template\> elements only)
     pub template_contents: Option<usize>,
+
+    /// The collapsed border of a table cell (see [`CollapsedBorder`]); `None` outside a collapsed-borders table.
+    pub collapsed_border: Option<Box<CollapsedBorder>>,
     // /// Whether the node is a [HTML integration point] (https://html.spec.whatwg.org/multipage/#html-integration-point)
     // pub mathml_annotation_xml_integration_point: bool,
 }
@@ -121,6 +137,7 @@ impl ElementData {
             special_data: SpecialElementData::None,
             template_contents: None,
             background_images: Vec::new(),
+            collapsed_border: None,
         };
         data.flush_is_focussable();
         data

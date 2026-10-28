@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-10-28T07:09:15.356Z",
+  "generatedAt": "2026-10-28T09:05:35.565Z",
   "engineVersion": "1.4.1",
   "reference": "Chrome 156.0.8078.47 (headless shell, Letter, no margin, backgrounds on)",
-  "health": "DEGRADED",
-  "score": 95.41,
-  "passRate": 86.7,
+  "health": "HEALTHY",
+  "score": 95.71,
+  "passRate": 87.2,
   "cases": 188,
-  "pass": 163,
-  "close": 19,
+  "pass": 164,
+  "close": 18,
   "fail": 6,
   "error": 0,
   "thresholds": {
@@ -18,8 +18,8 @@
   "groups": {
     "css": {
       "cases": 20,
-      "score": 91.93,
-      "pass": 14
+      "score": 93.49,
+      "pass": 15
     },
     "probe": {
       "cases": 64,
@@ -28,7 +28,7 @@
     },
     "bidi": {
       "cases": 4,
-      "score": 96.01,
+      "score": 96.83,
       "pass": 4
     },
     "break-inside": {
@@ -38,8 +38,8 @@
     },
     "complex-tables": {
       "cases": 16,
-      "score": 89.43,
-      "pass": 8
+      "score": 94.15,
+      "pass": 12
     },
     "fixed-header-footer": {
       "cases": 12,
@@ -68,8 +68,8 @@
     },
     "table-pagination": {
       "cases": 12,
-      "score": 95.02,
-      "pass": 11
+      "score": 90.61,
+      "pass": 7
     }
   },
   "categories": [
@@ -90,11 +90,11 @@
       "fail": 1
     },
     {
-      "name": "complex tables",
-      "cases": 16,
-      "score": 89.43,
-      "pass": 8,
-      "close": 8,
+      "name": "pagination: tables",
+      "cases": 12,
+      "score": 90.61,
+      "pass": 7,
+      "close": 5,
       "fail": 0
     },
     {
@@ -116,26 +116,18 @@
     {
       "name": "whole documents",
       "cases": 20,
-      "score": 91.93,
-      "pass": 14,
+      "score": 93.49,
+      "pass": 15,
       "close": 5,
+      "fail": 0
+    },
+    {
+      "name": "complex tables",
+      "cases": 16,
+      "score": 94.15,
+      "pass": 12,
+      "close": 3,
       "fail": 1
-    },
-    {
-      "name": "pagination: tables",
-      "cases": 12,
-      "score": 95.02,
-      "pass": 11,
-      "close": 1,
-      "fail": 0
-    },
-    {
-      "name": "right-to-left",
-      "cases": 4,
-      "score": 96.01,
-      "pass": 4,
-      "close": 0,
-      "fail": 0
     },
     {
       "name": "pagination: headers and footers",
@@ -152,6 +144,14 @@
       "pass": 11,
       "close": 0,
       "fail": 1
+    },
+    {
+      "name": "right-to-left",
+      "cases": 4,
+      "score": 96.83,
+      "pass": 4,
+      "close": 0,
+      "fail": 0
     },
     {
       "name": "pagination: images",
@@ -242,29 +242,8 @@
       "fail": 0
     }
   ],
-  "regressions": [
-    {
-      "name": "css/02_unicode",
-      "was": 95.63,
-      "now": 87.73
-    },
-    {
-      "name": "css/14_images_svg",
-      "was": 93.57,
-      "now": 79.31
-    },
-    {
-      "name": "css/20_long_table_multipage",
-      "was": 69.18,
-      "now": 65.02
-    },
-    {
-      "name": "bidi/rtl-list-table",
-      "was": 96.33,
-      "now": 91.35
-    }
-  ],
-  "pixelScore": 87.89,
+  "regressions": [],
+  "pixelScore": 89.06,
   "worst": [
     {
       "name": "probe/span_background",
@@ -282,8 +261,8 @@
       "verdict": "fail"
     },
     {
-      "name": "css/20_long_table_multipage",
-      "score": 65.02,
+      "name": "complex-tables/05-heatmap-coloured-cells",
+      "score": 63.03,
       "verdict": "fail"
     },
     {
@@ -295,11 +274,6 @@
       "name": "break-inside/07-figures-avoid",
       "score": 69.52,
       "verdict": "fail"
-    },
-    {
-      "name": "complex-tables/07-mixed-border-styles-and-colours",
-      "score": 71.92,
-      "verdict": "close"
     },
     {
       "name": "css/13_floats_inline",
@@ -314,6 +288,11 @@
     {
       "name": "probe/z_index",
       "score": 75.47,
+      "verdict": "close"
+    },
+    {
+      "name": "css/14_images_svg",
+      "score": 79.31,
       "verdict": "close"
     }
   ]

@@ -1443,7 +1443,12 @@ fn first_line_room_needed(doc: &BaseDocument, node_id: usize, depth: usize) -> f
         && let Some(line) = inline.layout.lines().next()
     {
         let l = &node.final_layout;
-        return l.padding.top + l.border.top + line.metrics().line_height;
+        // a table cell's `vertical-align` adds to its top padding in the layout; that is not room the text needs above it
+        let css_padding_top = {
+            let raw = node.style.padding.top.into_raw();
+            if raw.tag() == taffy::CompactLength::LENGTH_TAG { raw.value() } else { l.padding.top }
+        };
+        return css_padding_top + l.border.top + line.metrics().line_height;
     }
     for &c in &node.children {
         let Some(child) = doc.get_node(c) else { continue };
@@ -1844,7 +1849,15 @@ fn fragment_block_subtree(
         .parent
         .and_then(|gp_id| doc.get_node(gp_id))
         .is_some_and(|gp| crate::blitz_adapter::is_orthogonal_to_parent(gp, parent));
-    let allow_same_row_rebase = crate::blitz_adapter::is_flex_or_grid_container_node(parent);
+    // pdf-engine patch: the cells of a table row sit side by side like the items of a grid row, so a table gets the same row handling
+    // (a row that crosses a page break is cut in all its cells at once, and the rest continues from the same place).
+    let allow_same_row_rebase = crate::blitz_adapter::is_flex_or_grid_container_node(parent)
+        || parent.primary_styles().is_some_and(|st| {
+            matches!(
+                st.clone_display().inside(),
+                ::style::values::specified::box_::DisplayInside::Table
+            )
+        });
     let suppress_page_check = allow_same_row_rebase
         || crate::blitz_adapter::is_atomic_inline_container_node(parent)
         || parent_is_orthogonal;

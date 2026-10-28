@@ -6,7 +6,7 @@ mod node;
 
 pub use attributes::{Attribute, Attributes};
 pub use element::{
-    BackgroundImageData, CanvasData, ElementData, ImageData, ListItemLayout,
+    BackgroundImageData, CanvasData, CollapsedBorder, ElementData, ImageData, ListItemLayout,
     ListItemLayoutPosition, Marker, RasterImageData, SpecialElementData, SpecialElementType,
     Status, TextBrush, TextInputData, TextLayout,
 };

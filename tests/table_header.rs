@@ -138,3 +138,39 @@ async fn two_long_tables_each_repeat_their_own_header() {
     assert!(pages.len() >= 4);
     assert!(pages.iter().all(|s| *s >= 20.0), "{pages:?}");
 }
+
+/// A table whose rows are grouped by `rowspan` cells that cross the page breaks: the header is repeated once at the top of
+/// each page, never in the middle of one, and the group cells keep their column (they used to push the header copies' cells
+/// out of theirs, and a tall `rowspan` cell made every row look as tall as its group, so copies went in at every group).
+#[tokio::test(flavor = "multi_thread")]
+async fn header_repeats_once_per_page_over_rowspan_groups() {
+    let app = TestApp::builder().spawn().await;
+    let mut rows = String::new();
+    for group in 0..10 {
+        for row in 0..14 {
+            rows.push_str("<tr>");
+            if row == 0 {
+                rows.push_str(&format!(
+                    "<td rowspan=\"14\" style=\"vertical-align:top\">Group {group}</td>"
+                ));
+            }
+            rows.push_str(&format!(
+                "<td>Item {}</td><td>{}</td></tr>",
+                group * 14 + row,
+                row
+            ));
+        }
+    }
+    let template = format!(
+        "<table style=\"width:100%\"><thead><tr><th style=\"font-size:20px\">Group</th><th style=\"font-size:20px\">Item</th><th style=\"font-size:20px\">N</th></tr></thead><tbody>{rows}</tbody></table>"
+    );
+    let pdf = pdf_of(&app, &template).await;
+    let pages = page_count(&pdf);
+    assert!(pages >= 3, "140 rows need several pages, got {pages}");
+    // the header's 20px font is the largest on every page: one repeat per page (not none, not several)
+    let fonts = largest_font_per_page(&pdf);
+    assert!(
+        fonts.iter().all(|&f| f >= 14.0),
+        "every page must carry the header: {fonts:?}"
+    );
+}

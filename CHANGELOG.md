@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is a git tag `vX.Y.Z` and the Docker
 image `zalven88/pdf-engine:X.Y.Z` (also `X.Y`, `X` and `latest`).
 
+## [1.5.1] - 2026-11-06
+
+- fix: box-shadow: inset is drawn; page-break-after/before/inside inside @media print now apply
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-10-28

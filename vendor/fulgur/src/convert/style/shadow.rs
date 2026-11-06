@@ -1,9 +1,10 @@
 //! box-shadow extraction.
 //!
-//! Iterates the computed `box-shadow` list and pushes non-inset shadows
-//! onto `BlockStyle::box_shadows`. Non-zero blur is rendered via the
-//! gradient 9-slice path in `render.rs`. Inset shadows are skipped with
-//! a `log::warn!`.
+//! Iterates the computed `box-shadow` list and pushes every shadow (inset
+//! and outer alike) onto `BlockStyle::box_shadows`. Outer shadows paint
+//! outside the box (`background::draw_single_box_shadow`); inset shadows
+//! paint inside it (`background::draw_single_inset_box_shadow`). Non-zero
+//! blur is rendered via a gradient 9-slice mask in `background.rs`.
 
 use super::{StyleContext, absolute_to_rgba};
 use crate::draw_primitives::BlockStyle;
@@ -12,10 +13,6 @@ use crate::units::F32Units;
 pub(super) fn apply_to(style: &mut BlockStyle, ctx: &StyleContext<'_>) {
     let shadow_list = ctx.styles.clone_box_shadow();
     for shadow in shadow_list.0.iter() {
-        if shadow.inset {
-            log::warn!("box-shadow: inset is not yet supported; skipping");
-            continue;
-        }
         let blur_px = shadow.base.blur.px();
         let rgba = absolute_to_rgba(shadow.base.color.resolve_to_absolute(ctx.current_color));
         if rgba[3] == 0 {
@@ -27,7 +24,7 @@ pub(super) fn apply_to(style: &mut BlockStyle, ctx: &StyleContext<'_>) {
             blur: blur_px.as_px().in_pt(),
             spread: shadow.spread.px().as_px().in_pt(),
             color: rgba,
-            inset: false,
+            inset: shadow.inset,
         });
     }
 }
@@ -60,17 +57,64 @@ mod tests {
         );
     }
 
-    /// `inset` keyword exercises the `shadow.inset` branch (skipped with log::warn!).
-    /// Skipped shadows leave no trace — output must match the no-shadow baseline.
+    /// `inset` keyword is pushed through to `BlockStyle::box_shadows` and
+    /// painted by `background::draw_single_inset_box_shadow` (solid, no blur).
+    /// It must add content to the PDF, same as an outer shadow.
     #[test]
-    fn inset_shadow_is_skipped() {
+    fn inset_shadow_is_drawn() {
         let baseline = render_with_shadow("none");
         let pdf = render_with_shadow("inset 5px 5px 10px red");
         assert!(pdf.starts_with(b"%PDF"), "expected PDF header");
-        assert_eq!(
+        assert_ne!(
             pdf.len(),
             baseline.len(),
-            "inset shadow should not affect output"
+            "inset shadow should add content to PDF"
+        );
+    }
+
+    /// `inset` with `blur > 0` takes the luminosity-mask path in
+    /// `draw_inset_blur_box_shadow`, which differs from the unblurred path.
+    #[test]
+    fn inset_shadow_with_blur_is_drawn() {
+        let baseline = render_with_shadow("none");
+        let solid = render_with_shadow("inset 0px 0px 0px 2px red");
+        let blurred = render_with_shadow("inset 0px 0px 10px 2px red");
+        assert!(blurred.starts_with(b"%PDF"), "expected PDF header");
+        assert_ne!(
+            blurred.len(),
+            baseline.len(),
+            "blurred inset shadow should add content to PDF"
+        );
+        assert_ne!(
+            blurred.len(),
+            solid.len(),
+            "blurred inset shadow should render differently from the unblurred one"
+        );
+    }
+
+    /// A rounded box with an inset shadow must still render without panicking,
+    /// exercising the rounded-rect paths in both the solid and blurred cases.
+    #[test]
+    fn inset_shadow_with_border_radius_is_drawn() {
+        let html = r#"<html><body><div style="width:100px;height:100px;border-radius:12px;box-shadow:inset 0px 0px 6px 1px rgba(0,0,0,0.5)"></div></body></html>"#;
+        let pdf = Engine::builder()
+            .build()
+            .render(html)
+            .expect("render should succeed");
+        assert!(pdf.starts_with(b"%PDF"), "expected PDF header");
+    }
+
+    /// Spread large enough to consume the whole box must not panic, and
+    /// should still paint the box fully as shadow (no inner hole left).
+    #[test]
+    fn inset_shadow_with_spread_exceeding_box_is_drawn() {
+        let baseline = render_with_shadow("none");
+        let pdf = render_with_shadow("inset 0px 0px 0px 80px black");
+        assert!(pdf.starts_with(b"%PDF"), "expected PDF header");
+        assert_ne!(
+            pdf.len(),
+            baseline.len(),
+            "inset shadow should still paint when spread exceeds the box"
         );
     }
 
@@ -88,18 +132,18 @@ mod tests {
         );
     }
 
-    /// Multiple shadows: inset + transparent + normal in one list.
-    /// Only the opaque non-inset shadow reaches the push path;
-    /// output must match the equivalent single-shadow render.
+    /// Multiple shadows: inset + transparent + outer in one list. The fully
+    /// transparent one is still skipped; the inset and outer ones are both
+    /// drawn, so the output must differ from either shadow alone.
     #[test]
-    fn mixed_shadow_list_skips_inset_and_transparent() {
-        let single = render_with_shadow("3px 3px 0px black");
+    fn mixed_shadow_list_skips_only_transparent() {
+        let outer_only = render_with_shadow("3px 3px 0px black");
         let pdf = render_with_shadow("inset 2px 2px red, 5px 5px transparent, 3px 3px 0px black");
         assert!(pdf.starts_with(b"%PDF"), "expected PDF header");
-        assert_eq!(
+        assert_ne!(
             pdf.len(),
-            single.len(),
-            "only the valid shadow should be included"
+            outer_only.len(),
+            "the inset shadow should add content beyond the outer shadow alone"
         );
     }
 

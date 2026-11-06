@@ -66,6 +66,38 @@ async fn print_rules_apply_and_screen_rules_do_not() {
 }
 
 #[tokio::test]
+async fn page_break_after_declared_inside_media_print_still_breaks() {
+    // The common dual-purpose pattern: a stylesheet meant to serve both the
+    // browser's native print dialog and the PDF gates its forced page break
+    // behind `@media print`, so screen preview is unaffected.
+    let app = TestApp::builder().spawn().await;
+    let pdf = pdf_of(
+        &app,
+        "<style>@media print { .pb { page-break-after: always; break-after: page } }\
+         @media screen { .pb { page-break-after: always; break-after: page } }</style>\
+         <div>GROUP A</div><div class=\"pb\"></div><div>GROUP B</div>",
+    )
+    .await;
+    assert_eq!(
+        page_count(&pdf),
+        2,
+        "page-break-after inside @media print must still force a page break"
+    );
+
+    let not_broken = pdf_of(
+        &app,
+        "<style>@media screen { .pb { page-break-after: always; break-after: page } }</style>\
+         <div>GROUP A</div><div class=\"pb\"></div><div>GROUP B</div>",
+    )
+    .await;
+    assert_eq!(
+        page_count(&not_broken),
+        1,
+        "page-break-after inside @media screen must not affect the PDF"
+    );
+}
+
+#[tokio::test]
 async fn a_screen_only_element_can_be_hidden_for_the_pdf() {
     let app = TestApp::builder().spawn().await;
     // The usual pattern: buttons and navigation are hidden in print.

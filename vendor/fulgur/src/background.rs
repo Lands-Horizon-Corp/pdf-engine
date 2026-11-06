@@ -10,13 +10,13 @@ use crate::draw_primitives::{
 };
 use crate::units::{F32Units, Px};
 
-/// Draw outer box-shadows behind the element's background.
+/// Draw box-shadows behind the element's background.
 ///
 /// Per CSS Backgrounds §7.2, shadows are painted in reverse declaration order
 /// (last-declared shadow at the bottom of the paint stack, first-declared on top).
-/// Outer shadows are drawn _below_ the element's background and border.
-/// `inset` shadows are currently unsupported and excluded upstream in
-/// `convert.rs::extract_block_style` (never pushed into `box_shadows`).
+/// Outer shadows are drawn _below_ the element's background and border, painted
+/// outside the box. Inset shadows are painted inside the box, over the area the
+/// background would otherwise show (see `draw_single_inset_box_shadow`).
 pub fn draw_box_shadows(
     canvas: &mut Canvas<'_, '_>,
     style: &BlockStyle,
@@ -30,9 +30,10 @@ pub fn draw_box_shadows(
     }
     for shadow in style.box_shadows.iter().rev() {
         if shadow.inset {
-            continue; // defensive; inset shadows are excluded upstream in convert.rs
+            draw_single_inset_box_shadow(canvas, style, shadow, x, y, w, h);
+        } else {
+            draw_single_box_shadow(canvas, style, shadow, x, y, w, h);
         }
-        draw_single_box_shadow(canvas, style, shadow, x, y, w, h);
     }
 }
 
@@ -134,6 +135,116 @@ fn draw_single_box_shadow(
     }));
     canvas.surface.set_stroke(None);
     canvas.surface.draw_path(&shadow_path);
+
+    canvas.surface.pop();
+}
+
+/// pdf-engine patch: build an EvenOdd clip path for a solid (unblurred) inset box-shadow: the
+/// element's own box shape minus the shrunk-by-spread, offset inner rectangle.
+/// Per CSS Backgrounds §7.2, an inset shadow is visible in that ring, inside
+/// the box. When the inner rectangle has collapsed to zero or negative size
+/// (spread large enough to consume the box), only the outer subpath is added,
+/// so the whole box paints as shadow.
+#[allow(clippy::too_many_arguments)]
+fn build_inset_shadow_clip(
+    box_x: f32,
+    box_y: f32,
+    box_w: f32,
+    box_h: f32,
+    box_radii: &[[f32; 2]; 4],
+    inner_x: f32,
+    inner_y: f32,
+    inner_w: f32,
+    inner_h: f32,
+    inner_radii: &[[f32; 2]; 4],
+) -> Option<krilla::geom::Path> {
+    let has_radius = |r: &[[f32; 2]; 4]| r.iter().any(|[rx, ry]| *rx > 0.0 || *ry > 0.0);
+
+    let mut pb = krilla::geom::PathBuilder::new();
+    if has_radius(box_radii) {
+        crate::draw_primitives::append_rounded_rect_subpath(
+            &mut pb, box_x, box_y, box_w, box_h, box_radii,
+        );
+    } else {
+        let rect = krilla::geom::Rect::from_xywh(box_x, box_y, box_w, box_h)?;
+        pb.push_rect(rect);
+    }
+    if inner_w > 0.0 && inner_h > 0.0 {
+        if has_radius(inner_radii) {
+            crate::draw_primitives::append_rounded_rect_subpath(
+                &mut pb, inner_x, inner_y, inner_w, inner_h, inner_radii,
+            );
+        } else if let Some(rect) = krilla::geom::Rect::from_xywh(inner_x, inner_y, inner_w, inner_h)
+        {
+            pb.push_rect(rect);
+        }
+    }
+    pb.finish()
+}
+
+/// pdf-engine patch: draw a single inset box-shadow (no blur). Delegates to
+/// `draw_inset_blur_box_shadow` when `blur > 0`.
+///
+/// Per CSS Backgrounds §7.2, an inset shadow's shape is the box shrunk by
+/// `spread` (not expanded, unlike an outer shadow), then offset. It is drawn
+/// over the background, clipped to the ring between the box's own edge and
+/// that shrunk, offset rectangle.
+fn draw_single_inset_box_shadow(
+    canvas: &mut Canvas<'_, '_>,
+    style: &BlockStyle,
+    shadow: &crate::draw_primitives::BoxShadow,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let offset_x = shadow.offset_x.to_f32();
+    let offset_y = shadow.offset_y.to_f32();
+    let blur = shadow.blur.to_f32();
+    let spread = shadow.spread.to_f32();
+
+    if blur > 0.0 {
+        draw_inset_blur_box_shadow(canvas, style, shadow, x, y, w, h);
+        return;
+    }
+
+    let sx = x + offset_x + spread;
+    let sy = y + offset_y + spread;
+    let sw = w - 2.0 * spread;
+    let sh = h - 2.0 * spread;
+
+    let box_radii = style.border_radii.map(|p| p.map(crate::units::Pt::to_f32));
+    let inner_radii = expand_radii(&box_radii, -spread);
+
+    let Some(clip_path) =
+        build_inset_shadow_clip(x, y, w, h, &box_radii, sx, sy, sw, sh, &inner_radii)
+    else {
+        return;
+    };
+
+    canvas
+        .surface
+        .push_clip_path(&clip_path, &krilla::paint::FillRule::EvenOdd);
+
+    let [r, g, b, a] = shadow.color;
+    canvas.surface.set_fill(Some(krilla::paint::Fill {
+        paint: krilla::color::rgb::Color::new(r, g, b).into(),
+        opacity: krilla::num::NormalizedF32::new(a as f32 / 255.0)
+            .unwrap_or(krilla::num::NormalizedF32::ONE),
+        rule: Default::default(),
+    }));
+    canvas.surface.set_stroke(None);
+
+    // Paint the whole box shape; the even-odd clip above restricts visible
+    // paint to the ring between the box edge and the inner rectangle.
+    let box_path = if style.has_radius() {
+        crate::draw_primitives::build_rounded_rect_path(x, y, w, h, &box_radii)
+    } else {
+        build_rect_path(x, y, w, h)
+    };
+    if let Some(path) = box_path {
+        canvas.surface.draw_path(&path);
+    }
 
     canvas.surface.pop();
 }
@@ -363,6 +474,272 @@ fn draw_blur_box_shadow(
 
     canvas.surface.pop(); // pop mask
     canvas.surface.pop(); // pop clip
+}
+
+/// pdf-engine patch: draw a blurred inset box-shadow using a luminosity soft mask.
+///
+/// Mirrors `draw_blur_box_shadow`'s 9-slice technique with the roles of
+/// "inside" and "outside" swapped: the ring between the box's own edge and
+/// the shrunk-by-spread shadow rectangle is fully in shadow (opaque), fading
+/// to no shadow at all (transparent) a further `blur` distance into the box.
+/// Per CSS Backgrounds §7.2, the shadow never leaves the box.
+///
+/// # Geometry
+///
+/// ```text
+/// spread rect = box shrunk by spread, then offset (the shadow's own shape)
+/// deep rect   = spread rect shrunk further by blur (fully shadow-free)
+/// ```
+#[allow(clippy::too_many_arguments)]
+fn draw_inset_blur_box_shadow(
+    canvas: &mut Canvas<'_, '_>,
+    style: &BlockStyle,
+    shadow: &crate::draw_primitives::BoxShadow,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let offset_x = shadow.offset_x.to_f32();
+    let offset_y = shadow.offset_y.to_f32();
+    let blur = shadow.blur.to_f32();
+    let spread = shadow.spread.to_f32();
+    if blur <= 0.0 {
+        return;
+    }
+
+    let box_radii = style.border_radii.map(|p| p.map(crate::units::Pt::to_f32));
+
+    // Shadow rectangle: the box shrunk by `spread`, then offset.
+    let spx = x + offset_x + spread;
+    let spy = y + offset_y + spread;
+    let spw = w - 2.0 * spread;
+    let sph = h - 2.0 * spread;
+    let r_spread = expand_radii(&box_radii, -spread);
+
+    // Deep rectangle: the shadow rectangle shrunk further by `blur`. Fully
+    // inside it, there is no shadow at all.
+    let dpx = spx + blur;
+    let dpy = spy + blur;
+    let dpw = spw - 2.0 * blur;
+    let dph = sph - 2.0 * blur;
+    let r_deep = expand_radii(&r_spread, -blur);
+
+    let mask_stops = inset_blur_stops_mask(shadow.color[3], 16);
+    let shadow_a = shadow.color[3] as f32 / 255.0;
+    let center_luma = (shadow_a * 255.0).round().clamp(0.0, 255.0) as u8;
+
+    let r_tl_x = r_spread[0][0];
+    let r_tl_y = r_spread[0][1];
+    let r_tr_x = r_spread[1][0];
+    let r_tr_y = r_spread[1][1];
+    let r_br_x = r_spread[2][0];
+    let r_br_y = r_spread[2][1];
+    let r_bl_x = r_spread[3][0];
+    let r_bl_y = r_spread[3][1];
+
+    let box_path = if style.has_radius() {
+        crate::draw_primitives::build_rounded_rect_path(x, y, w, h, &box_radii)
+    } else {
+        build_rect_path(x, y, w, h)
+    };
+    let Some(box_path) = box_path else {
+        return;
+    };
+
+    // Build luminosity mask stream: solid shadow everywhere in the box,
+    // a shadow-free deep rect cut out, and a 9-slice gradient band between
+    // them (mirrors `draw_blur_box_shadow`'s mask, inverted).
+    let mask = {
+        let mut stream_builder = canvas.surface.stream_builder();
+        {
+            let mut ms = stream_builder.surface();
+
+            // Base: the whole box is "fully in shadow" by default.
+            let base_color = krilla::color::rgb::Color::new(center_luma, center_luma, center_luma);
+            ms.set_fill(Some(krilla::paint::Fill {
+                paint: base_color.into(),
+                opacity: krilla::num::NormalizedF32::ONE,
+                rule: Default::default(),
+            }));
+            ms.set_stroke(None);
+            ms.draw_path(&box_path);
+            ms.set_fill(None);
+
+            // Deep rect: no shadow at all this far into the box.
+            if dpw > 0.0 && dph > 0.0 {
+                let deep_path = if style.has_radius() {
+                    crate::draw_primitives::build_rounded_rect_path(dpx, dpy, dpw, dph, &r_deep)
+                } else {
+                    build_rect_path(dpx, dpy, dpw, dph)
+                };
+                if let Some(path) = deep_path {
+                    ms.set_fill(Some(krilla::paint::Fill {
+                        paint: krilla::color::rgb::Color::new(0, 0, 0).into(),
+                        opacity: krilla::num::NormalizedF32::ONE,
+                        rule: Default::default(),
+                    }));
+                    ms.set_stroke(None);
+                    ms.draw_path(&path);
+                    ms.set_fill(None);
+                }
+            }
+
+            // Top edge: opaque at the shadow rect's edge, transparent `blur`
+            // further inward (at the deep rect's edge).
+            draw_edge_strip(
+                &mut ms,
+                spx + r_tl_x,
+                spy,
+                spw - r_tl_x - r_tr_x,
+                blur,
+                spx + r_tl_x,
+                dpy,
+                spx + r_tl_x,
+                spy,
+                &mask_stops,
+            );
+            // Bottom edge
+            draw_edge_strip(
+                &mut ms,
+                spx + r_bl_x,
+                dpy + dph,
+                spw - r_bl_x - r_br_x,
+                blur,
+                spx + r_bl_x,
+                dpy + dph,
+                spx + r_bl_x,
+                spy + sph,
+                &mask_stops,
+            );
+            // Left edge
+            draw_edge_strip(
+                &mut ms,
+                spx,
+                spy + r_tl_y,
+                blur,
+                sph - r_tl_y - r_bl_y,
+                dpx,
+                spy + r_tl_y,
+                spx,
+                spy + r_tl_y,
+                &mask_stops,
+            );
+            // Right edge
+            draw_edge_strip(
+                &mut ms,
+                dpx + dpw,
+                spy + r_tr_y,
+                blur,
+                sph - r_tr_y - r_br_y,
+                dpx + dpw,
+                spy + r_tr_y,
+                spx + spw,
+                spy + r_tr_y,
+                &mask_stops,
+            );
+
+            // TL corner
+            draw_corner_patch(
+                &mut ms,
+                spx + r_tl_x,
+                spy + r_tl_y,
+                r_deep[0][0].max(r_deep[0][1]),
+                blur,
+                spx,
+                spy,
+                r_tl_x,
+                r_tl_y,
+                &mask_stops,
+            );
+            // TR corner
+            draw_corner_patch(
+                &mut ms,
+                spx + spw - r_tr_x,
+                spy + r_tr_y,
+                r_deep[1][0].max(r_deep[1][1]),
+                blur,
+                spx + spw - r_tr_x,
+                spy,
+                r_tr_x,
+                r_tr_y,
+                &mask_stops,
+            );
+            // BR corner
+            draw_corner_patch(
+                &mut ms,
+                spx + spw - r_br_x,
+                spy + sph - r_br_y,
+                r_deep[2][0].max(r_deep[2][1]),
+                blur,
+                spx + spw - r_br_x,
+                spy + sph - r_br_y,
+                r_br_x,
+                r_br_y,
+                &mask_stops,
+            );
+            // BL corner
+            draw_corner_patch(
+                &mut ms,
+                spx + r_bl_x,
+                spy + sph - r_bl_y,
+                r_deep[3][0].max(r_deep[3][1]),
+                blur,
+                spx,
+                spy + sph - r_bl_y,
+                r_bl_x,
+                r_bl_y,
+                &mask_stops,
+            );
+
+            ms.finish();
+        }
+        Mask::new(stream_builder.finish(), MaskType::Luminosity)
+    };
+
+    // Clip to the box's own shape so the shadow never bleeds past a rounded
+    // corner; the mask (not a clip subtraction) carves out the deep rect.
+    canvas.surface.push_clip_path(
+        &box_path,
+        &krilla::paint::FillRule::NonZero,
+    );
+    canvas.surface.push_mask(mask);
+
+    let [r, g, b, _] = shadow.color;
+    canvas.surface.set_fill(Some(krilla::paint::Fill {
+        paint: krilla::color::rgb::Color::new(r, g, b).into(),
+        opacity: krilla::num::NormalizedF32::ONE,
+        rule: Default::default(),
+    }));
+    canvas.surface.set_stroke(None);
+    canvas.surface.draw_path(&box_path);
+    canvas.surface.set_fill(None);
+
+    canvas.surface.pop(); // pop mask
+    canvas.surface.pop(); // pop clip
+}
+
+/// Like `blur_stops_mask` but inverted: transparent at the near end (offset
+/// 0, deep inside the box) and opaque at the far end (offset 1, at the
+/// shadow rectangle's edge). Used for inset box-shadow blur, whose gradient
+/// fades the opposite way from an outer shadow's.
+fn inset_blur_stops_mask(shadow_alpha_byte: u8, n: usize) -> Vec<krilla::paint::Stop> {
+    assert!(n >= 2);
+    let shadow_a = shadow_alpha_byte as f32 / 255.0;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / (n - 1) as f32;
+            let luma = (blur_edge_alpha(1.0 - t) * shadow_a * 255.0)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            krilla::paint::Stop {
+                offset: krilla::num::NormalizedF32::new(t)
+                    .unwrap_or(krilla::num::NormalizedF32::ONE),
+                color: krilla::color::rgb::Color::new(luma, luma, luma).into(),
+                opacity: krilla::num::NormalizedF32::ONE,
+            }
+        })
+        .collect()
 }
 
 /// Draw a rectangular strip filled with a LinearGradient.

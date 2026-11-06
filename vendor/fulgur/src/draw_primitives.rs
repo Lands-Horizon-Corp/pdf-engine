@@ -715,9 +715,9 @@ pub struct BoxShadow {
     pub spread: crate::units::Pt,
     /// Shadow color as RGBA.
     pub color: [u8; 4],
-    /// Whether this is an inset shadow. Inset shadows are currently unsupported
-    /// and filtered out upstream in `convert::style::shadow::apply_to`, so this
-    /// field is always `false` in resolved `BlockStyle::box_shadows`.
+    /// Whether this is an inset shadow. Outer shadows are painted outside the
+    /// box by `background::draw_single_box_shadow`; inset shadows are painted
+    /// inside it by `background::draw_single_inset_box_shadow`.
     pub inset: bool,
 }
 

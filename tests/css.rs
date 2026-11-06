@@ -107,6 +107,37 @@ async fn hsl_and_hsla_colors_are_painted() {
 }
 
 #[tokio::test]
+async fn inset_box_shadow_is_painted() {
+    let app = TestApp::builder().spawn().await;
+
+    let ops = colors_of(
+        &app,
+        r#"<div style="width:100px;height:100px;background:#ffffff;
+                       box-shadow:inset 0 0 0 1px #ff0000"></div>"#,
+    )
+    .await;
+
+    assert!(
+        ops.iter().any(|o| o == "1 0 0 rg"),
+        "inset box-shadow color missing from fill ops: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn inset_box_shadow_with_blur_is_painted() {
+    let app = TestApp::builder().spawn().await;
+
+    let resp = app
+        .to_bytes(form(
+            r#"<div style="width:100px;height:100px;border-radius:12px;
+                           box-shadow:inset 0 0 10px 2px #ff0000"></div>"#,
+        ))
+        .await;
+    assert_eq!(resp.status(), 200);
+    assert!(is_pdf(&resp.bytes().await.unwrap()));
+}
+
+#[tokio::test]
 async fn each_border_side_keeps_its_own_color() {
     let app = TestApp::builder().spawn().await;
 

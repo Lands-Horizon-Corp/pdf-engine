@@ -920,12 +920,15 @@ fn previous_element_sibling<'a>(
 // Stylesheet parser
 // ---------------------------------------------------------------------------
 
-/// Parse a top-level CSS source into [`StyleRule`]s. `@`-rules are skipped
-/// entirely (returning `Err` from `parse_prelude` — cssparser's
-/// `StyleSheetParser` then consumes and discards the block without calling
-/// `parse_block`). Qualified rules whose prelude contains an unsupported
-/// selector are dropped. Empty property blocks are kept out of the result
-/// to save memory.
+/// Parse a top-level CSS source into [`StyleRule`]s. Every `@`-rule except
+/// `@media` is skipped entirely (returning `Err` from `parse_prelude` —
+/// cssparser's `StyleSheetParser` then consumes and discards the block
+/// without calling `parse_block`). An `@media` block whose query matches
+/// pdf-engine's print device (see [`media_query_matches_print`]) has its
+/// contents folded in, in place, as if unwrapped; one that does not match
+/// (e.g. `screen`) is discarded, same as any other at-rule. Qualified rules
+/// whose prelude contains an unsupported selector are dropped. Empty
+/// property blocks are kept out of the result to save memory.
 pub(crate) fn parse_stylesheet(source: &str) -> Vec<StyleRule> {
     let mut rules = Vec::new();
     let mut input = ParserInput::new(source);
@@ -939,12 +942,60 @@ pub(crate) fn parse_stylesheet(source: &str) -> Vec<StyleRule> {
     rules
 }
 
+/// pdf-engine patch: whether an `@media` prelude matches pdf-engine's device
+/// (a PDF is print media — see `blitz_adapter.rs`'s
+/// `Device::new(MediaType::print(), ...)`, patch #3 in PATCHES.md).
+///
+/// Intentionally partial, matching this module's existing "full CSS
+/// media-query evaluation is deferred" stance (see the module doc comment):
+/// a comma-separated list of bare media types, each optionally prefixed
+/// with `not` / `only`, is evaluated against `print` and `all`. A segment
+/// that names a feature condition (anything with `(`, e.g.
+/// `print and (min-width: 600px)`) can't be evaluated here, so it is
+/// treated as not matching — the gated rule stays dormant rather than
+/// firing on a condition nobody checked.
+fn media_query_matches_print(prelude: &str) -> bool {
+    prelude
+        .split(',')
+        .any(|segment| media_type_segment_matches_print(segment.trim()))
+}
+
+fn media_type_segment_matches_print(segment: &str) -> bool {
+    if segment.is_empty() {
+        return true; // an empty query list defaults to matching everything
+    }
+    if segment.contains('(') {
+        return false; // a feature condition we don't evaluate — fail closed
+    }
+
+    let (negate, rest) = if let Some(r) = segment.strip_prefix("not ") {
+        (true, r.trim())
+    } else if let Some(r) = segment.strip_prefix("only ") {
+        (false, r.trim())
+    } else {
+        (false, segment)
+    };
+
+    let is_print_or_all = matches!(rest.to_ascii_lowercase().as_str(), "print" | "all");
+    if negate {
+        !is_print_or_all
+    } else {
+        is_print_or_all
+    }
+}
+
+/// pdf-engine patch: whether a bare `@media` at-rule's contents should be
+/// folded into the enclosing rule list.
+enum SheetAtRulePrelude {
+    Media { matches: bool },
+}
+
 struct SheetParser<'a> {
     rules: &'a mut Vec<StyleRule>,
 }
 
 impl<'i, 'a> AtRuleParser<'i> for SheetParser<'a> {
-    type Prelude = ();
+    type Prelude = SheetAtRulePrelude;
     type AtRule = ();
     type Error = ();
 
@@ -953,10 +1004,39 @@ impl<'i, 'a> AtRuleParser<'i> for SheetParser<'a> {
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::Prelude, ParseError<'i, ()>> {
-        // Terminate every at-rule at the prelude — `StyleSheetParser` will
-        // then skip the associated block. GCPM's parser takes `@page` but
-        // we are strictly after qualified rules.
+        // pdf-engine patch: `@media` is evaluated against the print device
+        // instead of being dropped like every other at-rule (GCPM's parser
+        // takes `@page` but we are strictly after qualified rules).
+        if name.eq_ignore_ascii_case("media") {
+            let start = input.position();
+            while input.next_including_whitespace().is_ok() {}
+            let raw = input.slice_from(start);
+            return Ok(SheetAtRulePrelude::Media {
+                matches: media_query_matches_print(raw),
+            });
+        }
         Err(input.new_error(BasicParseErrorKind::AtRuleInvalid(name)))
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        prelude: Self::Prelude,
+        _start: &cssparser::ParserState,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::AtRule, ParseError<'i, ()>> {
+        let SheetAtRulePrelude::Media { matches } = prelude;
+        if matches {
+            // Fold the block's contents in, in place: parse them as a
+            // nested rule list, pushing any matched rules into the same
+            // `self.rules` (recursion also handles a nested `@media`).
+            let iter = StyleSheetParser::new(input, self);
+            for item in iter {
+                let _ = item;
+            }
+        }
+        // A non-matching block (e.g. `screen`) is silently discarded, same
+        // as any other at-rule this sniffer doesn't support.
+        Ok(())
     }
 }
 
@@ -1502,14 +1582,96 @@ mod tests {
     }
 
     #[test]
-    fn stylesheet_skips_at_rules() {
+    fn stylesheet_skips_unsupported_at_rules() {
+        let css = r#"
+            @page { margin: 1in; }
+            @font-face { font-family: X; src: url(x.woff); }
+            .mc { column-fill: auto; }
+        "#;
+        let rules = parse_stylesheet(css);
+        // `@page` and `@font-face` are out of this sniffer's scope and are
+        // skipped entirely — only the bare `.mc` rule remains.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.fill, Some(ColumnFill::Auto));
+    }
+
+    #[test]
+    fn stylesheet_folds_in_matching_media_print_block() {
         let css = r#"
             @media print { .mc { column-rule: 1pt solid red; } }
             .mc { column-fill: auto; }
         "#;
         let rules = parse_stylesheet(css);
-        // The `@media` block is skipped entirely — only the bare `.mc`
-        // rule remains.
+        assert_eq!(rules.len(), 2);
+        assert!(rules[0].props.rule.is_some());
+        assert_eq!(rules[1].props.fill, Some(ColumnFill::Auto));
+    }
+
+    #[test]
+    fn stylesheet_folds_in_matching_media_all_block() {
+        let css = r#"@media all { .mc { column-fill: auto; } }"#;
+        let rules = parse_stylesheet(css);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.fill, Some(ColumnFill::Auto));
+    }
+
+    #[test]
+    fn stylesheet_folds_in_media_print_break_after() {
+        // The motivating case: `page-break-after` declared only inside
+        // `@media print` must still reach the pagination side-table.
+        let css = r#"
+            @media print {
+                .page-break { page-break-after: always; break-after: page; }
+            }
+        "#;
+        let rules = parse_stylesheet(css);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.break_after, Some(BreakAfter::Page));
+    }
+
+    #[test]
+    fn stylesheet_drops_non_matching_media_screen_block() {
+        let css = r#"
+            @media screen { .mc { column-fill: auto; } }
+            .mc { column-fill: balance; }
+        "#;
+        let rules = parse_stylesheet(css);
+        // The `@media screen` block never matches a print device — only
+        // the bare `.mc` rule remains.
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.fill, Some(ColumnFill::Balance));
+    }
+
+    #[test]
+    fn stylesheet_folds_in_media_not_screen_block() {
+        let css = r#"@media not screen { .mc { column-fill: auto; } }"#;
+        let rules = parse_stylesheet(css);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.fill, Some(ColumnFill::Auto));
+    }
+
+    #[test]
+    fn stylesheet_folds_in_media_print_comma_screen_list() {
+        // A comma-separated list matches if any segment does.
+        let css = r#"@media print, screen { .mc { column-fill: auto; } }"#;
+        let rules = parse_stylesheet(css);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].props.fill, Some(ColumnFill::Auto));
+    }
+
+    #[test]
+    fn stylesheet_drops_media_feature_query_conservatively() {
+        // A feature condition we can't evaluate fails closed (not matched),
+        // rather than risk firing a rule its author scoped narrowly.
+        let css = r#"@media print and (min-width: 600px) { .mc { column-fill: auto; } }"#;
+        let rules = parse_stylesheet(css);
+        assert_eq!(rules.len(), 0);
+    }
+
+    #[test]
+    fn stylesheet_folds_in_nested_media_block() {
+        let css = r#"@media print { @media all { .mc { column-fill: auto; } } }"#;
+        let rules = parse_stylesheet(css);
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].props.fill, Some(ColumnFill::Auto));
     }
